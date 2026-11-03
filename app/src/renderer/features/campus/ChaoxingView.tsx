@@ -30,6 +30,11 @@ export type ChaoxingPageApi = Omit<
   | 'linkFile'
   | 'openFilesPage'
   | 'openWorksPage'
+  | 'markWork'
+  | 'reminders'
+  | 'setReminders'
+  | 'checkReminders'
+  | 'onOpenWork'
 > &
   Partial<
     Pick<
@@ -41,6 +46,11 @@ export type ChaoxingPageApi = Omit<
       | 'linkFile'
       | 'openFilesPage'
       | 'openWorksPage'
+      | 'markWork'
+      | 'reminders'
+      | 'setReminders'
+      | 'checkReminders'
+      | 'onOpenWork'
     >
   >;
 export function ChaoxingView({ api = window.dela?.chaoxing }: { api?: ChaoxingPageApi } = {}) {

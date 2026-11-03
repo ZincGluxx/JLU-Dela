@@ -25,6 +25,9 @@ export const chaoxingApi: ChaoxingPageApi = {
   syncFiles: (id, folder) => webCall('chaoxing.syncFiles', folder ? [id, folder] : [id]),
   works: (id) => webCall('chaoxing.works', [id]),
   syncWorks: (id) => webCall('chaoxing.syncWorks', [id]),
+  markWork: (id, workId, marks) => webCall('chaoxing.markWork', [id, workId, marks]),
+  reminders: () => webCall('chaoxing.reminders'),
+  setReminders: (enabled) => webCall('chaoxing.setReminders', [enabled]),
 };
 export const noticesApi: NoticesPageApi = {
   getNotices: (channel, page) => webCall('notices.list', [channel, page]),

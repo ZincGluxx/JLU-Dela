@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   chaoxingAssignments,
   chaoxingDeadline,
+  chaoxingReminderKey,
+  chaoxingReminderStage,
   chaoxingWorkCompleted,
   chaoxingWorkDueAt,
   chaoxingWorkSection,
@@ -85,6 +87,7 @@ describe('assignment board grouping', () => {
       done: 1,
       overdue: 1,
       undated: 1,
+      ignored: 0,
     });
     expect([...items].sort(chaoxingWorkSort).map((item) => item.title)).toEqual([
       '逾期',
@@ -124,5 +127,51 @@ describe('assignment board grouping', () => {
       ['示例课程', null],
       ['示例课程', { date: '2026-11-04', time: '20:00' }],
     ]);
+  });
+});
+
+describe('assignment marks and reminders', () => {
+  const now = new Date('2026-11-03T12:00:00+08:00').getTime();
+  const work = (overrides: Record<string, unknown> = {}) => ({
+    id: 'w',
+    title: '作业',
+    status: '未交',
+    timing: '',
+    detailTiming: '截止时间：2026-11-04 08:00',
+    ...overrides,
+  });
+  it('moves ignored works into their own section and out of the pending counts', () => {
+    const items = [work({ id: '1' }), work({ id: '2', mutedAt: '2026-11-03T00:00:00Z' })];
+    expect(chaoxingWorkSection(items[1]!, now)).toBe('ignored');
+    expect(chaoxingWorkSummary(items, now)).toEqual({
+      total: 2,
+      pending: 1,
+      done: 0,
+      overdue: 0,
+      undated: 0,
+      ignored: 1,
+    });
+  });
+  it('only reminds for dated, unfinished, unignored work within 24 hours', () => {
+    expect(chaoxingReminderStage(work(), now)).toEqual({
+      stage: 'soon',
+      dueAt: new Date('2026-11-04T08:00:00+08:00').getTime(),
+    });
+    expect(chaoxingReminderStage(work(), now + 19 * 3_600_000)).toMatchObject({ stage: 'urgent' });
+    expect(chaoxingReminderStage(work(), now + 21 * 3_600_000)).toMatchObject({
+      stage: 'overdue',
+    });
+    for (const value of [
+      work({ detailTiming: undefined, timing: '剩余2天' }),
+      work({ status: '已提交' }),
+      work({ mutedAt: '2026-11-03T00:00:00Z' }),
+      work({ detailTiming: '截止时间：2026-11-10 08:00' }),
+      work({ detailTiming: '截止时间：2026-10-01 08:00' }),
+      work({ detailTiming: '截止日期：2026-11-04' }),
+    ])
+      expect(chaoxingReminderStage(value, now)).toBeNull();
+    expect(chaoxingReminderKey(work(), 'soon')).toBe('2026-11-04T08:00|soon');
+    expect(chaoxingReminderKey(work(), 'urgent')).not.toBe(chaoxingReminderKey(work(), 'soon'));
+    expect(chaoxingReminderKey(work(), 'overdue')).not.toBe(chaoxingReminderKey(work(), 'urgent'));
   });
 });

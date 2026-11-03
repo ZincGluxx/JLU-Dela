@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChaoxingCalendar } from '../../../shared/chaoxing-calendar';
 import { ChaoxingWorkBoard, type ChaoxingWorkBoardApi } from './ChaoxingWorkBoard';
-
 const now = new Date('2026-11-03T02:00:00Z').getTime();
 const assignments: ChaoxingCalendar = {
   coursesSyncedAt: '2026-11-03T00:00:00Z',
@@ -66,19 +65,36 @@ const assignments: ChaoxingCalendar = {
     },
   ],
 };
-let host: HTMLDivElement, root: Root, api: ChaoxingWorkBoardApi;
+let host: HTMLDivElement, root: Root, api: ChaoxingWorkBoardApi, current: ChaoxingCalendar;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
+  current = structuredClone(assignments);
   api = {
     courses: vi.fn(async () => null),
     works: vi.fn(async () => null),
-    calendar: vi.fn(async () => assignments),
-    syncCalendar: vi.fn(async () => ({ data: assignments, failures: [] })),
+    calendar: vi.fn(async () => current),
+    syncCalendar: vi.fn(async () => ({ data: current, failures: [] })),
     syncWorks: vi.fn(async () => ({ ok: true as const, data: null as never })),
     openWorksPage: vi.fn(async () => {}),
+    markWork: vi.fn(async (courseId, workId, marks) => {
+      current = {
+        ...current,
+        works: current.works.map((work) =>
+          work.courseId === courseId && work.id === workId
+            ? {
+                ...work,
+                ...(marks.read === undefined ? {} : { readAt: marks.read ? 'now' : undefined }),
+                ...(marks.muted === undefined ? {} : { mutedAt: marks.muted ? 'now' : undefined }),
+              }
+            : work,
+        ),
+      };
+    }),
+    reminders: vi.fn(async () => ({ enabled: true })),
+    setReminders: vi.fn(async (enabled: boolean) => ({ enabled })),
   };
 });
 afterEach(() => {
@@ -165,5 +181,41 @@ describe('学习通作业看板', () => {
     )!;
     await act(async () => open.click());
     expect(api.openWorksPage).toHaveBeenCalledWith('b');
+  });
+
+  it('marks a work as read and ignores it into its own section', async () => {
+    await mount();
+    const rowOf = (label: string) => host.querySelector(`[aria-label="${label}"]`)!;
+    await act(async () =>
+      [...rowOf('7 天内截止').querySelectorAll('button')]
+        .find((item) => item.textContent?.trim() === '标为已读')!
+        .click(),
+    );
+    expect(api.markWork).toHaveBeenCalledWith('b', '2', { read: true });
+    expect(rowOf('7 天内截止').textContent).toContain('已读');
+    await act(async () =>
+      [...rowOf('7 天内截止').querySelectorAll('button')]
+        .find((item) => item.textContent?.trim() === '忽略')!
+        .click(),
+    );
+    expect(api.markWork).toHaveBeenCalledWith('b', '2', { muted: true });
+    expect(host.textContent).not.toContain('本周实验');
+    await act(async () => button('已忽略').click());
+    expect(rowOf('已忽略').textContent).toContain('本周实验');
+    expect(host.textContent).toContain('取消忽略');
+  });
+
+  it('switches the desktop reminder off and back on', async () => {
+    await mount();
+    const toggle = () =>
+      [...host.querySelectorAll('button')].find((item) =>
+        item.textContent?.startsWith('截止提醒'),
+      )!;
+    expect(toggle().textContent).toContain('已开启');
+    await act(async () => toggle().click());
+    expect(api.setReminders).toHaveBeenCalledWith(false);
+    expect(toggle().textContent).toContain('已关闭');
+    await act(async () => toggle().click());
+    expect(api.setReminders).toHaveBeenLastCalledWith(true);
   });
 });

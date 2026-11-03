@@ -222,6 +222,13 @@ export default function App() {
     );
   }, []);
 
+  // 作业截止提醒被点击：直接打开对应的学习通作业标签。
+  useEffect(() => {
+    return window.dela?.chaoxing?.onOpenWork(({ courseId, workId }) => {
+      useNavigationStore.getState().openWork(courseId, workId);
+    });
+  }, []);
+
   // 全局搜索入口交给 AppShell 的快捷键派发（Ctrl/⌘+K 可改键）；此处只守卫引导阶段：
   // completion 遮罩期间打开会落在遮罩之下并抢占输入焦点。
   const openSearch = () => {

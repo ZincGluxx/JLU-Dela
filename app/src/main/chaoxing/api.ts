@@ -25,6 +25,7 @@ import {
 import { getWorkspaceState } from '../workspace/api';
 import { safeFileName } from '../vsjtu/transcript';
 import { availablePath } from '../storage';
+import { chaoxingWorkFlagKey, chaoxingWorkFlags } from './flags';
 
 const id = z.string().regex(/^[A-Za-z0-9:_-]{1,180}$/);
 const schoolUrl = z
@@ -369,7 +370,17 @@ export async function syncChaoxingFiles(courseId: string, folderId = '', sender?
 }
 export function getChaoxingWorks(courseId: string) {
   id.parse(courseId);
-  return cache('works:' + courseId, worksSchema);
+  const value = cache('works:' + courseId, worksSchema);
+  if (!value) return value;
+  // 已读 / 忽略是本机标记，和学校缓存分开存；读缓存时叠加，刷新作业列表不会丢。
+  const flags = chaoxingWorkFlags();
+  return {
+    ...value,
+    items: value.items.map((work) => {
+      const flag = flags.get(chaoxingWorkFlagKey(courseId, work.id));
+      return { ...work, readAt: flag?.readAt ?? undefined, mutedAt: flag?.mutedAt ?? undefined };
+    }),
+  };
 }
 export async function syncChaoxingWorks(courseId: string, sender?: WebContents) {
   const url = await courseFrame(courseId, 'works', sender);
@@ -394,7 +405,9 @@ export async function syncChaoxingWorks(courseId: string, sender?: WebContents) 
           : saved?.detailSyncedAt,
     };
   });
-  return save('works:' + courseId, { courseId, items, syncedAt: new Date().toISOString() });
+  save('works:' + courseId, { courseId, items, syncedAt: new Date().toISOString() });
+  // 返回叠加了本地标记的快照，刷新后已读 / 忽略状态不会在界面上消失。
+  return getChaoxingWorks(courseId)!;
 }
 export async function importChaoxingFile(courseId: string, folderId: string, fileId: string) {
   const course = ownCourse(courseId);

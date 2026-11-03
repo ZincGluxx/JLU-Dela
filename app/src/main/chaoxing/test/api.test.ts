@@ -70,11 +70,14 @@ import {
   linkChaoxingFile,
   chaoxingResult,
 } from '../api';
+import { markChaoxingWork } from '../flags';
 const reader = vi.mocked(readSchoolPage);
 beforeEach(() => {
   vi.clearAllMocks();
   db = new Database(':memory:');
-  db.exec('CREATE TABLE jlu_platform_cache(key TEXT PRIMARY KEY,data TEXT NOT NULL)');
+  db.exec(
+    'CREATE TABLE jlu_platform_cache(key TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE chaoxing_work_flags(course_id TEXT NOT NULL,work_id TEXT NOT NULL,read_at TEXT,muted_at TEXT,reminder_key TEXT,PRIMARY KEY(course_id,work_id))',
+  );
   directory = realpathSync(mkdtempSync(join(tmpdir(), 'dela-cx-api-')));
 });
 afterEach(() => {
@@ -207,6 +210,34 @@ it.each(['https://download.chaoxing.com/fixture.pdf', 'https://d0.cldisk.com/fix
     expect(readFileSync(result.id, 'utf8')).toBe('%PDF-fixture');
   },
 );
+it('keeps local read and ignore marks across work refreshes without touching school data', async () => {
+  await seedCourse();
+  const insert = db.prepare('INSERT INTO jlu_platform_cache VALUES (?, ?)');
+  insert.run(
+    'cx:works:1:2',
+    JSON.stringify({
+      courseId: '1:2',
+      syncedAt: '2026-11-03T00:00:00Z',
+      items: [{ id: 'w1', title: '报告', status: '未交', timing: '剩余2天' }],
+    }),
+  );
+  expect(getChaoxingWorks('1:2')?.items[0]?.readAt).toBeUndefined();
+  markChaoxingWork('1:2', 'w1', { read: true, muted: true });
+  const marked = getChaoxingWorks('1:2')!.items[0]!;
+  expect(marked).toMatchObject({ title: '报告', mutedAt: expect.any(String) });
+  expect(marked.readAt).toBeTruthy();
+  // 学校缓存本身不写标记，读取时再叠加。
+  const cached = db
+    .prepare("SELECT data FROM jlu_platform_cache WHERE key='cx:works:1:2'")
+    .get() as {
+    data: string;
+  };
+  expect(cached.data).not.toContain('mutedAt');
+  expect(getChaoxingCalendar().works[0]).toMatchObject({ mutedAt: expect.any(String) });
+  markChaoxingWork('1:2', 'w1', { read: false, muted: false });
+  expect(getChaoxingWorks('1:2')?.items[0]?.mutedAt).toBeUndefined();
+  expect(getChaoxingWorks('1:2')?.items[0]?.readAt).toBeUndefined();
+});
 it('refuses non-school native redirect destinations', async () => {
   await seedFile();
   const request = downloadRequest('https://example.com/private');

@@ -1,5 +1,5 @@
 import type { ChaoxingApi } from '../shared/chaoxing';
-import { invoke } from './lib';
+import { invoke, on } from './lib';
 export const chaoxing = {
   calendar: () => invoke('cx:calendar:get'),
   syncCalendar: () => invoke('cx:calendar:sync'),
@@ -10,6 +10,12 @@ export const chaoxing = {
   works: (courseId: string) => invoke('cx:works:get', courseId),
   syncWorks: (courseId: string) => invoke('cx:works:sync', courseId),
   openWorksPage: (courseId: string) => invoke('cx:works:open', courseId),
+  markWork: (courseId: string, workId: string, marks) =>
+    invoke('cx:works:mark', courseId, workId, marks),
+  reminders: () => invoke('cx:reminders:get'),
+  setReminders: (enabled: boolean) => invoke('cx:reminders:set', enabled),
+  checkReminders: () => invoke('cx:reminders:check'),
+  onOpenWork: (listener) => on('chaoxing:open-work', listener),
   bindCourse: (courseId, knowledgeCourseId) =>
     invoke('cx:course:bind', courseId, knowledgeCourseId),
   linkFile: (courseId, folderId, fileId) => invoke('cx:file:link', courseId, folderId, fileId),

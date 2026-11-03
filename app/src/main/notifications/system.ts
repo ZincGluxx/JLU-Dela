@@ -84,3 +84,25 @@ export function systemNotifyToast(title: string, body: string): void {
   if (!window || window.isFocused()) return;
   showToast(title, body, () => {});
 }
+
+/**
+ * 作业截止提醒：与校园通知共用暂停、支持性与焦点守卫。
+ * 不依赖启动基线（armed）：临近截止本身就是需要立刻知道的事，应用刚打开也该提醒。
+ * 返回是否真的弹出了通知——没弹出时调用方不应记为已提醒，下次空闲时仍可再提醒一次。
+ */
+export function systemNotifyWorkReminder(
+  title: string,
+  body: string,
+  onClick: () => void,
+): boolean {
+  if (!Notification.isSupported() || snoozed()) return false;
+  const window = workspaceWindow();
+  if (!window || window.isFocused()) return false;
+  showToast(title, body, onClick);
+  return true;
+}
+
+/** 工作台主窗口（用于把提醒点击转成应用内跳转）。 */
+export function workspaceMainWindow(): BrowserWindow | null {
+  return workspaceWindow();
+}

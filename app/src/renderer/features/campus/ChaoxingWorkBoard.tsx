@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, ExternalLink, RefreshCw, Search } from 'lucide-react';
+import { BookOpen, Bell, ExternalLink, RefreshCw, Search } from 'lucide-react';
 import type { ChaoxingApi } from '../../../shared/chaoxing';
 import {
   chaoxingAssignments,
@@ -11,7 +11,9 @@ import {
   chaoxingWorkTime,
   type ChaoxingCalendar,
   type ChaoxingCalendarSync,
+  type ChaoxingCalendarWork,
 } from '../../../shared/chaoxing-calendar';
+import type { ChaoxingReminderState, ChaoxingWorkMarks } from '../../../shared/chaoxing';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { SegmentedControl } from '../../components/ui/beautifului/atoms/SegmentedControl';
@@ -22,10 +24,20 @@ import { errorText } from '../../workspace/store';
 /** 作业看板只依赖读缓存、同步与打开原网页这几项能力，网页端与桌面端可共用。 */
 export type ChaoxingWorkBoardApi = Pick<ChaoxingApi, 'courses' | 'works'> &
   Partial<
-    Pick<ChaoxingApi, 'syncCourses' | 'syncWorks' | 'calendar' | 'syncCalendar' | 'openWorksPage'>
+    Pick<
+      ChaoxingApi,
+      | 'syncCourses'
+      | 'syncWorks'
+      | 'calendar'
+      | 'syncCalendar'
+      | 'openWorksPage'
+      | 'markWork'
+      | 'reminders'
+      | 'setReminders'
+    >
   >;
 
-const filters = ['全部', '待完成', '已完成'] as const;
+const filters = ['全部', '待完成', '已完成', '已忽略'] as const;
 type Filter = (typeof filters)[number];
 
 export function ChaoxingWorkBoard({
@@ -45,6 +57,23 @@ export function ChaoxingWorkBoard({
   const [filter, setFilter] = useState<Filter>('待完成');
   const [courseId, setCourseId] = useState('');
   const [query, setQuery] = useState('');
+  const [reminders, setReminders] = useState<ChaoxingReminderState | null>(null);
+
+  useEffect(() => {
+    if (!api.reminders) return;
+    let active = true;
+    void api
+      .reminders()
+      .then((value) => {
+        if (active) setReminders(value);
+      })
+      .catch(() => {
+        // 读不到开关时按关闭展示，不影响看板本身。
+      });
+    return () => {
+      active = false;
+    };
+  }, [api]);
 
   async function readAssignments() {
     if (api.calendar) return api.calendar();
@@ -140,7 +169,13 @@ export function ChaoxingWorkBoard({
     .sort(chaoxingWorkSort);
   const sections = chaoxingWorkSections
     .filter((section) =>
-      filter === '全部' ? true : filter === '已完成' ? section === 'done' : section !== 'done',
+      filter === '全部'
+        ? true
+        : filter === '待完成'
+          ? section !== 'done' && section !== 'ignored'
+          : filter === '已完成'
+            ? section === 'done'
+            : section === 'ignored',
     )
     .map((section) => ({
       section,
@@ -148,6 +183,27 @@ export function ChaoxingWorkBoard({
     }))
     .filter((group) => group.items.length);
   const canOpenInWorkbench = Boolean(window.dela?.webTabs);
+
+  async function mark(work: ChaoxingCalendarWork, marks: ChaoxingWorkMarks) {
+    if (!api.markWork) return;
+    setError(null);
+    try {
+      await api.markWork(work.courseId, work.id, marks);
+      setAssignments(await readAssignments());
+    } catch (cause) {
+      setError(errorText(cause));
+    }
+  }
+
+  async function toggleReminders() {
+    if (!api.setReminders || !reminders) return;
+    setError(null);
+    try {
+      setReminders(await api.setReminders(!reminders.enabled));
+    } catch (cause) {
+      setError(errorText(cause));
+    }
+  }
 
   return (
     <div className="grid gap-4">
@@ -157,11 +213,26 @@ export function ChaoxingWorkBoard({
           {summary.overdue ? ` · 已过截止 ${summary.overdue} 份` : ''}
           {summary.undated ? ` · 截止时间待确认 ${summary.undated} 份` : ''}
           {` · 已完成 ${summary.done} 份`}
+          {summary.ignored ? ` · 已忽略 ${summary.ignored} 份` : ''}
         </p>
-        <Button size="sm" disabled={busy} onClick={() => void refresh()}>
-          <RefreshCw className={busy ? 'size-4 animate-spin' : 'size-4'} />
-          {busy ? '正在读取…' : '同步全部作业'}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {api.setReminders && reminders && (
+            <Button
+              size="sm"
+              variant={reminders.enabled ? 'secondary' : 'ghost'}
+              aria-pressed={reminders.enabled}
+              title="临近截止时弹系统通知；只提醒未忽略、未完成的作业"
+              onClick={() => void toggleReminders()}
+            >
+              <Bell className={reminders.enabled ? 'size-4' : 'size-4 text-ink-3'} />
+              {reminders.enabled ? '截止提醒已开启' : '截止提醒已关闭'}
+            </Button>
+          )}
+          <Button size="sm" disabled={busy} onClick={() => void refresh()}>
+            <RefreshCw className={busy ? 'size-4 animate-spin' : 'size-4'} />
+            {busy ? '正在读取…' : '同步全部作业'}
+          </Button>
+        </div>
       </div>
       {error && (
         <p role="alert" className="rounded-control bg-field p-3 text-13 text-ink">
@@ -243,6 +314,12 @@ export function ChaoxingWorkBoard({
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <h4 className="min-w-0 flex-1 break-words text-sm font-medium text-ink">
+                  {!work.readAt && !work.mutedAt && (
+                    <span
+                      aria-label="未读"
+                      className="mr-1.5 inline-block size-1.5 rounded-full bg-bui-accent align-middle"
+                    />
+                  )}
                   {work.title}
                 </h4>
                 <span className="text-xs text-ink-3">{work.status || '状态待确认'}</span>
@@ -257,6 +334,16 @@ export function ChaoxingWorkBoard({
                   {work.courseName}
                 </button>
                 <span>{chaoxingWorkTime(work, now)}</span>
+                {work.readAt && (
+                  <span className="rounded-chip bg-inset px-1.5 py-0.5 text-2xs text-ink-3">
+                    已读
+                  </span>
+                )}
+                {work.mutedAt && (
+                  <span className="rounded-chip bg-inset px-1.5 py-0.5 text-2xs text-ink-3">
+                    已忽略
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {canOpenInWorkbench && (
@@ -283,6 +370,26 @@ export function ChaoxingWorkBoard({
                     打开课程作业页
                   </Button>
                 )}
+                {api.markWork && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title={work.readAt ? '标为未读' : '标为已读'}
+                      onClick={() => void mark(work, { read: !work.readAt })}
+                    >
+                      {work.readAt ? '标为未读' : '标为已读'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title={work.mutedAt ? '取消忽略' : '忽略后不计入待完成，也不提醒'}
+                      onClick={() => void mark(work, { muted: !work.mutedAt })}
+                    >
+                      {work.mutedAt ? '取消忽略' : '忽略'}
+                    </Button>
+                  </>
+                )}
                 <span className="text-2xs text-ink-3">
                   读取于 {new Date(work.syncedAt).toLocaleString('zh-CN')}
                 </span>
@@ -301,9 +408,11 @@ export function ChaoxingWorkBoard({
                 ? '没有匹配的作业。'
                 : filter === '已完成'
                   ? '还没有读到已完成的作业。'
-                  : filter === '待完成'
-                    ? '当前没有待完成的作业。'
-                    : '没有匹配的作业。'}
+                  : filter === '已忽略'
+                    ? '还没有忽略的作业。'
+                    : filter === '待完成'
+                      ? '当前没有待完成的作业。'
+                      : '没有匹配的作业。'}
         </p>
       )}
       <p className="text-xs leading-relaxed text-ink-3">
