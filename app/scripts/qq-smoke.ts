@@ -12,8 +12,9 @@ import type { Socket } from 'node:net';
 import type { QqMessage } from '../src/shared/qq';
 
 const root = resolve('.');
+const appRoot = process.argv[2] ? resolve(process.argv[2]) : root;
 const require = createRequire(join(root, 'package.json'));
-(app as typeof app & { setAppPath(path: string): void }).setAppPath(root);
+(app as typeof app & { setAppPath(path: string): void }).setAppPath(appRoot);
 const profile = mkdtempSync(join(tmpdir(), 'dela-qq-smoke-'));
 for (const name of ['userData', 'documents', 'home'] as const) app.setPath(name, profile);
 process.argv.push('--terminal-smoke-test');
@@ -37,10 +38,7 @@ fs.existsSync = (path) => (path === '/Applications/QQ.app' ? false : originalExi
 let loggedIn = false;
 let failSend = false;
 let offlineHint = '';
-const png = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNuoAAAAASUVORK5CYII=',
-  'base64',
-);
+const png = readFileSync(join(root, 'assets/JLU-Dela-white.png'));
 const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 let liveSocket: Socket | undefined;
 const requests: { action: string; body: Record<string, unknown> }[] = [];
@@ -171,7 +169,7 @@ app.once('browser-window-created', (_event, window) => {
       ),
   );
 });
-require(join(root, 'out/main/index.cjs'));
+require(join(appRoot, 'out/main/index.cjs'));
 
 async function run(window: BrowserWindow) {
   const js = (source: string) =>

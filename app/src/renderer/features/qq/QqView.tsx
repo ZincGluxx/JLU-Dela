@@ -52,6 +52,7 @@ export function QqView() {
   const [error, setError] = useState<string | null>(null);
   useEffect(attachQq, []);
   const api = window.dela?.qq;
+  const supported = window.dela?.platform === 'darwin';
   const online = state.phase === 'online';
   const active = ['preparing', 'starting', 'login', 'online', 'reconnecting'].includes(state.phase);
   const connectedGroups = state.groups.filter((group) => group.selected);
@@ -104,7 +105,10 @@ export function QqView() {
               断开
             </Button>
           ) : (
-            <Button disabled={busy || !api} onClick={() => void perform(() => api!.start())}>
+            <Button
+              disabled={busy || !api || !supported}
+              onClick={() => void perform(() => api!.start())}
+            >
               连接 QQ
             </Button>
           )}
@@ -122,6 +126,10 @@ export function QqView() {
       )}
       {!api ? (
         <p className="p-5 text-13 text-ink-3">请在 Dela 桌面版中连接 QQ。</p>
+      ) : !supported ? (
+        <p className="p-5 text-13 text-ink-3">
+          QQ 共享会话目前仅支持 macOS，Windows 接入尚未适配。
+        </p>
       ) : !state.account ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 overflow-y-auto p-6 text-center">
           {state.qrCode ? (
