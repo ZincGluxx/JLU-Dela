@@ -11,6 +11,8 @@ interface SmokeConfig {
 }
 
 const smokes: Record<string, SmokeConfig> = {
+  'qq-smoke': { external: [], timeout: 100000, minify: false },
+  'qq-runtime-probe': { external: [], timeout: 240000, minify: false },
   'material-readers-smoke': { external: [], timeout: 120000, minify: false },
   'capture-showcase': { external: [], timeout: 60000, minify: false },
   'document-runtime-smoke': { external: [], timeout: 600000, minify: false },
@@ -58,9 +60,13 @@ await build({
   },
 });
 const require = createRequire(import.meta.url);
-const result = spawnSync(require('electron') as string, [`.tools/${name}.cjs`], {
-  stdio: 'inherit',
-  timeout: smoke.timeout,
-});
+const result = spawnSync(
+  require('electron') as string,
+  [`.tools/${name}.cjs`, ...process.argv.slice(3)],
+  {
+    stdio: 'inherit',
+    timeout: smoke.timeout,
+  },
+);
 if (result.error) console.error(result.error.message);
 process.exit(result.status ?? 1);

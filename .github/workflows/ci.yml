@@ -44,6 +44,7 @@ jobs:
       - name: Smoke test Electron and JLU workspace
         run: |
           pnpm smoke
+          pnpm smoke:qq
           pnpm smoke:runtime
           pnpm smoke:jlu
           pnpm smoke:timetable
@@ -59,6 +60,7 @@ jobs:
         run: |
           node scripts/verify-macos-package.ts "dist/mac-arm64/JLU-Dela.app" --dir
           "dist/mac-arm64/JLU-Dela.app/Contents/MacOS/JLU-Dela" --smoke-test
+          pnpm smoke:qq "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"
           pnpm smoke:jlu "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"
           pnpm smoke:timetable "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"
           pnpm smoke:platforms "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"

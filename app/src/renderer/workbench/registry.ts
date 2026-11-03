@@ -6,6 +6,7 @@ import type { TabId, TabKind } from '../../shared/layout';
 import { useSessions } from '../sessions/store';
 import { titleOf as entryTitleOf } from '../workspace/entry-dialogs';
 import { useWebTabs } from '../content/web/store';
+import { useQq } from '../features/qq/store';
 import { reviewTabTitle } from '../content/review/tab-id';
 
 // 内容域懒加载：组件首次渲染时才求值对应模块（TabGroup 渲染处有 Suspense 骨架兜底）。
@@ -26,6 +27,7 @@ const TerminalTab: ComponentType<TabComponentProps> = lazy(() =>
 );
 
 const WebTab = lazy(() => import('../content/web/WebTab').then((m) => ({ default: m.WebTab })));
+const QqTab = lazy(() => import('../features/qq/QqTab').then((m) => ({ default: m.QqTab })));
 
 /** 内容组件契约：tabId 定位数据，groupId 用于按组隔离的编辑器会话键（TabId+groupId）。 */
 export interface TabComponentProps {
@@ -53,6 +55,13 @@ function chatTitleOf(sessionId: string): string {
 const payloadOf = (tabId: TabId) => tabId.slice(tabId.indexOf(':') + 1);
 
 export const registry: Record<TabKind, TabDescriptor> = {
+  qq: {
+    component: QqTab,
+    icon: MessageSquare,
+    title: (tabId) =>
+      useQq.getState().state.groups.find((group) => group.id === tabId.split('/')[1])?.name ??
+      'QQ 群聊',
+  },
   web: {
     component: WebTab,
     icon: Globe,

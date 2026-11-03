@@ -2,11 +2,13 @@
 
 ## 下载安装
 
-面向 Windows 10 / 11 x64。下载 [安装程序](https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.12/JLU-Dela-0.1.0-alpha.12-win-x64-setup.exe)，运行并选择安装位置；首次启动按引导连接校园平台，模型配置可以跳过。
+面向 Windows 10 / 11 x64。下载 [安装程序](https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.13/JLU-Dela-0.1.0-alpha.13-win-x64-setup.exe)，运行并选择安装位置；首次启动按引导连接校园平台，模型配置可以跳过。
 
-这是未签名开发预览，系统可能提示无法验证发布者。请先确认文件来自[本仓库 Release](https://github.com/goya4140/JLU-Dela/releases/tag/v0.1.0-alpha.12)，并核对同页 SHA256SUMS。不要关闭系统安全防护；如出现恶意软件或文件损坏提示，请保留提示并反馈。
+这是未签名开发预览，系统可能提示无法验证发布者。请先确认文件来自[本仓库 Release](https://github.com/goya4140/JLU-Dela/releases/tag/v0.1.0-alpha.13)，并核对同页 SHA256SUMS。不要关闭系统安全防护；如出现恶意软件或文件损坏提示，请保留提示并反馈。
 
 升级前保存笔记、邮件草稿与作业网页中的填写内容，再退出旧版本。安装包与源码同页提供，尚不承诺自动更新。
+
+本版包含学习通作业看板、标记和截止提醒。QQ 共享会话当前仅适配 macOS；Windows 的 QQ 页面会显示支持范围并禁用连接入口。
 
 面向需要在 Windows 上验证 JLU Dela 的维护者。macOS 侧流程见 [README](../../README.md) 的「本地开发与验证」，本文只记录 Windows 特有的步骤、已知问题与验收清单。
 

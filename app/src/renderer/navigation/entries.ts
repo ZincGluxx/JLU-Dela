@@ -7,6 +7,7 @@ import {
   FolderOpen,
   GraduationCap,
   Mail,
+  MessageCircle,
   MonitorPlay,
 } from 'lucide-react';
 import { create } from 'zustand';
@@ -17,6 +18,7 @@ import { useExperimentEnabled } from '../features/settings/experimental';
 export type NavEntryId =
   | 'sources'
   | 'mail'
+  | 'qq'
   | 'timetable'
   | 'classroom'
   | 'chaoxing'
@@ -38,6 +40,7 @@ export const navEntries: Array<{
   { id: 'chaoxing', label: '学习通', icon: BookOpen },
   { id: 'notifications', label: '学校通知', icon: Bell },
   { id: 'mail', label: '吉大邮箱', icon: Mail },
+  { id: 'qq', label: 'QQ 群聊', icon: MessageCircle },
 ];
 
 export const useNavEntryPrefs = create<{

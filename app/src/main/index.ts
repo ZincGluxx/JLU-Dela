@@ -11,6 +11,7 @@ import {
   Tray,
 } from 'electron';
 import { registerTodoIpc } from './todo';
+import { registerQqIpc, closeQq } from './qq/ipc';
 import { registerBackupIpc } from './backup';
 import { registerCacheIpc } from './cache';
 import { registerConsentIpc } from './consent';
@@ -238,6 +239,7 @@ app
     registerSearchIpc();
     registerNotificationsIpc();
     registerTodoIpc();
+    registerQqIpc();
     registerUpdateIpc();
     initializeNotifications();
     // 回收未被任何会话引用的内联图片（上次运行遗留的草稿图片等）。
@@ -516,6 +518,7 @@ app.on('before-quit', (event) => {
   }
 });
 app.on('will-quit', () => {
+  closeQq();
   closeDomainBridge();
   tray?.destroy();
   clearInterval(notificationTimer);

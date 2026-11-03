@@ -40,7 +40,11 @@ export default defineConfig({
   build: {
     target: 'node24',
     outDir: 'out/main',
-    lib: { entry: 'src/main/index.ts', formats: ['cjs'], fileName: () => 'index.cjs' },
+    lib: {
+      entry: { index: 'src/main/index.ts', 'qq-shared-loader': 'src/main/qq/shared-loader.ts' },
+      formats: ['cjs'],
+      fileName: (_format, name) => `${name}.cjs`,
+    },
     rolldownOptions: {
       external: [
         'electron',

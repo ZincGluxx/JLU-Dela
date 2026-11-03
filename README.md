@@ -7,15 +7,15 @@
 <p align="center">面向吉林大学本科生 · 本地优先 · macOS / Windows</p>
 
 <p align="center">
-  <a href="https://github.com/goya4140/JLU-Dela/releases/tag/v0.1.0-alpha.12"><img alt="开发预览 v0.1.0-alpha.12" src="https://img.shields.io/badge/preview-v0.1.0--alpha.12-8dd8c3?style=flat-square" /></a>
+  <a href="https://github.com/goya4140/JLU-Dela/releases/tag/v0.1.0-alpha.13"><img alt="开发预览 v0.1.0-alpha.13" src="https://img.shields.io/badge/preview-v0.1.0--alpha.12-8dd8c3?style=flat-square" /></a>
   <a href="https://github.com/goya4140/JLU-Dela/actions/workflows/ci.yml"><img alt="macOS CI" src="https://github.com/goya4140/JLU-Dela/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-aac5f5?style=flat-square" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.12/JLU-Dela-0.1.0-alpha.12-mac-arm64.dmg"><strong>↓ 下载 macOS DMG</strong></a> ·
-  <a href="https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.12/JLU-Dela-0.1.0-alpha.12-win-x64-setup.exe"><strong>↓ 下载 Windows 安装包</strong></a> ·
-  <a href="https://github.com/goya4140/JLU-Dela/releases/tag/v0.1.0-alpha.12">全部下载 / 校验值</a> ·
+  <a href="https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.13/JLU-Dela-0.1.0-alpha.13-mac-arm64.dmg"><strong>↓ 下载 macOS DMG</strong></a> ·
+  <a href="https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.13/JLU-Dela-0.1.0-alpha.13-win-x64-setup.exe"><strong>↓ 下载 Windows 安装包</strong></a> ·
+  <a href="https://github.com/goya4140/JLU-Dela/releases/tag/v0.1.0-alpha.13">全部下载 / 校验值</a> ·
   <a href="app/docs/install-macos.md">安装说明</a> ·
   <a href="app/docs/user-guide.md">使用指南</a> ·
   <a href="https://github.com/goya4140/JLU-Dela/issues">反馈</a>
@@ -78,9 +78,15 @@
 
 所有截图均来自应用界面。课程、邮件、作业、通知、文件和字幕是合成示例；作业网页与演示视频使用替代内容，不含真实账号、教学录像或私人邮件。
 
+## QQ 群聊（macOS 实验）
+
+复用本机 QQ 原生会话，将指定群接入工作台；支持文本回复、图片预览、群文件下载、转个人待办和 AI 总结草稿。首次启用需要安装共享组件，QQ 原生窗口可继续使用。Windows QQ 接入尚未适配，详见 [QQ 使用范围与安装说明](app/docs/qq.md)。
+
+![QQ 群聊工作台（合成数据）](app/docs/demos/qq-workbench.png)
+
 ## 三步开始
 
-1. **安装**：Mac 下载 [DMG](https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.12/JLU-Dela-0.1.0-alpha.12-mac-arm64.dmg)，拖入 Applications；Windows 下载 [安装程序](https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.12/JLU-Dela-0.1.0-alpha.12-win-x64-setup.exe)，运行安装。
+1. **安装**：Mac 下载 [DMG](https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.13/JLU-Dela-0.1.0-alpha.13-mac-arm64.dmg)，拖入 Applications；Windows 下载 [安装程序](https://github.com/goya4140/JLU-Dela/releases/download/v0.1.0-alpha.13/JLU-Dela-0.1.0-alpha.13-win-x64-setup.exe)，运行安装。
 2. **连接**：按向导连接需要的平台。教务、电子校务与学在吉大尝试复用校园认证；学习通独立登录，邮箱单独配置。
 3. **学习**：同步课表，连接课程资料文件夹，或打开回放。只使用校园与本地功能，可以跳过模型配置。
 
@@ -101,21 +107,22 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-| 命令                        | 用途                                        |
-| --------------------------- | ------------------------------------------- |
-| `pnpm check`                | 格式、lint、类型检查、构建与单元测试        |
-| `pnpm smoke`                | Electron 启动、SQLite、preload 隔离与运行时 |
-| `pnpm smoke:timetable`      | 课表读取、认证恢复与缓存保留                |
-| `pnpm smoke:platforms`      | 通知、回放、字幕、笔记与 AI 草稿            |
-| `pnpm smoke:chaoxing`       | 课程、资料导入与原生作业网页                |
-| `pnpm smoke:study-calendar` | 课表、作业与个人待办聚合                    |
-| `pnpm smoke:knowledge`      | 原位资料、PDF 检索、引用与笔记              |
-| `pnpm smoke:setup`          | 首次引导、邮箱配置与连接恢复                |
-| `pnpm smoke:web`            | 本机网页端与桌面学习数据共用                |
-| `pnpm demo:capture`         | 在隔离环境中生成新版合成演示截图            |
-| `pnpm package:mac`          | 构建 Apple Silicon DMG / ZIP                |
-| `pnpm package:dir`          | 构建 Windows 可运行目录                     |
-| `pnpm package:dist`         | 构建 Windows NSIS 安装包                    |
+| 命令                        | 用途                                          |
+| --------------------------- | --------------------------------------------- |
+| `pnpm check`                | 格式、lint、类型检查、构建与单元测试          |
+| `pnpm smoke:qq`             | QQ 选群、离线恢复、图片、回复、待办与总结草稿 |
+| `pnpm smoke`                | Electron 启动、SQLite、preload 隔离与运行时   |
+| `pnpm smoke:timetable`      | 课表读取、认证恢复与缓存保留                  |
+| `pnpm smoke:platforms`      | 通知、回放、字幕、笔记与 AI 草稿              |
+| `pnpm smoke:chaoxing`       | 课程、资料导入与原生作业网页                  |
+| `pnpm smoke:study-calendar` | 课表、作业与个人待办聚合                      |
+| `pnpm smoke:knowledge`      | 原位资料、PDF 检索、引用与笔记                |
+| `pnpm smoke:setup`          | 首次引导、邮箱配置与连接恢复                  |
+| `pnpm smoke:web`            | 本机网页端与桌面学习数据共用                  |
+| `pnpm demo:capture`         | 在隔离环境中生成新版合成演示截图              |
+| `pnpm package:mac`          | 构建 Apple Silicon DMG / ZIP                  |
+| `pnpm package:dir`          | 构建 Windows 可运行目录                       |
+| `pnpm package:dist`         | 构建 Windows NSIS 安装包                      |
 
 主分支与 PR 运行 macOS CI；发布 tag 触发安装包验证和 Release 发布，详见[开发文档](app/docs/DEVELOPMENT.md)。自动化使用合成数据，不访问真实校园账号。
 
