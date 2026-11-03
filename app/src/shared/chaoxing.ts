@@ -62,6 +62,7 @@ export interface ChaoxingApi {
   syncFiles(courseId: string, folderId?: string): Promise<ChaoxingResult<ChaoxingFolder>>;
   works(courseId: string): Promise<ChaoxingWorks | null>;
   syncWorks(courseId: string): Promise<ChaoxingResult<ChaoxingWorks>>;
+  openWorksPage(courseId: string): Promise<void>;
   bindCourse(
     courseId: string,
     knowledgeCourseId: string | null,

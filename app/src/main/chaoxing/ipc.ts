@@ -14,6 +14,7 @@ import {
   bindChaoxingCourse,
   linkChaoxingFile,
   openChaoxingFilesPage,
+  openChaoxingWorksPage,
 } from './api';
 export function registerChaoxingIpc() {
   ipcMain.handle('cx:calendar:get', (event) => {
@@ -47,6 +48,10 @@ export function registerChaoxingIpc() {
   ipcMain.handle('cx:works:sync', (event, courseId: string) => {
     checkWorkspaceSender(event);
     return chaoxingResult(() => syncChaoxingWorks(courseId, event.sender));
+  });
+  ipcMain.handle('cx:works:open', (event, courseId: string) => {
+    checkWorkspaceSender(event);
+    return openChaoxingWorksPage(courseId, event.sender);
   });
   ipcMain.handle('cx:course:bind', (event, courseId: string, knowledgeCourseId: unknown) => {
     checkWorkspaceSender(event);

@@ -7,6 +7,8 @@ export const webMethods = {
   'schedule.sync': ['timetable', 'syncNow'],
   'chaoxing.courses': ['chaoxing', 'courses'],
   'chaoxing.sync': ['chaoxing', 'syncCourses'],
+  'chaoxing.calendar': ['chaoxing', 'calendar'],
+  'chaoxing.syncCalendar': ['chaoxing', 'syncCalendar'],
   'chaoxing.files': ['chaoxing', 'files'],
   'chaoxing.syncFiles': ['chaoxing', 'syncFiles'],
   'chaoxing.works': ['chaoxing', 'works'],

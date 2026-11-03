@@ -1,4 +1,5 @@
 import {
+  chaoxingAssignments,
   chaoxingDeadline,
   type ChaoxingCalendar,
   type ChaoxingCalendarSync,
@@ -279,21 +280,11 @@ export function linkChaoxingFile(
   return { id: path };
 }
 
-export async function openChaoxingFilesPage(
-  courseId: string,
-  folderId: string,
-  sender: WebContents,
-) {
-  ownCourse(courseId);
-  if (folderId) id.parse(folderId);
-  const url = folderId
-    ? privateRoutes()[`folder:${courseId}:${folderId}`]
-    : await courseFrame(courseId, 'files', sender);
-  if (!url) throw new Error('请先刷新当前资料目录');
+async function openPlatformPage(title: string, url: string, sender: WebContents, failure: string) {
   schoolUrl.parse(url);
   await chaoxingSession.get();
   const window = new BrowserWindow({
-    title: '学习通原平台资料',
+    title,
     width: 1000,
     height: 760,
     parent: BrowserWindow.fromWebContents(sender) ?? undefined,
@@ -309,8 +300,25 @@ export async function openChaoxingFilesPage(
     await window.loadURL(url);
   } catch {
     window.destroy();
-    throw new Error('学习通资料页未能打开，请检查网络后重试');
+    throw new Error(failure);
   }
+}
+export async function openChaoxingFilesPage(
+  courseId: string,
+  folderId: string,
+  sender: WebContents,
+) {
+  ownCourse(courseId);
+  if (folderId) id.parse(folderId);
+  const url = folderId
+    ? privateRoutes()[`folder:${courseId}:${folderId}`]
+    : await courseFrame(courseId, 'files', sender);
+  if (!url) throw new Error('请先刷新当前资料目录');
+  await openPlatformPage('学习通原平台资料', url, sender, '学习通资料页未能打开，请检查网络后重试');
+}
+export async function openChaoxingWorksPage(courseId: string, sender: WebContents) {
+  const url = await courseFrame(courseId, 'works', sender);
+  await openPlatformPage('学习通原平台作业', url, sender, '学习通作业页未能打开，请检查网络后重试');
 }
 export async function syncChaoxingFiles(courseId: string, folderId = '', sender?: WebContents) {
   ownCourse(courseId);
@@ -502,27 +510,10 @@ export async function importChaoxingFile(courseId: string, folderId: string, fil
 
 export function getChaoxingCalendar(): ChaoxingCalendar {
   const courses = getChaoxingCourses();
-  const snapshots = (courses?.items ?? []).map((course) => ({
-    course,
-    works: getChaoxingWorks(course.id),
-  }));
-  return {
-    coursesSyncedAt: courses?.syncedAt ?? null,
-    courses: snapshots.map(({ course, works }) => ({
-      id: course.id,
-      name: course.name,
-      syncedAt: works?.syncedAt ?? null,
-    })),
-    works: snapshots.flatMap(({ course, works }) =>
-      (works?.items ?? []).map((work) => ({
-        ...work,
-        courseId: course.id,
-        courseName: course.name,
-        syncedAt: works!.syncedAt,
-        deadline: chaoxingDeadline(work.detailTiming ?? '') ?? chaoxingDeadline(work.timing),
-      })),
-    ),
-  };
+  return chaoxingAssignments(
+    courses,
+    (courses?.items ?? []).map((course) => getChaoxingWorks(course.id)),
+  );
 }
 
 let calendarSync: Promise<ChaoxingCalendarSync> | null = null;

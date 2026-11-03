@@ -74,6 +74,8 @@ it('rejects foreign origins, unknown methods and arbitrary local file calls', as
 it('preserves optional argument defaults and refuses injected chat attachments', () => {
   expect(webArguments('chaoxing.files', ['course'])).toEqual(['course']);
   expect(webArguments('chaoxing.syncFiles', ['course', ''])).toEqual(['course', '']);
+  expect(webArguments('chaoxing.calendar', [])).toEqual([]);
+  expect(webArguments('chaoxing.syncCalendar', [])).toEqual([]);
   expect(webArguments('schedule.sync', [])).toEqual([]);
   expect(webArguments('chat.create', [])).toEqual([null, 'chat']);
   expect(() => webArguments('chat.create', ['project'])).toThrow();
