@@ -8,6 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { checkWorkspaceSender } from '../ipc';
 import { QqService } from './service';
+import { openQqInstaller } from './runtime';
 
 const id = z.string().min(1).max(512);
 const groupId = z.string().regex(/^\d+$/);
@@ -34,6 +35,7 @@ export function registerQqIpc(): void {
   const handlers: Record<string, (input: unknown) => unknown> = {
     'get-state': () => qq.getState(),
     start: () => qq.start(),
+    'open-installer': () => openQqInstaller(),
     stop: () => qq.stop(),
     'refresh-login': () => qq.refreshLogin(),
     'refresh-groups': () => qq.refreshGroups(),

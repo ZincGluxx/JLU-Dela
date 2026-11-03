@@ -4,6 +4,7 @@ import { invoke, on } from './lib';
 export const qq = {
   getState: () => invoke('qq:get-state'),
   start: () => invoke('qq:start'),
+  openInstaller: () => invoke('qq:open-installer'),
   stop: () => invoke('qq:stop'),
   refreshLogin: () => invoke('qq:refresh-login'),
   refreshGroups: () => invoke('qq:refresh-groups'),

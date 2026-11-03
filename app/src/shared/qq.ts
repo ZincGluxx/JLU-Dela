@@ -27,7 +27,7 @@ export interface QqMessage {
 }
 
 export interface QqState {
-  phase: 'idle' | 'preparing' | 'starting' | 'login' | 'online' | 'stopped' | 'error';
+  phase: 'idle' | 'preparing' | 'setup' | 'starting' | 'login' | 'online' | 'stopped' | 'error';
   progress: string;
   qrCode: string | null;
   account: QqAccount | null;
@@ -51,6 +51,7 @@ export interface QqTodoInput {
 export interface QqApi {
   getState(): Promise<QqState>;
   start(): Promise<QqState>;
+  openInstaller(): Promise<void>;
   stop(): Promise<QqState>;
   refreshLogin(): Promise<QqState>;
   refreshGroups(): Promise<QqState>;

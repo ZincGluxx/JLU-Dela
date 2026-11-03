@@ -32,6 +32,7 @@ const emptyDraft = { text: '', replyTo: undefined };
 const phaseLabels = {
   idle: '尚未连接',
   preparing: '正在准备',
+  setup: '等待安装共享组件',
   starting: '正在启动',
   login: '等待登录',
   online: '已连接',
@@ -42,6 +43,8 @@ const phaseLabels = {
 export function QqView() {
   const state = useQq((store) => store.state);
   const [selected, setSelected] = useState<string | null>(null);
+  const [mode, setMode] = useState<'groups' | 'chat'>('chat');
+  const [showGroupList, setShowGroupList] = useState(false);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,9 +52,13 @@ export function QqView() {
   const api = window.dela?.qq;
   const online = state.phase === 'online';
   const active = ['preparing', 'starting', 'login', 'online'].includes(state.phase);
-  const current = state.groups.find((group) => group.selected && group.id === selected);
-  const groups = state.groups.filter((group) =>
-    `${group.name} ${group.id}`.toLowerCase().includes(search.toLowerCase()),
+  const connectedGroups = state.groups.filter((group) => group.selected);
+  const managing = mode === 'groups' || connectedGroups.length === 0;
+  const current = connectedGroups.find((group) => group.id === selected) ?? connectedGroups[0];
+  const groups = state.groups.filter(
+    (group) =>
+      (managing || group.selected) &&
+      `${group.name} ${group.id}`.toLowerCase().includes(search.toLowerCase()),
   );
   async function perform(task: () => Promise<unknown>) {
     setBusy(true);
@@ -120,12 +127,19 @@ export function QqView() {
           <div className="max-w-md space-y-2">
             <h2 className="text-base font-medium">{state.progress || '把课程群消息带进工作台'}</h2>
             <p className="text-13 leading-relaxed text-ink-3">
-              首次连接需要本机已有 QQ，组件由 Dela 自动准备。登录后选择要接入的群。
+              {state.phase === 'setup'
+                ? '完全退出 QQ 后，安装共享桥接，再点击“连接 QQ”。安装需要管理员授权，会替换 QQ 的启动入口和本机签名，并保留完整原版备份。'
+                : '复用本机 QQ 的原生会话。登录后选择要接入的群，QQ 原生窗口可继续使用。'}
             </p>
             <p className="text-xs leading-relaxed text-ink-3">
-              消息以你登录的 QQ 身份发送。此账号可能退出其他电脑端 QQ；手机 QQ 可继续使用。
+              实验功能 · 消息以你的 QQ 身份发送。断开 Dela 不会退出 QQ。
             </p>
           </div>
+          {state.phase === 'setup' && (
+            <Button disabled={busy} onClick={() => void perform(() => api.openInstaller())}>
+              安装共享桥接
+            </Button>
+          )}
           {state.phase === 'login' && (
             <Button
               variant="outline"
@@ -155,7 +169,7 @@ export function QqView() {
           <aside
             className={cn(
               'flex w-64 shrink-0 flex-col gap-3 bg-page p-3 max-md:w-full',
-              current && 'max-md:hidden',
+              !managing && current && !showGroupList && 'max-md:hidden',
             )}
             aria-label="选择接入群"
           >
@@ -165,9 +179,16 @@ export function QqView() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <p className="px-2 text-xs text-ink-3">
-              勾选要接入的群 · 已选 {state.groups.filter((group) => group.selected).length} 个
-            </p>
+            <div className="flex items-center justify-between gap-2 px-2">
+              <p className="text-xs text-ink-3">
+                {managing ? '勾选要接入的群' : '已接入的群'} · {connectedGroups.length} 个
+              </p>
+              {!managing && (
+                <Button variant="ghost" size="sm" onClick={() => setMode('groups')}>
+                  管理群聊
+                </Button>
+              )}
+            </div>
             <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
               {groups.map((group) => (
                 <div
@@ -177,27 +198,34 @@ export function QqView() {
                     current?.id === group.id && 'bg-hover-2',
                   )}
                 >
-                  <input
-                    type="checkbox"
-                    aria-label={`接入 ${group.name}`}
-                    checked={group.selected}
-                    disabled={busy || !online}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      const ids = state.groups
-                        .filter((item) => (item.id === group.id ? checked : item.selected))
-                        .map((item) => item.id);
-                      void perform(async () => {
-                        await api.selectGroups(ids);
-                        if (checked) setSelected(group.id);
-                      });
-                    }}
-                  />
+                  {managing && (
+                    <input
+                      type="checkbox"
+                      aria-label={`接入 ${group.name}`}
+                      checked={group.selected}
+                      disabled={busy || !online}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setMode('groups');
+                        const ids = state.groups
+                          .filter((item) => (item.id === group.id ? checked : item.selected))
+                          .map((item) => item.id);
+                        void perform(async () => {
+                          await api.selectGroups(ids);
+                          if (checked) setSelected(group.id);
+                        });
+                      }}
+                    />
+                  )}
                   <button
                     aria-label={`打开群聊 ${group.name}`}
                     className="min-w-0 flex-1 rounded-control py-2 text-left disabled:opacity-50"
                     disabled={!group.selected}
-                    onClick={() => setSelected(group.id)}
+                    onClick={() => {
+                      setSelected(group.id);
+                      setMode('chat');
+                      setShowGroupList(false);
+                    }}
                   >
                     <span className="block truncate text-13 font-medium">{group.name}</span>
                     <span className="text-xs text-ink-3">{group.id}</span>
@@ -210,17 +238,33 @@ export function QqView() {
                 </p>
               )}
             </div>
+            {managing && (
+              <Button
+                disabled={busy || !connectedGroups.length}
+                onClick={() => {
+                  setMode('chat');
+                  setShowGroupList(false);
+                  setSearch('');
+                }}
+              >
+                完成并进入聊天
+              </Button>
+            )}
           </aside>
-          {current && state.account ? (
-            <QqConversation
-              key={`${state.account.id}/${current.id}`}
-              accountId={state.account.id}
-              groupId={current.id}
-              onBack={() => setSelected(null)}
-            />
+          {!managing && current && state.account ? (
+            <div className={cn('flex min-h-0 min-w-0 flex-1', showGroupList && 'max-md:hidden')}>
+              <QqConversation
+                key={`${state.account.id}/${current.id}`}
+                accountId={state.account.id}
+                groupId={current.id}
+                onBack={() => setShowGroupList(true)}
+              />
+            </div>
           ) : (
             <div className="hidden flex-1 items-center justify-center p-6 text-13 text-ink-3 md:flex">
-              选择一个已接入的群
+              {connectedGroups.length
+                ? '选好群后，点击“完成并进入聊天”'
+                : '勾选要接入的群，然后进入聊天'}
             </div>
           )}
         </div>

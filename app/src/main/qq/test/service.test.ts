@@ -1,9 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
-import { EventEmitter } from 'node:events';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { ChildProcess } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('electron', () => ({
@@ -16,12 +14,11 @@ vi.mock('../../ipc', () => ({ checkWorkspaceSender: vi.fn() }));
 vi.mock('../runtime', () => ({
   prepareQqRuntime: vi.fn(),
   launchQqRuntime: vi.fn(),
-  stopQqRuntime: vi.fn(),
 }));
 import { net } from 'electron';
 import { getDatabase } from '../../database';
 import { getTodoState, removeTodo, saveTodo } from '../../todo';
-import { prepareQqRuntime, launchQqRuntime, stopQqRuntime } from '../runtime';
+import { prepareQqRuntime, launchQqRuntime, type PreparedQqRuntime } from '../runtime';
 import { QqService } from '../service';
 
 class Socket extends EventTarget {
@@ -90,9 +87,16 @@ beforeEach(async () => {
   vi.mocked(prepareQqRuntime).mockResolvedValue({
     executable: '/fixture/QQ',
     sourceVersion: 'fixture',
+    installed: true,
+    connection: {
+      apiPort: 3000,
+      wsPort: 3001,
+      webPort: 6099,
+      token: 'fixture-token',
+      workdir: root,
+    },
   });
   vi.mocked(launchQqRuntime).mockImplementation(async () => ({
-    child: Object.assign(new EventEmitter(), { pid: 123, exitCode: null }) as ChildProcess,
     apiPort: 3000,
     wsPort: 3001,
     webPort: 6099,
@@ -142,6 +146,15 @@ afterEach(() => {
 });
 
 describe('QQ 群聊服务', () => {
+  it('首次准备停在共享组件安装步骤，不启动独立 QQ 登录', async () => {
+    const prepared = await prepareQqRuntime(new AbortController().signal, () => {});
+    vi.mocked(prepareQqRuntime).mockResolvedValue({ ...prepared, installed: false });
+    await service.start();
+    expect(service.getState().phase).toBe('setup');
+    expect(launchQqRuntime).not.toHaveBeenCalled();
+    service.stop();
+    expect(service.getState().phase).toBe('stopped');
+  });
   it('仅保存订阅群的实时消息，并按消息 ID 合并历史与重复推送', async () => {
     await connect();
     expect(await service.refreshMessages('100')).toHaveLength(1);
@@ -253,7 +266,7 @@ describe('QQ 群聊服务', () => {
       account: null,
     });
     service.stop();
-    let finish!: (value: { executable: string; sourceVersion: string }) => void;
+    let finish!: (value: PreparedQqRuntime) => void;
     vi.mocked(prepareQqRuntime).mockReturnValueOnce(
       new Promise((resolve) => {
         finish = resolve;
@@ -262,10 +275,20 @@ describe('QQ 群聊服务', () => {
     const starting = service.start();
     service.stop();
     const launches = vi.mocked(launchQqRuntime).mock.calls.length;
-    finish({ executable: '/fixture/QQ', sourceVersion: 'fixture' });
+    finish({
+      executable: '/fixture/QQ',
+      sourceVersion: 'fixture',
+      installed: true,
+      connection: {
+        apiPort: 3000,
+        wsPort: 3001,
+        webPort: 6099,
+        token: 'fixture-token',
+        workdir: root,
+      },
+    });
     await starting;
     expect(launchQqRuntime).toHaveBeenCalledTimes(launches);
     expect(service.getState().phase).toBe('stopped');
-    expect(stopQqRuntime).toHaveBeenCalled();
   });
 });

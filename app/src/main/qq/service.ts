@@ -7,7 +7,7 @@ import type { QqMessage, QqSendInput, QqState, QqTodoInput } from '../../shared/
 import { getDatabase } from '../database';
 import { getTodoState, saveTodo } from '../todo';
 import { parseQqMessage, qqId } from './protocol';
-import { launchQqRuntime, prepareQqRuntime, stopQqRuntime, type ManagedQqRuntime } from './runtime';
+import { launchQqRuntime, prepareQqRuntime, type ManagedQqRuntime } from './runtime';
 
 const onebotResponse = z.object({
   status: z.string(),
@@ -82,27 +82,17 @@ export class QqService {
         if (!controller.signal.aborted) this.update({ progress });
       });
       controller.signal.throwIfAborted();
+      if (!prepared.installed) {
+        this.controller = null;
+        return this.update({ phase: 'setup', progress: 'QQ 共享组件已准备好' });
+      }
       this.update({ phase: 'starting', progress: '正在启动 QQ…' });
       const runtime = await launchQqRuntime(prepared);
       if (controller.signal.aborted) {
-        stopQqRuntime(runtime);
         return this.state;
       }
       this.runtime = runtime;
       this.startedAt = Date.now();
-      runtime.child.once('error', (error) => {
-        if (this.runtime !== runtime) return;
-        this.stop();
-        this.update({ phase: 'error', error: `QQ 启动失败：${error.message}` });
-      });
-      runtime.child.once('exit', (code, signal) => {
-        if (this.runtime !== runtime) return;
-        this.stop();
-        this.update({
-          phase: 'error',
-          error: `QQ 组件已退出（${code ?? signal ?? '未知原因'}），请重新连接`,
-        });
-      });
       void this.poll(controller);
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -126,9 +116,7 @@ export class QqService {
     clearTimeout(this.reconnectTimer);
     this.socket?.close();
     this.socket = null;
-    const runtime = this.runtime;
     this.runtime = null;
-    if (runtime) stopQqRuntime(runtime);
     this.credential = '';
     this.credentialAt = 0;
     return this.update({ phase: 'stopped', progress: '', qrCode: null, error: null });

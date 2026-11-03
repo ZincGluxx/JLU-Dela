@@ -6,8 +6,8 @@ import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import type { ChildProcess, SpawnOptions } from 'node:child_process';
+import { dirname, join, relative, resolve } from 'node:path';
+import type { ChildProcess } from 'node:child_process';
 import type { Socket } from 'node:net';
 import type { QqMessage } from '../src/shared/qq';
 
@@ -17,15 +17,23 @@ const require = createRequire(join(root, 'package.json'));
 const profile = mkdtempSync(join(tmpdir(), 'dela-qq-smoke-'));
 for (const name of ['userData', 'documents', 'home'] as const) app.setPath(name, profile);
 process.argv.push('--terminal-smoke-test');
-const bridge = join(profile, 'qq/napcat-4.18.42');
+const shared = join(profile, 'Library/Containers/com.tencent.qq/Data/Documents/Dela-QQ');
+const bridge = join(shared, 'framework-4.18.42');
 mkdirSync(bridge, { recursive: true });
-writeFileSync(join(bridge, 'napcat.mjs'), Buffer.alloc(0));
-const executable = join(profile, process.platform === 'win32' ? 'fixture-QQ.exe' : 'fixture-QQ');
-writeFileSync(executable, Buffer.alloc(0));
+writeFileSync(join(bridge, 'napcat.cjs'), Buffer.alloc(0));
+const executable = join(profile, 'Applications/QQ.app');
+const packagePath = join(executable, 'Contents/Resources/app/package.json');
+mkdirSync(dirname(packagePath), { recursive: true });
 writeFileSync(
-  join(profile, 'qq/ready-4.18.42.json'),
-  JSON.stringify({ executable, sourceVersion: 'fixture' }),
+  packagePath,
+  JSON.stringify({
+    version: 'fixture',
+    main: relative(dirname(packagePath), join(shared, 'loader.cjs')),
+  }),
 );
+const fs = require('node:fs') as typeof import('node:fs');
+const originalExists = fs.existsSync;
+fs.existsSync = (path) => (path === '/Applications/QQ.app' ? false : originalExists(path));
 let loggedIn = false;
 let failSend = false;
 let liveSocket: Socket | undefined;
@@ -45,14 +53,16 @@ const messages: object[] = [
   },
 ];
 const childProcess = require('node:child_process') as typeof import('node:child_process');
-const originalSpawn = childProcess.spawn;
-childProcess.spawn = ((command: string, args: string[], options: SpawnOptions) => {
-  if (command !== executable && !command.endsWith('NapCatWinBootMain.exe'))
-    return originalSpawn(command, args, options);
-  const config = JSON.parse(
-    readFileSync(join(profile, 'qq/bridge-data/config/onebot11.json'), 'utf8'),
-  );
-  const web = JSON.parse(readFileSync(join(profile, 'qq/bridge-data/config/webui.json'), 'utf8'));
+const originalExecFile = childProcess.execFile;
+childProcess.execFile = ((command: string, args: string[], ...tail: unknown[]) => {
+  if (command !== '/usr/bin/open' || args[1] !== executable)
+    return Reflect.apply(originalExecFile, childProcess, [command, args, ...tail]);
+  if (servers.length) {
+    (tail.at(-1) as (error: null, stdout: string, stderr: string) => void)(null, '', '');
+    return Object.assign(new EventEmitter(), { exitCode: null, pid: undefined }) as ChildProcess;
+  }
+  const config = JSON.parse(readFileSync(join(shared, 'data/config/onebot11.json'), 'utf8'));
+  const web = JSON.parse(readFileSync(join(shared, 'data/config/webui.json'), 'utf8'));
   for (const port of [config.network.httpServers[0].port, web.port]) {
     const server = createServer(async (request, response) => {
       const path = request.url!;
@@ -118,8 +128,9 @@ childProcess.spawn = ((command: string, args: string[], options: SpawnOptions) =
   });
   socketServer.listen(config.network.websocketServers[0].port, '127.0.0.1');
   servers.push(socketServer);
+  (tail.at(-1) as (error: null, stdout: string, stderr: string) => void)(null, '', '');
   return Object.assign(new EventEmitter(), { exitCode: null, pid: undefined }) as ChildProcess;
-}) as typeof childProcess.spawn;
+}) as typeof childProcess.execFile;
 const savedFile = join(profile, '报告模板.pdf');
 dialog.showSaveDialog = async () => ({ canceled: false, filePath: savedFile });
 const timeout = setTimeout(() => {
@@ -176,7 +187,16 @@ async function run(window: BrowserWindow) {
   loggedIn = true;
   await wait('document.body.textContent.includes("示例用户")');
   await js(`document.querySelector('input[aria-label="接入 计算机网络 · 示例课程群"]').click()`);
+  await wait('!document.querySelector(\'textarea[aria-label="QQ 消息内容"]\')');
+  await click('完成并进入聊天');
   await wait('document.body.textContent.includes("请在周五提交课程报告")');
+  await click('首页');
+  await click('QQ 群聊');
+  await wait('document.body.textContent.includes("请在周五提交课程报告")');
+  assert.equal(await js('!!document.querySelector(\'input[aria-label="接入 未接入群"]\')'), false);
+  await click('管理群聊');
+  await wait('!!document.querySelector(\'input[aria-label="接入 未接入群"]\')');
+  await click('完成并进入聊天');
   await wait('(async()=> (await window.dela.qq.messages("100")).length===1)()');
   assert.equal(
     (await js('window.dela.qq.getState()')).groups.find(
@@ -263,6 +283,11 @@ async function run(window: BrowserWindow) {
   );
   await js('window.dela.qq.stop()');
   assert.equal((await js('window.dela.qq.getState()')).phase, 'stopped');
+  await js('window.dela.qq.start()');
+  await wait('(async()=> (await window.dela.qq.getState()).phase==="online")()');
+  assert.equal((await js('window.dela.qq.getState()')).groups[0].selected, true);
+  assert.equal(servers.length, 3, 'reconnect reuses the original QQ bridge');
+  await js('window.dela.qq.stop()');
   console.log(
     'QQ smoke passed: login, selected groups, live messages, replies, failed-send draft, files, workbench, todos, AI draft and four viewport sizes.',
   );

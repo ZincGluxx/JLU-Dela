@@ -1,11 +1,10 @@
-import { EventEmitter } from 'node:events';
 import {
+  cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readlinkSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -17,6 +16,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => state.root, getAppPath: () => state.root },
   net: { fetch: vi.fn() },
   dialog: { showOpenDialog: vi.fn() },
+  shell: { openPath: vi.fn(async () => '') },
 }));
 vi.mock('node:fs', async (original) => {
   const fs = await original<typeof import('node:fs')>();
@@ -25,18 +25,17 @@ vi.mock('node:fs', async (original) => {
     existsSync: (path: string) => (path === '/Applications/QQ.app' ? false : fs.existsSync(path)),
   };
 });
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn((command: string, args: string[], ...rest: unknown[]) => {
+    if (command === '/bin/cp') cpSync(args[1]!, args[2]!, { recursive: true });
+    (rest.at(-1) as (error: null, stdout: string, stderr: string) => void)(null, '', '');
+  }),
+}));
 vi.mock('node:module', async (original) => {
   const fs = await vi.importActual<typeof import('node:fs')>('node:fs');
   return { ...(await original<typeof import('node:module')>()), createRequire: () => () => fs };
 });
-vi.mock('node:child_process', () => ({
-  execFile: vi.fn((...args: unknown[]) => {
-    const callback = args.at(-1) as (error: null, stdout: string, stderr: string) => void;
-    callback(null, '', '');
-  }),
-  spawn: vi.fn(() => Object.assign(new EventEmitter(), { exitCode: null, pid: undefined })),
-}));
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { net } from 'electron';
 import { launchQqRuntime, prepareQqRuntime, qqRuntimeVersion, verifyQqRuntime } from '../runtime';
 
@@ -46,77 +45,64 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(state.root, { recursive: true, force: true }));
 
-describe.skipIf(process.platform !== 'darwin')('QQ 运行目录', () => {
-  it('仅修改运行副本，保留框架内的相对链接，并单独重签 helper', async () => {
+describe.skipIf(process.platform !== 'darwin')('QQ 共享会话', () => {
+  it('仅准备可回退的安装包，管理员安装之前不修改原 QQ，也不启动第二个客户端', async () => {
     const source = join(state.root, 'Applications/QQ.app');
     const resources = join(source, 'Contents/Resources/app');
-    const framework = join(source, 'Contents/Frameworks/QQNT.framework');
     mkdirSync(resources, { recursive: true });
-    mkdirSync(join(source, 'Contents/MacOS'), { recursive: true });
     mkdirSync(join(source, 'Contents/Frameworks/QQ Helper.app'), { recursive: true });
-    mkdirSync(join(framework, 'Versions/A'), { recursive: true });
-    writeFileSync(join(framework, 'Versions/A/QQNT'), 'framework');
-    symlinkSync('A', join(framework, 'Versions/Current'));
-    symlinkSync('Versions/Current/QQNT', join(framework, 'QQNT'));
-    const original = JSON.stringify({
-      version: 'fixture-1',
-      buildVersion: '1',
-      main: './application.asar/entry.js',
-    });
+    const original = JSON.stringify({ version: 'fixture-1', main: './application.asar/entry.js' });
     writeFileSync(join(resources, 'package.json'), original);
-    writeFileSync(join(source, 'Contents/MacOS/QQ'), 'fixture');
-    const bridge = join(state.root, `qq/napcat-${qqRuntimeVersion}`);
-    mkdirSync(bridge, { recursive: true });
-    writeFileSync(join(bridge, 'napcat.mjs'), Buffer.alloc(0));
-    writeFileSync(join(bridge, 'loadNapCat.js'), 'fixture loader bytes');
+    mkdirSync(join(state.root, 'out/main'), { recursive: true });
+    writeFileSync(join(state.root, 'out/main/qq-shared-loader.cjs'), 'fixture loader');
+    const shared = join(state.root, 'Library/Containers/com.tencent.qq/Data/Documents/Dela-QQ');
+    mkdirSync(join(shared, `framework-${qqRuntimeVersion}`), { recursive: true });
+    writeFileSync(join(shared, `framework-${qqRuntimeVersion}/napcat.cjs`), 'fixture framework');
     const prepared = await prepareQqRuntime(new AbortController().signal, () => {});
-    const copied = join(state.root, 'qq/client/QQ.app');
-    expect(prepared.executable).toBe(join(copied, 'Contents/MacOS/QQ'));
+    expect(prepared.installed).toBe(false);
+    expect(prepared.executable).toBe(source);
     expect(readFileSync(join(resources, 'package.json'), 'utf8')).toBe(original);
-    expect(readlinkSync(join(copied, 'Contents/Frameworks/QQNT.framework/QQNT'))).toBe(
-      'Versions/Current/QQNT',
-    );
-    expect(readFileSync(join(state.root, 'qq/load-dela-qq.cjs'), 'utf8')).toBe(
-      'fixture loader bytes',
-    );
-    expect(
-      JSON.parse(readFileSync(join(copied, 'Contents/Resources/app/package.json'), 'utf8')).main,
-    ).toContain('load-dela-qq.cjs');
+    expect(JSON.parse(readFileSync(join(shared, 'bootstrap.json'), 'utf8'))).toEqual({
+      originalMain: './application.asar/entry.js',
+      bridge: join(shared, `framework-${qqRuntimeVersion}`),
+      workdir: prepared.connection.workdir,
+    });
+    const staged = join(state.root, 'qq/shared/QQ.app');
+    const install = readFileSync(join(state.root, 'qq/shared/install.command'), 'utf8');
+    expect(install).toContain('/usr/bin/pgrep -x QQ');
+    expect(install).toContain('/usr/bin/cmp -s');
+    expect(install).toContain('sudo /bin/sh -c');
+    expect(install).toContain('original-');
+    expect(existsSync(join(state.root, 'qq/shared/restore.command'))).toBe(true);
     expect(vi.mocked(execFile).mock.calls.map((call) => call[1])).toEqual([
-      ['--force', '--sign', '-', join(copied, 'Contents/Frameworks/QQ Helper.app')],
-      ['--force', '--sign', '-', copied],
+      ['-cR', source, staged],
+      ['--force', '--sign', '-', join(staged, 'Contents/Frameworks/QQ Helper.app')],
+      ['--force', '--sign', '-', staged],
     ]);
     expect(net.fetch).not.toHaveBeenCalled();
-  });
+    await expect(launchQqRuntime(prepared)).rejects.toThrow('请先安装');
 
-  it('为桥接服务配置本机端口和随机令牌，将 QQ 数据与 Chromium 目录隔离', async () => {
-    const runtime = await launchQqRuntime({
-      executable: '/fixture/QQ.app/Contents/MacOS/QQ',
-      sourceVersion: 'fixture',
-    });
-    const config = JSON.parse(readFileSync(join(runtime.workdir, 'config/onebot11.json'), 'utf8'));
+    cpSync(join(staged, 'Contents/Resources/app/package.json'), join(resources, 'package.json'));
+    const reconnected = await prepareQqRuntime(new AbortController().signal, () => {});
+    expect(reconnected.installed).toBe(true);
+    expect(reconnected.connection).toEqual(prepared.connection);
+    const config = JSON.parse(
+      readFileSync(join(prepared.connection.workdir, 'config/onebot11.json'), 'utf8'),
+    );
     expect(config.network.httpServers[0]).toMatchObject({
       host: '127.0.0.1',
-      token: runtime.token,
+      token: prepared.connection.token,
       enableCors: false,
     });
-    expect(config.network.websocketServers[0]).toMatchObject({
-      host: '127.0.0.1',
-      token: runtime.token,
-    });
-    expect(new Set([runtime.apiPort, runtime.wsPort, runtime.webPort]).size).toBe(3);
-    expect(runtime.token).toHaveLength(64);
-    const options = vi.mocked(spawn).mock.calls[0]![2]!;
-    expect(options.env).toMatchObject({
-      NAPCAT_QQ_DATA_DIR: join(state.root, 'qq/profile'),
-      CFFIXED_USER_HOME: join(state.root, 'qq/mac-home'),
-      NAPCAT_DISABLE_PIPE: '1',
-    });
-    expect(vi.mocked(spawn).mock.calls[0]![1]).toContain(
-      `--user-data-dir=${join(state.root, 'qq/chromium')}`,
-    );
-    runtime.child.emit('close', 0);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(
+      new Set([
+        prepared.connection.apiPort,
+        prepared.connection.wsPort,
+        prepared.connection.webPort,
+      ]).size,
+    ).toBe(3);
+    expect(await launchQqRuntime(reconnected)).toEqual(prepared.connection);
+    expect(vi.mocked(execFile).mock.calls.at(-1)![1]).toEqual(['-a', source]);
   });
 });
 
