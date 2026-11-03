@@ -201,6 +201,57 @@ async function run(window) {
       }
     }
   }
+  // 作业看板：汇总所有课程，按截止时间分组，并保留回到课程作业页的入口。
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='查看全部课程作业').click()`,
+  );
+  await wait(
+    `document.body.textContent.includes('同步全部作业') && document.querySelectorAll('[aria-label="筛选课程"]').length===1`,
+  );
+  await wait(`document.body.textContent.includes('待完成 1 份')`);
+  await wait(
+    `document.querySelector('[aria-label="截止时间待确认"]')?.textContent.includes('示例作业')`,
+  );
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='已完成').click()`,
+  );
+  await wait(`document.body.textContent.includes('还没有读到已完成的作业。')`);
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='待完成').click()`,
+  );
+  await wait(`document.body.textContent.includes('示例作业')`);
+  if (!root.endsWith('.asar')) {
+    mkdirSync('.build', { recursive: true });
+    window.setSize(1280, 850);
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    writeFileSync('.build/chaoxing-board.png', (await window.webContents.capturePage()).toPNG());
+  }
+  const windowsBefore = BrowserWindow.getAllWindows().length;
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='打开课程作业页').click()`,
+  );
+  let platform;
+  for (let attempt = 0; attempt < 200 && !platform; attempt++) {
+    platform = BrowserWindow.getAllWindows().find((item) => item.getTitle() === '学习通原平台作业');
+    if (!platform) await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.ok(platform, 'platform homework window');
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (platform.webContents.getURL().includes('/mooc2/work/list')) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.ok(platform.webContents.getURL().includes('/mooc2/work/list'));
+  platform.destroy();
+  assert.equal(BrowserWindow.getAllWindows().length, windowsBefore);
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='示例课程').click()`,
+  );
+  await wait(
+    `document.body.textContent.includes('在工作台打开作业') && document.body.textContent.includes('打开课程作业页')`,
+  );
+  await wait(
+    `!!document.querySelector('fieldset') && !document.querySelector('fieldset').disabled`,
+  );
   await js(
     `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='资料').click()`,
   );
@@ -397,6 +448,20 @@ async function run(window) {
   await wait(
     `Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('示例课程'))`,
   );
+  // 详情页读到的截止时间进入汇总看板。
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='作业').click()`,
+  );
+  await wait(`document.body.textContent.includes('截止 2026-11-02 20:00')`);
+  await wait(
+    `[...document.querySelectorAll('section[aria-label]')].some(s=>s.textContent.includes('示例作业'))`,
+  );
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='课程').click()`,
+  );
+  await wait(
+    `Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('示例课程'))`,
+  );
   await js(
     `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('示例课程')).click()`,
   );
@@ -440,6 +505,6 @@ async function run(window) {
   assert.equal(BrowserWindow.getAllWindows().length, 1);
   assert.equal(downloadRedirects, 1);
   console.log(
-    'Chaoxing smoke passed: isolated session, course redirects, nested folders, assignment metadata, native download redirects, local PDF import, course and file associations without duplicate downloads, failure cache retention, native workbench tabs, in-tab login recovery, exact deadlines, retained forms, overlay hiding, split AI drafts, beforeunload cancellation and four viewport widths. Synthetic data only; no school or model requests.',
+    'Chaoxing smoke passed: isolated session, course redirects, nested folders, assignment metadata, aggregate homework board with grouping and filters, platform homework page, native download redirects, local PDF import, course and file associations without duplicate downloads, failure cache retention, native workbench tabs, in-tab login recovery, exact deadlines, retained forms, overlay hiding, split AI drafts, beforeunload cancellation and four viewport widths. Synthetic data only; no school or model requests.',
   );
 }

@@ -140,12 +140,13 @@ app.on('second-instance', () => {
   // 窗口尚未创建时，正常启动流程会显示它，不另建窗口。
 });
 if (smokeTest) {
+  // 各平台冒烟脚本都在这里兜底退出；终端冒烟要跑完整流程，慢机器上留足余量。
   setTimeout(
     () => {
       console.error('Smoke check timed out');
       app.exit(1);
     },
-    terminalSmokeTest ? 60000 : 15000,
+    terminalSmokeTest ? 120000 : 15000,
   ).unref();
 }
 
