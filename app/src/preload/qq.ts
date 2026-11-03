@@ -10,6 +10,8 @@ export const qq = {
   refreshGroups: () => invoke('qq:refresh-groups'),
   selectGroups: (ids: string[]) => invoke('qq:select-groups', ids),
   messages: (groupId: string) => invoke('qq:messages', groupId),
+  image: (groupId: string, messageId: string, imageId: string) =>
+    invoke('qq:image', { groupId, messageId, imageId }),
   refreshMessages: (groupId: string) => invoke('qq:refresh-messages', groupId),
   send: (input: QqSendInput) => invoke('qq:send', input),
   download: (groupId: string, messageId: string, fileId: string) =>

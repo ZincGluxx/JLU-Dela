@@ -13,6 +13,8 @@ const segment = z.object({
       file: z.string().optional(),
       file_id: qqId.optional(),
       file_name: z.string().optional(),
+      url: z.string().optional(),
+      summary: z.string().optional(),
     })
     .passthrough(),
 });
@@ -55,6 +57,15 @@ export function parseQqMessage(input: unknown, accountId: string): QqMessage {
       const name = item.data.name || item.data.file_name || item.data.file || '群文件';
       if (id) message.files.push({ id, name });
       parts.push(`[文件] ${name}`);
+    } else if (item.type === 'image') {
+      const label = item.data.summary || '图片';
+      (message.images ??= []).push({
+        id: String(message.images?.length ?? 0),
+        file: item.data.file,
+        url: item.data.url,
+        label,
+      });
+      parts.push(`[${label}]`);
     } else {
       const labels: Record<string, string> = {
         image: '图片',

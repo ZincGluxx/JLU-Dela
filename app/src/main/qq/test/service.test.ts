@@ -9,6 +9,7 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => [] },
   ipcMain: { handle: vi.fn() },
 }));
+vi.mock('../media', () => ({ readQqImage: vi.fn() }));
 vi.mock('../../database', () => ({ getDatabase: vi.fn() }));
 vi.mock('../../ipc', () => ({ checkWorkspaceSender: vi.fn() }));
 vi.mock('../runtime', () => ({
@@ -19,6 +20,7 @@ import { net } from 'electron';
 import { getDatabase } from '../../database';
 import { getTodoState, removeTodo, saveTodo } from '../../todo';
 import { prepareQqRuntime, launchQqRuntime, type PreparedQqRuntime } from '../runtime';
+import { readQqImage } from '../media';
 import { QqService } from '../service';
 
 class Socket extends EventTarget {
@@ -48,6 +50,7 @@ const fixture = {
   message: [
     { type: 'text', data: { text: '周五交报告' } },
     { type: 'file', data: { file_id: 'f1', name: '报告.pdf' } },
+    { type: 'image', data: { file: 'image-key', url: 'https://example.com/expired' } },
   ],
 };
 
@@ -109,6 +112,7 @@ beforeEach(async () => {
     if (path === '/api/auth/login') data = { Credential: 'fixture-credential' };
     else if (path === '/api/QQLogin/CheckLoginStatus')
       data = { isLogin: loggedIn, qrcodeurl: 'https://qq.com/fixture-qr', loginError: null };
+    else if (path === '/get_image') data = { url: 'https://example.com/renewed' };
     else if (path === '/get_login_info') data = { user_id: account, nickname: `用户${account}` };
     else if (path === '/get_group_list')
       data = [
@@ -155,6 +159,65 @@ describe('QQ 群聊服务', () => {
     service.stop();
     expect(service.getState().phase).toBe('stopped');
   });
+  it('桥接暂报离线时保留账号、订阅、缓存和实时连接，恢复后不要求重新扫码', async () => {
+    await connect();
+    await service.refreshMessages('100');
+    const previousAccount = service.getState().account;
+    loggedIn = false;
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(service.getState()).toMatchObject({
+      phase: 'reconnecting',
+      account: previousAccount,
+      qrCode: null,
+    });
+    expect(service.getState().groups.find((group) => group.id === '100')?.selected).toBe(true);
+    Socket.instances[0]!.dispatchEvent(
+      new MessageEvent('message', {
+        data: JSON.stringify({
+          ...fixture,
+          self_id: '7',
+          message_id: 'during-offline',
+          post_type: 'message',
+          message_type: 'group',
+        }),
+      }),
+    );
+    expect(service.messages('100')).toHaveLength(2);
+    await expect(service.send({ groupId: '100', text: '暂停发送' })).rejects.toThrow('已断开');
+    loggedIn = true;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(service.getState().phase).toBe('online');
+    expect(Socket.instances).toHaveLength(1);
+    expect(service.messages('100')).toHaveLength(2);
+  });
+
+  it('状态请求暂时失败不会清空会话；恢复时切换账号不继承旧订阅', async () => {
+    await connect();
+    vi.mocked(net.fetch).mockRejectedValueOnce(new Error('temporary disconnect'));
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(service.getState()).toMatchObject({ phase: 'reconnecting', account: { id: '7' } });
+    account = '8';
+    await vi.advanceTimersByTimeAsync(5000);
+    await vi.waitFor(() => expect(service.getState().phase).toBe('online'));
+    expect(service.getState()).toMatchObject({ phase: 'online', account: { id: '8' } });
+    expect(service.getState().groups.every((group) => !group.selected)).toBe(true);
+  });
+
+  it('只加载当前群已有图片，过期链接通过 QQ 获取新地址', async () => {
+    await connect();
+    await service.refreshMessages('100');
+    await expect(service.image('100', '1', 'missing')).rejects.toThrow('图片不在');
+    expect(readQqImage).not.toHaveBeenCalled();
+    vi.mocked(readQqImage)
+      .mockRejectedValueOnce(new Error('expired'))
+      .mockResolvedValueOnce('data:image/png;base64,fixture');
+    expect(await service.image('100', '1', '0')).toBe('data:image/png;base64,fixture');
+    expect(vi.mocked(readQqImage).mock.calls.map(([source]) => source)).toEqual([
+      'https://example.com/expired',
+      'https://example.com/renewed',
+    ]);
+  });
+
   it('仅保存订阅群的实时消息，并按消息 ID 合并历史与重复推送', async () => {
     await connect();
     expect(await service.refreshMessages('100')).toHaveLength(1);

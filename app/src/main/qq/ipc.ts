@@ -42,6 +42,10 @@ export function registerQqIpc(): void {
     'select-groups': (input) => qq.selectGroups(z.array(groupId).max(500).parse(input)),
     messages: (input) => qq.messages(groupId.parse(input)),
     'refresh-messages': (input) => qq.refreshMessages(groupId.parse(input)),
+    image: (input) => {
+      const value = z.object({ groupId, messageId: id, imageId: id }).strict().parse(input);
+      return qq.image(value.groupId, value.messageId, value.imageId);
+    },
     send: (input) =>
       qq.send(
         z

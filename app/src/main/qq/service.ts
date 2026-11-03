@@ -7,6 +7,7 @@ import type { QqMessage, QqSendInput, QqState, QqTodoInput } from '../../shared/
 import { getDatabase } from '../database';
 import { getTodoState, saveTodo } from '../todo';
 import { parseQqMessage, qqId } from './protocol';
+import { readQqImage } from './media';
 import { launchQqRuntime, prepareQqRuntime, type ManagedQqRuntime } from './runtime';
 
 const onebotResponse = z.object({
@@ -171,6 +172,7 @@ export class QqService {
             progress: '',
             qrCode: null,
             account: { id: account.user_id, name: account.nickname },
+            groups: this.state.account?.id === account.user_id ? this.state.groups : [],
             error: null,
           });
           await this.refreshGroups();
@@ -178,29 +180,42 @@ export class QqService {
           this.connectEvents(controller);
         }
       } else {
-        this.socket?.close();
-        this.socket = null;
-        const qrCode = login.qrcodeurl || null;
-        const confirming = ['qrcode_scanned', 'initializing'].includes(login.loginPhase ?? '');
-        this.update({
-          phase: 'login',
-          progress: confirming
-            ? '已扫码，等待手机确认并连接 QQ…'
-            : login.isOffline
-              ? 'QQ 已离线，请重新扫码登录'
-              : qrCode
-                ? '用手机 QQ 扫码，并在手机上确认登录'
-                : '正在获取登录二维码…',
-          qrCode,
-          account: null,
-          groups: [],
-          error: login.loginError || null,
-        });
+        if (this.state.account) {
+          this.update({
+            phase: 'reconnecting',
+            progress: 'QQ 状态暂时不可用，正在等待原生会话恢复。聊天记录已保留。',
+            qrCode: null,
+            error: login.loginError?.includes('SelfOffline') ? null : login.loginError || null,
+          });
+        } else {
+          const qrCode = login.qrcodeurl || null;
+          const confirming = ['qrcode_scanned', 'initializing'].includes(login.loginPhase ?? '');
+          this.update({
+            phase: 'login',
+            progress: confirming
+              ? '已扫码，等待手机确认并连接 QQ…'
+              : login.isOffline
+                ? 'QQ 已离线，请重新扫码登录'
+                : qrCode
+                  ? '用手机 QQ 扫码，并在手机上确认登录'
+                  : '请在 QQ 原生窗口完成登录',
+            qrCode,
+            account: null,
+            groups: [],
+            error: login.loginError || null,
+          });
+        }
       }
     } catch (error) {
       if (controller.signal.aborted) return;
       this.credential = '';
-      if (Date.now() - this.startedAt > 90_000 || this.state.phase === 'online') {
+      if (this.state.account) {
+        this.update({
+          phase: 'reconnecting',
+          progress: '暂时无法连接 QQ 桥接服务，正在重试。聊天记录已保留。',
+          error: null,
+        });
+      } else if (Date.now() - this.startedAt > 90_000) {
         this.update({
           phase: 'error',
           error: error instanceof Error ? error.message : String(error),
@@ -210,7 +225,7 @@ export class QqService {
     if (!controller.signal.aborted)
       this.pollTimer = setTimeout(
         () => void this.poll(controller),
-        this.state.phase === 'online' ? 10_000 : 2000,
+        this.state.phase === 'online' ? 10_000 : this.state.phase === 'reconnecting' ? 5000 : 2000,
       );
   }
 
@@ -229,13 +244,15 @@ export class QqService {
       if (!controller.signal.aborted) this.update({ error: null });
     });
     socket.addEventListener('message', (event) => {
-      if (controller.signal.aborted || this.state.phase !== 'online') return;
+      if (controller.signal.aborted || !['online', 'reconnecting'].includes(this.state.phase))
+        return;
       try {
         const envelope = z
           .object({
             post_type: z.string(),
             message_type: z.string().optional(),
             group_id: qqId.optional(),
+            self_id: qqId.optional(),
           })
           .parse(JSON.parse(String(event.data)));
         if (
@@ -243,6 +260,7 @@ export class QqService {
           envelope.message_type !== 'group'
         )
           return;
+        if (envelope.self_id && envelope.self_id !== this.accountId()) return;
         if (!this.state.groups.some((group) => group.id === envelope.group_id && group.selected))
           return;
         const message = parseQqMessage(JSON.parse(String(event.data)), this.accountId());
@@ -257,7 +275,7 @@ export class QqService {
     });
     socket.addEventListener('close', () => {
       if (this.socket === socket) this.socket = null;
-      if (!controller.signal.aborted && this.state.phase === 'online')
+      if (!controller.signal.aborted && ['online', 'reconnecting'].includes(this.state.phase))
         this.reconnectTimer = setTimeout(() => this.connectEvents(controller), 2000);
     });
   }
@@ -416,6 +434,28 @@ export class QqService {
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       },
     ]);
+  }
+
+  async image(groupId: string, messageId: string, imageId: string): Promise<string> {
+    this.group(groupId);
+    const image = this.messages(groupId)
+      .find((message) => message.id === messageId)
+      ?.images?.find((item) => item.id === imageId);
+    if (!image) throw new Error('图片不在当前群消息中，请刷新后重试');
+    if (image.url) {
+      try {
+        return await readQqImage(image.url);
+      } catch (error) {
+        if (!image.file) throw error;
+      }
+    }
+    if (!image.file) throw new Error('QQ 未提供图片标识，请刷新群消息后重试');
+    const result = z
+      .object({ url: z.string().optional(), file: z.string().optional() })
+      .parse(await this.call('get_image', { file: image.file }));
+    const source = result.url || result.file;
+    if (!source) throw new Error('QQ 未能提供这张图片');
+    return readQqImage(source);
   }
 
   async file(

@@ -36,6 +36,12 @@ const originalExists = fs.existsSync;
 fs.existsSync = (path) => (path === '/Applications/QQ.app' ? false : originalExists(path));
 let loggedIn = false;
 let failSend = false;
+let offlineHint = '';
+const png = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNuoAAAAASUVORK5CYII=',
+  'base64',
+);
+const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 let liveSocket: Socket | undefined;
 const requests: { action: string; body: Record<string, unknown> }[] = [];
 const servers: Server[] = [];
@@ -49,6 +55,8 @@ const messages: object[] = [
     message: [
       { type: 'text', data: { text: '请在周五提交课程报告，附件是模板。' } },
       { type: 'file', data: { file_id: 'file-1', name: '报告模板.pdf' } },
+      { type: 'image', data: { file: 'image-png', summary: '示例截图' } },
+      { type: 'image', data: { file: 'image-gif', summary: '示例表情' } },
     ],
   },
 ];
@@ -66,6 +74,10 @@ childProcess.execFile = ((command: string, args: string[], ...tail: unknown[]) =
   for (const port of [config.network.httpServers[0].port, web.port]) {
     const server = createServer(async (request, response) => {
       const path = request.url!;
+      if (path === '/image.png' || path === '/image.gif') {
+        response.end(path.endsWith('.png') ? png : gif);
+        return;
+      }
       if (path === '/file.pdf') {
         response.end('synthetic qq file');
         return;
@@ -81,8 +93,8 @@ childProcess.execFile = ((command: string, args: string[], ...tail: unknown[]) =
         data = {
           isLogin: loggedIn,
           qrcodeurl: 'https://qq.com/synthetic-login',
-          loginError: '',
-          loginPhase: 'qrcode',
+          loginError: offlineHint,
+          loginPhase: offlineHint ? 'reconnecting' : 'qrcode',
         };
       else if (path === '/api/QQLogin/RefreshQRcode') data = {};
       else {
@@ -94,6 +106,10 @@ childProcess.execFile = ((command: string, args: string[], ...tail: unknown[]) =
             { group_id: '100', group_name: '计算机网络 · 示例课程群' },
             { group_id: '200', group_name: '未接入群' },
           ];
+        else if (path === '/get_image')
+          data = {
+            url: `http://127.0.0.1:${port}/image.${input.file === 'image-png' ? 'png' : 'gif'}`,
+          };
         else if (path === '/get_group_msg_history') data = { messages };
         else if (path === '/send_group_msg') {
           if (failSend) {
@@ -190,6 +206,21 @@ async function run(window: BrowserWindow) {
   await wait('!document.querySelector(\'textarea[aria-label="QQ 消息内容"]\')');
   await click('完成并进入聊天');
   await wait('document.body.textContent.includes("请在周五提交课程报告")');
+  await wait(
+    'Array.from(document.querySelectorAll("img")).filter(img=>img.naturalWidth>0).length===2',
+  );
+  await js(`document.querySelector('[aria-label="查看示例截图"]').click()`);
+  await wait(`!!document.querySelector('[role="dialog"] img')`);
+  await js(`document.querySelector('[aria-label="关闭图片"]').click()`);
+  loggedIn = false;
+  offlineHint = '[SelfOffline] synthetic offline event';
+  await wait('(async()=> (await window.dela.qq.getState()).phase==="reconnecting")()');
+  assert.equal(await js(`!!document.querySelector('textarea[aria-label="QQ 消息内容"]')`), true);
+  assert.equal(await js('document.body.textContent.includes("请在周五提交课程报告")'), true);
+  assert.equal(await js('!!document.querySelector("svg[role=img]")'), false);
+  loggedIn = true;
+  offlineHint = '';
+  await wait('(async()=> (await window.dela.qq.getState()).phase==="online")()');
   await click('首页');
   await click('QQ 群聊');
   await wait('document.body.textContent.includes("请在周五提交课程报告")');

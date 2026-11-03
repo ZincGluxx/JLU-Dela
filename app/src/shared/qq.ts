@@ -24,10 +24,27 @@ export interface QqMessage {
   replyTo?: string;
   files: QqFile[];
   own: boolean;
+  images?: QqImage[];
+}
+
+export interface QqImage {
+  id: string;
+  file?: string;
+  url?: string;
+  label: string;
 }
 
 export interface QqState {
-  phase: 'idle' | 'preparing' | 'setup' | 'starting' | 'login' | 'online' | 'stopped' | 'error';
+  phase:
+    | 'idle'
+    | 'preparing'
+    | 'setup'
+    | 'starting'
+    | 'login'
+    | 'online'
+    | 'reconnecting'
+    | 'stopped'
+    | 'error';
   progress: string;
   qrCode: string | null;
   account: QqAccount | null;
@@ -60,6 +77,7 @@ export interface QqApi {
   refreshMessages(groupId: string): Promise<QqMessage[]>;
   send(input: QqSendInput): Promise<void>;
   download(groupId: string, messageId: string, fileId: string): Promise<string | null>;
+  image(groupId: string, messageId: string, imageId: string): Promise<string>;
   createTodo(input: QqTodoInput): Promise<string>;
   onUpdate(listener: (state: QqState) => void): () => void;
   onMessages(listener: (groupId: string) => void): () => void;

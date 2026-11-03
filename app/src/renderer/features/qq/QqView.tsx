@@ -26,6 +26,7 @@ import { errorText } from '../../workspace/store';
 import { showToast } from '../../app/toasts';
 import { cn } from '../../lib/utils';
 import { attachQq, useQq } from './store';
+import { QqMessageImage } from './QqMessageImage';
 
 const emptyMessages: QqMessage[] = [];
 const emptyDraft = { text: '', replyTo: undefined };
@@ -36,6 +37,7 @@ const phaseLabels = {
   starting: '正在启动',
   login: '等待登录',
   online: '已连接',
+  reconnecting: '连接恢复中',
   stopped: '已断开',
   error: '连接异常',
 };
@@ -51,7 +53,7 @@ export function QqView() {
   useEffect(attachQq, []);
   const api = window.dela?.qq;
   const online = state.phase === 'online';
-  const active = ['preparing', 'starting', 'login', 'online'].includes(state.phase);
+  const active = ['preparing', 'starting', 'login', 'online', 'reconnecting'].includes(state.phase);
   const connectedGroups = state.groups.filter((group) => group.selected);
   const managing = mode === 'groups' || connectedGroups.length === 0;
   const current = connectedGroups.find((group) => group.id === selected) ?? connectedGroups[0];
@@ -111,6 +113,11 @@ export function QqView() {
       {(error || state.error) && (
         <p className="mx-5 mb-3 break-words text-13 text-red" role="alert">
           {error || state.error}
+        </p>
+      )}
+      {state.phase === 'reconnecting' && (
+        <p role="status" className="mx-5 mb-3 text-13 text-ink-3">
+          {state.progress}
         </p>
       )}
       {!api ? (
@@ -474,6 +481,14 @@ export function QqConversation({
               <p className="mt-1 whitespace-pre-wrap break-words text-13 leading-relaxed [overflow-wrap:anywhere]">
                 {message.text}
               </p>
+              {message.images?.map((image) => (
+                <QqMessageImage
+                  key={`${image.id}/${image.url ?? image.file}`}
+                  groupId={groupId}
+                  messageId={message.id}
+                  image={image}
+                />
+              ))}
               {message.files.map((file) => (
                 <Button
                   key={file.id}
