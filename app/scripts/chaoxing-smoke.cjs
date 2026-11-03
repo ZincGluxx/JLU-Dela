@@ -21,6 +21,17 @@ let offline = false;
 let downloadRedirects = 0;
 let requiresLogin = false;
 let workLoads = 0;
+// 作业详情页的截止时间取运行时 +2 小时，既在提醒窗口内，又不会随日期推移失效。
+const deadlineAt = new Date(Date.now() + 2 * 3_600_000);
+const deadlineDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(
+  deadlineAt,
+);
+const deadlineTime = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Shanghai',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+}).format(deadlineAt);
 const privateQuery = 'courseid=1&clazzid=2&cpi=3&enc=fixture-private';
 const pdfObjects = [
   '<< /Type /Catalog /Pages 2 0 R >>',
@@ -66,7 +77,11 @@ app.whenReady().then(() => {
       if (requiresLogin) return Response.redirect('https://passport2.chaoxing.com/login');
       workLoads++;
       html =
-        '<h1>示例作业原网页</h1><p>截止时间：2026-11-02 20:00</p><p id="question">解释微控制器的工作过程</p><textarea id="answer" aria-label="示例作答"></textarea><a href="https://mooc1.chaoxing.com/fixture-next">下一页</a>';
+        '<h1>示例作业原网页</h1><p>截止时间：' +
+        deadlineDate +
+        ' ' +
+        deadlineTime +
+        '</p><p id="question">解释微控制器的工作过程</p><textarea id="answer" aria-label="示例作答"></textarea><a href="https://mooc1.chaoxing.com/fixture-next">下一页</a>';
     } else if (url.pathname === '/login')
       html = '<a href="https://mooc1.chaoxing.com/fixture-login-done">完成示例登录</a>';
     else if (url.pathname === '/fixture-login-done') {
@@ -201,6 +216,86 @@ async function run(window) {
       }
     }
   }
+  // 作业看板：汇总所有课程，按截止时间分组，并保留回到课程作业页的入口。
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='查看全部课程作业').click()`,
+  );
+  await wait(
+    `document.body.textContent.includes('同步全部作业') && document.querySelectorAll('[aria-label="筛选课程"]').length===1`,
+  );
+  await wait(`document.body.textContent.includes('待完成 1 份')`);
+  await wait(
+    `document.querySelector('[aria-label="截止时间待确认"]')?.textContent.includes('示例作业')`,
+  );
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='已完成').click()`,
+  );
+  await wait(`document.body.textContent.includes('还没有读到已完成的作业。')`);
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='待完成').click()`,
+  );
+  await wait(`document.body.textContent.includes('示例作业')`);
+  // 已读 / 忽略标记与截止提醒开关。
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent==='标为已读').click()`);
+  await wait(
+    `[...document.querySelectorAll('button')].some(b=>b.textContent==='标为未读') && document.body.textContent.includes('已读')`,
+  );
+  assert.ok((await js('window.dela.chaoxing.works("1:2")')).items[0].readAt);
+  const marked = await js('window.dela.chaoxing.syncWorks("1:2")');
+  assert.ok(marked.data.items[0].readAt, 'read mark survives a refresh');
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent==='忽略').click()`);
+  await wait(`document.body.textContent.includes('当前没有待完成的作业。')`);
+  assert.ok((await js('window.dela.chaoxing.works("1:2")')).items[0].mutedAt);
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent==='已忽略').click()`);
+  await wait(`document.querySelector('[aria-label="已忽略"]')?.textContent.includes('示例作业')`);
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent==='取消忽略').click()`);
+  await wait(`document.body.textContent.includes('还没有忽略的作业。')`);
+  assert.equal((await js('window.dela.chaoxing.reminders()')).enabled, true);
+  assert.deepEqual(await js('window.dela.chaoxing.setReminders(false)'), { enabled: false });
+  assert.deepEqual(await js('window.dela.chaoxing.reminders()'), { enabled: false });
+  assert.deepEqual(await js('window.dela.chaoxing.checkReminders()'), { due: 0, sent: 0 });
+  await js('window.dela.chaoxing.setReminders(true)');
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='待完成').click()`,
+  );
+  await wait(`document.body.textContent.includes('示例作业')`);
+  if (!root.endsWith('.asar')) {
+    mkdirSync('.build', { recursive: true });
+    window.setSize(1280, 850);
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    writeFileSync('.build/chaoxing-board.png', (await window.webContents.capturePage()).toPNG());
+  }
+  const windowsBefore = BrowserWindow.getAllWindows().length;
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='打开课程作业页').click()`,
+  );
+  let platform;
+  for (let attempt = 0; attempt < 200 && !platform; attempt++) {
+    platform = BrowserWindow.getAllWindows().find((item) => item.getTitle() === '学习通原平台作业');
+    if (!platform) await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.ok(platform, 'platform homework window');
+  for (let attempt = 0; attempt < 200; attempt++) {
+    // 等加载完成再关窗：导航中销毁会让 loadURL 以 ERR_ABORTED 拒绝，并误报「作业页未能打开」。
+    if (
+      platform.webContents.getURL().includes('/mooc2/work/list') &&
+      !platform.webContents.isLoading()
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.ok(platform.webContents.getURL().includes('/mooc2/work/list'));
+  platform.destroy();
+  assert.equal(BrowserWindow.getAllWindows().length, windowsBefore);
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='示例课程').click()`,
+  );
+  await wait(
+    `document.body.textContent.includes('在工作台打开作业') && document.body.textContent.includes('打开课程作业页')`,
+  );
+  await wait(
+    `!!document.querySelector('fieldset') && !document.querySelector('fieldset').disabled`,
+  );
   await js(
     `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='资料').click()`,
   );
@@ -291,7 +386,7 @@ async function run(window) {
   await wait(`document.body.textContent.includes('已读取作业时间')`);
   console.log('Native login recovery and deadline extraction passed');
   const datedWork = (await js('window.dela.chaoxing.calendar()')).works[0];
-  assert.deepEqual(datedWork.deadline, { date: '2026-11-02', time: '20:00' });
+  assert.deepEqual(datedWork.deadline, { date: deadlineDate, time: deadlineTime });
   assert.ok(datedWork.detailSyncedAt);
   await remote.executeJavaScript('document.querySelector("textarea").value="尚未提交的示例草稿"');
   await js(`document.querySelector('[data-tab^="preview:"]').click()`);
@@ -397,6 +492,23 @@ async function run(window) {
   await wait(
     `Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('示例课程'))`,
   );
+  // 详情页读到的截止时间进入汇总看板，并成为截止提醒的候选。
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='作业').click()`,
+  );
+  await wait(
+    `document.body.textContent.includes(${JSON.stringify(`截止 ${deadlineDate} ${deadlineTime}`)})`,
+  );
+  await wait(
+    `[...document.querySelectorAll('section[aria-label]')].some(s=>s.textContent.includes('示例作业'))`,
+  );
+  assert.equal((await js('window.dela.chaoxing.checkReminders()')).due, 1);
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='课程').click()`,
+  );
+  await wait(
+    `Array.from(document.querySelectorAll('button')).some(b=>b.textContent.includes('示例课程'))`,
+  );
   await js(
     `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('示例课程')).click()`,
   );
@@ -440,6 +552,6 @@ async function run(window) {
   assert.equal(BrowserWindow.getAllWindows().length, 1);
   assert.equal(downloadRedirects, 1);
   console.log(
-    'Chaoxing smoke passed: isolated session, course redirects, nested folders, assignment metadata, native download redirects, local PDF import, course and file associations without duplicate downloads, failure cache retention, native workbench tabs, in-tab login recovery, exact deadlines, retained forms, overlay hiding, split AI drafts, beforeunload cancellation and four viewport widths. Synthetic data only; no school or model requests.',
+    'Chaoxing smoke passed: isolated session, course redirects, nested folders, assignment metadata, aggregate homework board with grouping, filters, local read/ignore marks and the desktop reminder switch, platform homework page, native download redirects, local PDF import, course and file associations without duplicate downloads, failure cache retention, native workbench tabs, in-tab login recovery, exact deadlines, retained forms, overlay hiding, split AI drafts, beforeunload cancellation and four viewport widths. Synthetic data only; no school or model requests.',
   );
 }

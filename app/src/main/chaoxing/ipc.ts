@@ -1,4 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { z } from 'zod';
 import { checkWorkspaceSender } from '../ipc';
 import {
   chaoxingResult,
@@ -14,7 +15,14 @@ import {
   bindChaoxingCourse,
   linkChaoxingFile,
   openChaoxingFilesPage,
+  openChaoxingWorksPage,
 } from './api';
+import { markChaoxingWork } from './flags';
+import { checkWorkReminders, setWorkRemindersEnabled, workReminderState } from './reminders';
+
+const workIds = z.string().regex(/^[A-Za-z0-9:_-]{1,180}$/);
+const workMarks = z.object({ read: z.boolean().optional(), muted: z.boolean().optional() });
+
 export function registerChaoxingIpc() {
   ipcMain.handle('cx:calendar:get', (event) => {
     checkWorkspaceSender(event);
@@ -47,6 +55,30 @@ export function registerChaoxingIpc() {
   ipcMain.handle('cx:works:sync', (event, courseId: string) => {
     checkWorkspaceSender(event);
     return chaoxingResult(() => syncChaoxingWorks(courseId, event.sender));
+  });
+  ipcMain.handle('cx:works:open', (event, courseId: string) => {
+    checkWorkspaceSender(event);
+    return openChaoxingWorksPage(courseId, event.sender);
+  });
+  ipcMain.handle('cx:works:mark', (event, courseId: string, workId: string, marks: unknown) => {
+    checkWorkspaceSender(event);
+    return markChaoxingWork(
+      workIds.parse(courseId),
+      workIds.parse(workId),
+      workMarks.parse(marks ?? {}),
+    );
+  });
+  ipcMain.handle('cx:reminders:get', (event) => {
+    checkWorkspaceSender(event);
+    return workReminderState();
+  });
+  ipcMain.handle('cx:reminders:set', (event, enabled: unknown) => {
+    checkWorkspaceSender(event);
+    return setWorkRemindersEnabled(z.boolean().parse(enabled));
+  });
+  ipcMain.handle('cx:reminders:check', (event) => {
+    checkWorkspaceSender(event);
+    return checkWorkReminders();
   });
   ipcMain.handle('cx:course:bind', (event, courseId: string, knowledgeCourseId: unknown) => {
     checkWorkspaceSender(event);

@@ -45,6 +45,15 @@ export function webArguments(method: WebMethod, args: unknown[]): unknown[] {
     return args.length === 1
       ? z.tuple([ids]).parse(args)
       : z.tuple([ids, z.string().max(200)]).parse(args);
+  if (method === 'chaoxing.markWork')
+    return z
+      .tuple([
+        ids,
+        ids,
+        z.object({ read: z.boolean().optional(), muted: z.boolean().optional() }).strict(),
+      ])
+      .parse(args);
+  if (method === 'chaoxing.setReminders') return z.tuple([z.boolean()]).parse(args);
   if (
     [
       'chaoxing.works',

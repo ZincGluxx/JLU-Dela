@@ -65,6 +65,22 @@ describe('unified calendar projection', () => {
       ).entries,
     ).toEqual([]);
   });
+  it('leaves ignored assignments out of the calendar', () => {
+    const result = studyEntries(
+      [],
+      null,
+      {
+        ...assignments,
+        works: [
+          { ...work, id: 'keep' },
+          { ...work, id: 'skip', mutedAt: '2026-10-31T00:00:00Z' },
+        ],
+      },
+      start,
+      end,
+    );
+    expect(result.entries.map((entry) => entry.id)).toEqual(['assignment:a:keep']);
+  });
   it('reports missing semester dates and preserves undated personal items', () => {
     const todo: TodoItem = {
       id: 't',

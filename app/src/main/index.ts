@@ -25,6 +25,7 @@ import { registerTimetableIpc } from './timetable/ipc';
 import { registerJluPlatformsIpc } from './jlu/ipc';
 import { registerKnowledgeIpc } from './knowledge/ipc';
 import { registerChaoxingIpc } from './chaoxing/ipc';
+import { startWorkReminders } from './chaoxing/reminders';
 import { registerWebTabsIpc, hasWebTabs, closeAllWebTabs } from './chaoxing/web-tabs';
 import { registerVsjtuIpc } from './vsjtu/ipc';
 import { attachContextMenu, checkWorkspaceSender, isSameRendererNavigation } from './ipc';
@@ -122,6 +123,7 @@ const MAIL_REFRESH_MS = 5 * 60_000;
 let notificationTimer: ReturnType<typeof setInterval> | undefined;
 let mailTimer: ReturnType<typeof setInterval> | undefined;
 let stopUpdateCheck: (() => void) | undefined;
+let stopWorkReminders: (() => void) | undefined;
 let tray: Tray | undefined;
 let mainWindow: BrowserWindow | undefined;
 let quitting = false;
@@ -141,12 +143,13 @@ app.on('second-instance', () => {
   // 窗口尚未创建时，正常启动流程会显示它，不另建窗口。
 });
 if (smokeTest) {
+  // 各平台冒烟脚本都在这里兜底退出；终端冒烟要跑完整流程，慢机器上留足余量。
   setTimeout(
     () => {
       console.error('Smoke check timed out');
       app.exit(1);
     },
-    terminalSmokeTest ? 60000 : 15000,
+    terminalSmokeTest ? 120000 : 15000,
   ).unref();
 }
 
@@ -258,6 +261,7 @@ app
       syncMail();
       notificationTimer = setInterval(refresh, NOTIFICATION_REFRESH_MS);
       mailTimer = setInterval(syncMail, MAIL_REFRESH_MS);
+      stopWorkReminders = startWorkReminders();
       stopUpdateCheck = startBackgroundUpdateCheck();
     }
   })
@@ -520,6 +524,7 @@ app.on('will-quit', () => {
   clearInterval(notificationTimer);
   clearInterval(mailTimer);
   stopUpdateCheck?.();
+  stopWorkReminders?.();
   // 远端 helper 不等我们说再见：它靠心跳消失后自己退出（最多 5 分钟），这里只关本地隧道。
   // watch 的事件流要先收掉，否则它会在退出过程中试图把通道重新建起来。
   closeRemoteWatch();

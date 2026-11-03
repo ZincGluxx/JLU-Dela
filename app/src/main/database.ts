@@ -182,6 +182,15 @@ const schema: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_todo_owner ON todo_items(owner)`,
   `CREATE TABLE IF NOT EXISTS qq_message_todos (account_id TEXT NOT NULL, group_id TEXT NOT NULL, message_id TEXT NOT NULL, todo_id TEXT NOT NULL REFERENCES todo_items(id) ON DELETE CASCADE, PRIMARY KEY(account_id,group_id,message_id))`,
+  // 学习通作业的本地标记：已读、忽略与已提醒过的截止时间；与学校数据分开存放，刷新作业列表不丢失。
+  `CREATE TABLE IF NOT EXISTS chaoxing_work_flags (
+    course_id TEXT NOT NULL,
+    work_id TEXT NOT NULL,
+    read_at TEXT,
+    muted_at TEXT,
+    reminder_key TEXT,
+    PRIMARY KEY(course_id, work_id)
+  )`,
   // 会话索引：完整记录是 Pi 的 JSONL 会话文件（file 列）；项目即 kind='project' 的条目，
   // 会话自带工作目录（通用会话是 chat-sessions 下的私有目录），cwd 为 NULL 时按条目 local_path 解析。
   `CREATE TABLE IF NOT EXISTS sessions (

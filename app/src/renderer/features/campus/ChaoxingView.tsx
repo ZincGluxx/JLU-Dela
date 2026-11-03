@@ -8,19 +8,51 @@ import type {
   ChaoxingApi,
 } from '../../../shared/chaoxing';
 import type { KnowledgeState } from '../../../shared/knowledge';
-import { chaoxingWorkTime } from '../../../shared/chaoxing-calendar';
+import {
+  chaoxingWorkSort,
+  chaoxingWorkSummary,
+  chaoxingWorkTime,
+} from '../../../shared/chaoxing-calendar';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { SegmentedControl } from '../../components/ui/beautifului/atoms/SegmentedControl';
 import { DesktopOnlyNotice } from '../../components/ui/desktop-only-notice';
 import { useNavigationStore } from '../../navigation/view';
 import { errorText } from '../../workspace/store';
+import { ChaoxingWorkBoard } from './ChaoxingWorkBoard';
 
 export type ChaoxingPageApi = Omit<
   ChaoxingApi,
-  'importFile' | 'calendar' | 'syncCalendar' | 'bindCourse' | 'linkFile' | 'openFilesPage'
+  | 'importFile'
+  | 'calendar'
+  | 'syncCalendar'
+  | 'bindCourse'
+  | 'linkFile'
+  | 'openFilesPage'
+  | 'openWorksPage'
+  | 'markWork'
+  | 'reminders'
+  | 'setReminders'
+  | 'checkReminders'
+  | 'onOpenWork'
 > &
-  Partial<Pick<ChaoxingApi, 'importFile' | 'bindCourse' | 'linkFile' | 'openFilesPage'>>;
+  Partial<
+    Pick<
+      ChaoxingApi,
+      | 'importFile'
+      | 'calendar'
+      | 'syncCalendar'
+      | 'bindCourse'
+      | 'linkFile'
+      | 'openFilesPage'
+      | 'openWorksPage'
+      | 'markWork'
+      | 'reminders'
+      | 'setReminders'
+      | 'checkReminders'
+      | 'onOpenWork'
+    >
+  >;
 export function ChaoxingView({ api = window.dela?.chaoxing }: { api?: ChaoxingPageApi } = {}) {
   return api ? (
     <ChaoxingPage api={api} />
@@ -39,6 +71,7 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
   const [files, setFiles] = useState<ChaoxingFolder | null>(null);
   const [works, setWorks] = useState<ChaoxingWorks | null>(null);
   const [tab, setTab] = useState<'资料' | '作业'>('资料');
+  const [mode, setMode] = useState<'课程' | '作业'>('课程');
   const [path, setPath] = useState<{ id: string; name: string }[]>([]);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -169,6 +202,7 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
       `${row.name} ${row.teacher}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
     ) ?? [];
   const snapshot = course ? (tab === '资料' ? files : works) : data;
+  const board = !course && mode === '作业';
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-surface">
       <div className="mx-auto grid w-full max-w-5xl gap-6 px-6 py-8 md:px-10">
@@ -179,25 +213,29 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
               <h1 className="text-xl font-semibold text-ink">学习通</h1>
             </div>
             <p className="mt-1 text-xs text-ink-3">
-              {snapshot
-                ? `更新于 ${new Date(snapshot.syncedAt).toLocaleString('zh-CN')}`
-                : '尚未同步'}
+              {board
+                ? '汇总所有课程的作业与截止时间'
+                : snapshot
+                  ? `更新于 ${new Date(snapshot.syncedAt).toLocaleString('zh-CN')}`
+                  : '尚未同步'}
             </p>
           </div>
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() =>
-              void (course
-                ? tab === '资料'
-                  ? loadFiles(course, path)
-                  : loadWorks(course)
-                : syncCourses())
-            }
-          >
-            <RefreshCw className={busy ? 'size-4 animate-spin' : 'size-4'} />
-            {busy ? '正在读取…' : data ? '刷新' : '登录并同步'}
-          </Button>
+          {!board && (
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                void (course
+                  ? tab === '资料'
+                    ? loadFiles(course, path)
+                    : loadWorks(course)
+                  : syncCourses())
+              }
+            >
+              <RefreshCw className={busy ? 'size-4 animate-spin' : 'size-4'} />
+              {busy ? '正在读取…' : data ? '刷新' : '登录并同步'}
+            </Button>
+          )}
         </header>
         {error && (
           <p role="alert" className="rounded-control bg-field p-3 text-13 text-ink">
@@ -206,50 +244,77 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
         )}
         {!course ? (
           <>
-            <div className="relative">
-              <Search className="absolute left-3 top-2 size-4 text-ink-3" />
-              <Input
-                aria-label="筛选学习通课程"
-                placeholder="搜索课程或教师"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="pl-9"
+            <fieldset disabled={busy}>
+              <SegmentedControl
+                options={['课程', '作业'] as const}
+                value={mode}
+                onChange={setMode}
               />
-            </div>
-            {!data && (
-              <p className="py-12 text-center text-sm text-ink-3">
-                登录学习通，读取课程中的资料和作业。需要验证时会显示学习通登录窗口。
-              </p>
-            )}
-            {data && (
+            </fieldset>
+            {mode === '作业' ? (
+              <ChaoxingWorkBoard
+                api={api}
+                now={now}
+                onOpenCourse={(courseId) => {
+                  const row = data?.items.find((item) => item.id === courseId);
+                  if (!row) return;
+                  setCourse(row);
+                  setFiles(null);
+                  setWorks(null);
+                  setTab('作业');
+                  void loadWorks(row);
+                }}
+              />
+            ) : (
               <>
-                <p className="text-xs text-ink-3">当前课程列表 · {data.items.length} 门</p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {filtered.map((row) => (
-                    <button
-                      key={row.id}
-                      disabled={busy}
-                      className="grid min-w-0 gap-2 rounded-xl bg-field p-5 text-left hover:bg-hover disabled:opacity-50"
-                      onClick={() => {
-                        setCourse(row);
-                        setFiles(null);
-                        setWorks(null);
-                        setTab('资料');
-                        void loadFiles(row, []);
-                      }}
-                    >
-                      <h2 className="break-words text-base font-semibold text-ink">{row.name}</h2>
-                      <p className="break-words text-13 text-ink-3">{row.teacher}</p>
-                      <span className="text-xs text-ink-3">
-                        {row.ended ? '已结束课程' : '查看资料与作业'}
-                      </span>
-                    </button>
-                  ))}
+                <div className="relative">
+                  <Search className="absolute left-3 top-2 size-4 text-ink-3" />
+                  <Input
+                    aria-label="筛选学习通课程"
+                    placeholder="搜索课程或教师"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    className="pl-9"
+                  />
                 </div>
-                {!filtered.length && (
-                  <p className="text-13 text-ink-3">
-                    {data.items.length ? '没有匹配的课程。' : '学校当前列表未返回课程。'}
+                {!data && (
+                  <p className="py-12 text-center text-sm text-ink-3">
+                    登录学习通，读取课程中的资料和作业。需要验证时会显示学习通登录窗口。
                   </p>
+                )}
+                {data && (
+                  <>
+                    <p className="text-xs text-ink-3">当前课程列表 · {data.items.length} 门</p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {filtered.map((row) => (
+                        <button
+                          key={row.id}
+                          disabled={busy}
+                          className="grid min-w-0 gap-2 rounded-xl bg-field p-5 text-left hover:bg-hover disabled:opacity-50"
+                          onClick={() => {
+                            setCourse(row);
+                            setFiles(null);
+                            setWorks(null);
+                            setTab('资料');
+                            void loadFiles(row, []);
+                          }}
+                        >
+                          <h2 className="break-words text-base font-semibold text-ink">
+                            {row.name}
+                          </h2>
+                          <p className="break-words text-13 text-ink-3">{row.teacher}</p>
+                          <span className="text-xs text-ink-3">
+                            {row.ended ? '已结束课程' : '查看资料与作业'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {!filtered.length && (
+                      <p className="text-13 text-ink-3">
+                        {data.items.length ? '没有匹配的课程。' : '学校当前列表未返回课程。'}
+                      </p>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -472,7 +537,42 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
               </>
             ) : (
               <>
-                {works?.items.map((row) => (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-ink-3">
+                    {works
+                      ? `待完成 ${chaoxingWorkSummary(works.items, now).pending} 份 · 已完成 ${chaoxingWorkSummary(works.items, now).done} 份`
+                      : '尚未读取作业'}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {api.openWorksPage && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() =>
+                          void api.openWorksPage!(course.id).catch((cause) =>
+                            setError(errorText(cause)),
+                          )
+                        }
+                      >
+                        打开课程作业页
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => {
+                        setCourse(null);
+                        setMode('作业');
+                        setError(null);
+                      }}
+                    >
+                      查看全部课程作业
+                    </Button>
+                  </div>
+                </div>
+                {[...(works?.items ?? [])].sort(chaoxingWorkSort).map((row) => (
                   <article key={row.id} className="grid gap-2 rounded-control bg-field p-4">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <h3 className="min-w-0 flex-1 break-words text-sm font-medium text-ink">
@@ -483,16 +583,14 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
                     <p className="text-xs text-ink-2">{chaoxingWorkTime(row, now)}</p>
                     <p className="text-2xs text-ink-3">
                       更新于{' '}
-                      {new Date(row.detailSyncedAt ?? works.syncedAt).toLocaleString('zh-CN')}
+                      {new Date(row.detailSyncedAt ?? works!.syncedAt).toLocaleString('zh-CN')}
                     </p>
                     {window.dela?.webTabs ? (
                       <Button
                         size="sm"
                         variant="outline"
                         className="justify-self-start"
-                        onClick={() =>
-                          course && useNavigationStore.getState().openWork(course.id, row.id)
-                        }
+                        onClick={() => useNavigationStore.getState().openWork(course.id, row.id)}
                       >
                         在工作台打开作业
                       </Button>

@@ -55,7 +55,9 @@ export function studyEntries(
       todo,
     }));
   const works = new Map(
-    (assignments?.works ?? []).map((work) => [`${work.courseId}:${work.id}`, work]),
+    (assignments?.works ?? [])
+      .filter((work) => !work.mutedAt)
+      .map((work) => [`${work.courseId}:${work.id}`, work]),
   );
   for (const [id, work] of works)
     entries.push({
