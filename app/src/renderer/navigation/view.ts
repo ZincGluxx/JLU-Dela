@@ -17,6 +17,7 @@ export type AppView =
   | 'campus'
   | 'workbench'
   | 'mail'
+  | 'qq'
   | 'timetable'
   | 'classroom'
   | 'chaoxing'
@@ -80,6 +81,7 @@ interface NavigationState {
   openDocument(key: string, options?: { keep?: boolean }): boolean;
   openTerminal(projectId: string): boolean;
   openWork(courseId: string, workId: string): boolean;
+  openQqGroup(accountId: string, groupId: string): boolean;
   openMail(messageId: number): boolean;
   openTodo(id: string): boolean;
   openSettings(section?: SettingsSectionId): boolean;
@@ -283,6 +285,8 @@ export const useNavigationStore = create<NavigationState>((set, get) => {
       revealInProject(documentTabId(key), get().projectId, options?.keep),
     openWork: (courseId, workId) =>
       revealInProject(workTabId({ courseId, workId }), get().projectId, true),
+    openQqGroup: (accountId, groupId) =>
+      revealInProject(`qq:${accountId}/${groupId}`, get().projectId, true),
     openTerminal: (projectId) => revealInProject(`terminal:${projectId}`, projectId),
 
     openMail: (messageId) => {

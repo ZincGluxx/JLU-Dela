@@ -11,6 +11,7 @@ export function purgeRemovedEntries(liveIds: Set<string>): void {
   const layout = useWorkbenchLayout.getState();
   const keep = (tabId: TabId) =>
     tabId.startsWith('chat:') ||
+    tabId.startsWith('qq:') ||
     tabId.startsWith('preview:source:') ||
     liveIds.has(tabId.slice(tabId.indexOf(':') + 1));
   for (const group of walkGroups(layout.root))

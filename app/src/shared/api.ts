@@ -1,4 +1,5 @@
 import type { WebTabsApi } from './web-tabs';
+import type { QqApi } from './qq';
 // 聚合出口：领域契约在同目录领域文件，本文件只 re-export，保证全仓既有 import 路径不变。
 // 领域类型变化请直接改对应文件，不在此处添加逻辑。
 import type { BackupApi } from './backup';
@@ -41,6 +42,7 @@ import type { WindowApi } from './window';
 import type { WorkspaceApi } from './workspace';
 
 export interface DelaApi {
+  readonly qq: QqApi;
   readonly webTabs: WebTabsApi;
   readonly knowledge: KnowledgeApi;
   readonly chaoxing: ChaoxingApi;

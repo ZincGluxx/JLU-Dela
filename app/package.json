@@ -13,6 +13,8 @@
     "pnpm": ">=12.3.4 <13"
   },
   "scripts": {
+    "smoke:qq": "node scripts/run-ts-smoke.ts qq-smoke",
+    "probe:qq": "node scripts/run-ts-smoke.ts qq-runtime-probe",
     "version:bump": "npm version --no-git-tag-version",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
@@ -63,6 +65,7 @@
     "@earendil-works/pi-mcp": "1.1.0",
     "better-sqlite3": "13.0.3",
     "electron-updater": "6.8.10",
+    "extract-zip": "2.0.1",
     "imapflow": "2.0.0",
     "node-pty": "1.1.0",
     "nodemailer": "10.0.1",
@@ -113,6 +116,7 @@
     "oxlint": "1.82.0",
     "pdfjs-dist": "6.3.289",
     "prettier": "3.9.6",
+    "qrcode.react": "4.2.0",
     "radix-ui": "1.6.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",

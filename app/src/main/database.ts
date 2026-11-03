@@ -6,6 +6,9 @@ import { mkdirSync } from 'node:fs';
 let database: Database.Database | null = null;
 
 const schema: string[] = [
+  `CREATE TABLE IF NOT EXISTS qq_groups (account_id TEXT NOT NULL, group_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(account_id,group_id))`,
+  `CREATE TABLE IF NOT EXISTS qq_messages (account_id TEXT NOT NULL, group_id TEXT NOT NULL, id TEXT NOT NULL, sent_at TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(account_id,group_id,id))`,
+  `CREATE INDEX IF NOT EXISTS qq_messages_time ON qq_messages(account_id,group_id,sent_at DESC)`,
   `CREATE TABLE IF NOT EXISTS knowledge_roots (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE)`,
   `CREATE TABLE IF NOT EXISTS knowledge_courses (id TEXT PRIMARY KEY, root_id TEXT NOT NULL REFERENCES knowledge_roots(id), name TEXT NOT NULL, relative_path TEXT NOT NULL, session_id TEXT, UNIQUE(root_id,relative_path))`,
   `CREATE TABLE IF NOT EXISTS knowledge_documents (course_id TEXT NOT NULL REFERENCES knowledge_courses(id), path TEXT NOT NULL, revision TEXT NOT NULL, pages TEXT NOT NULL, PRIMARY KEY(course_id,path))`,
@@ -178,6 +181,7 @@ const schema: string[] = [
     notice_at TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_todo_owner ON todo_items(owner)`,
+  `CREATE TABLE IF NOT EXISTS qq_message_todos (account_id TEXT NOT NULL, group_id TEXT NOT NULL, message_id TEXT NOT NULL, todo_id TEXT NOT NULL REFERENCES todo_items(id) ON DELETE CASCADE, PRIMARY KEY(account_id,group_id,message_id))`,
   // 会话索引：完整记录是 Pi 的 JSONL 会话文件（file 列）；项目即 kind='project' 的条目，
   // 会话自带工作目录（通用会话是 chat-sessions 下的私有目录），cwd 为 NULL 时按条目 local_path 解析。
   `CREATE TABLE IF NOT EXISTS sessions (
