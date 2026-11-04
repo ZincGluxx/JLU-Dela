@@ -35,6 +35,7 @@ export type {
 } from './capabilities';
 import type { ShuiyuanApi } from './shuiyuan';
 import type { TimetableApi } from './timetable';
+import type { CampusVpnApi } from './campus-vpn';
 import type { TodoApi } from './todo';
 import type { TerminalApi } from './terminal';
 import type { UpdateApi } from './update';
@@ -44,6 +45,8 @@ import type { WorkspaceApi } from './workspace';
 export interface DelaApi {
   readonly qq: QqApi;
   readonly webTabs: WebTabsApi;
+  /** 校外访问学校平台的 VPN 设置（默认直连，可切到学校 WebVPN 入口）。 */
+  readonly campusVpn: CampusVpnApi;
   readonly knowledge: KnowledgeApi;
   readonly chaoxing: ChaoxingApi;
   readonly jluPlatforms: JluPlatformsApi;
@@ -117,6 +120,13 @@ export type {
   TimetableApi,
 } from './timetable';
 export { calendarEventColors } from './timetable';
+export type {
+  CampusVpnMode,
+  CampusVpnConfig,
+  CampusVpnStatus,
+  CampusVpnLoginResult,
+  CampusVpnApi,
+} from './campus-vpn';
 
 export type {
   ShuiyuanState,

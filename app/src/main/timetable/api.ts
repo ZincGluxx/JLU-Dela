@@ -9,7 +9,12 @@ import {
 } from '../../shared/api';
 import { getDatabase } from '../database';
 import { lessonOccurrences } from '../../shared/schedule';
-import { CampusAuthError, flushCampusSession, openCampusLoginWindow } from '../campus';
+import {
+  CampusAuthError,
+  CampusVpnAuthError,
+  flushCampusSession,
+  openCampusLoginWindow,
+} from '../campus';
 import { readSetting, writeSetting } from '../settings/prefs';
 import { fetchJluTimetable, isJluTimetableUrl, JLU_TIMETABLE_URL, probeJluTimetable } from './jlu';
 import { restoreJluTimetableSession } from './auth';
@@ -168,6 +173,8 @@ export async function syncTimetable(requested?: unknown): Promise<TimetableResul
       data = await fetchJluTimetable(semester);
     } catch (error) {
       if (!(error instanceof CampusAuthError)) throw error;
+      // VPN 会话失效时重建 SSO 会话没有意义，直接让用户回 VPN 入口重新登录。
+      if (error instanceof CampusVpnAuthError) throw error;
       await restoreJluTimetableSession();
       try {
         data = await fetchJluTimetable(semester);

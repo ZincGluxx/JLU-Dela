@@ -1,5 +1,6 @@
 import { webTabs } from './web-tabs';
 import { qq } from './qq';
+import { campusVpn } from './campus-vpn';
 import { contextBridge } from 'electron';
 import { version } from '../../package.json';
 import type { DelaApi } from '../shared/api';
@@ -32,6 +33,7 @@ import { chaoxing } from './chaoxing';
 contextBridge.exposeInMainWorld('dela', {
   qq,
   webTabs,
+  campusVpn,
   knowledge,
   chaoxing,
   jluPlatforms,

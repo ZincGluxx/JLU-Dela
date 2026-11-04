@@ -24,7 +24,8 @@ export function platformFailureHelp(status: Pick<PlatformProgress, 'error' | 're
     return {
       title: '暂时无法连接平台',
       steps: [
-        '在浏览器检查平台是否可访问；校外按学校要求连接 VPN。',
+        '在浏览器检查平台是否可访问。',
+        '不在校园网内时：装了学校 VPN 客户端的先连接客户端再重试；只想用浏览器登录的，到「校外网络（VPN）」切到学校 WebVPN 并完成登录。',
         '网络恢复后点击重试；若平台本身不可用，请稍后再试，无需清除登录记录。',
       ],
       checkWebsite: true,

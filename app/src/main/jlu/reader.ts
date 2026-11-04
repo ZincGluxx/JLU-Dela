@@ -1,5 +1,6 @@
 import { BrowserWindow, type Session, type WebContents } from 'electron';
 import { CAMPUS_PARTITION, CampusAuthError, flushCampusSession, getCampusSession } from '../campus';
+import { campusRealUrl, campusUrl } from '../campus-vpn';
 import { isJluLoginUrl } from '../timetable/jlu';
 
 /** 在学校页面的会话环境中读取固定数据；网页没有应用 preload。 */
@@ -52,8 +53,10 @@ export async function readSchoolPage(options: {
       if (done || checking) return;
       checking = true;
       const current = window.webContents.getURL();
+      // 开启校外 VPN 时地址被入口包装，判断登录页与目标页前先还原。
+      const real = campusRealUrl(current);
       try {
-        if ((options.isLoginUrl ?? isJluLoginUrl)(current)) {
+        if ((options.isLoginUrl ?? isJluLoginUrl)(real)) {
           const needsInput: boolean = await window.webContents.executeJavaScript(
             options.loginScript ??
               `Boolean(document.querySelector('form#loginForm, input[type="password"], input[name="WxCode"]'))`,
@@ -68,7 +71,7 @@ export async function readSchoolPage(options: {
             }
           }
         } else if (!window.webContents.isLoadingMainFrame() && current.startsWith('https://')) {
-          const url = new URL(current);
+          const url = new URL(real);
           if (!resumed && options.resumeFrom?.(url)) {
             resumed = true;
             if (shown) {
@@ -78,7 +81,7 @@ export async function readSchoolPage(options: {
                 25000,
               );
             }
-            await window.loadURL(options.url);
+            await window.loadURL(campusUrl(options.url));
             return;
           }
           if (!options.accepts(url)) return;
@@ -118,7 +121,7 @@ export async function readSchoolPage(options: {
         finish(new Error(`${options.title}连接失败，请检查网络或校园网/VPN`));
     });
     window.on('closed', () => finish(new Error('已取消学校登录，本地缓存未更新')));
-    void window.loadURL(options.url).catch((error: unknown) => {
+    void window.loadURL(campusUrl(options.url)).catch((error: unknown) => {
       if (!(error instanceof Error && error.message.includes('ERR_ABORTED')))
         finish(new Error(`${options.title}连接失败，请检查网络或校园网/VPN`));
     });

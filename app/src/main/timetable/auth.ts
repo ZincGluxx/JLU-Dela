@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { CampusAuthError, CAMPUS_PARTITION, getCampusSession } from '../campus';
+import { campusRealUrl, campusUrl } from '../campus-vpn';
 import { isJluLoginUrl, isJluTimetableUrl, JLU_TIMETABLE_URL, probeJluTimetable } from './jlu';
 
 /** 只走学校正常 SSO；确认页面要求人工认证时才报告 auth。 */
@@ -31,12 +32,13 @@ export async function restoreJluTimetableSession(): Promise<void> {
       if (finished || checking) return;
       checking = true;
       try {
-        const url = window.webContents.getURL();
+        // 开启校外 VPN 时地址被入口包装，判断登录页与课表页前先还原。
+        const url = campusRealUrl(window.webContents.getURL());
         if (isJluLoginUrl(url)) {
           const needsInput: boolean = await window.webContents.executeJavaScript(
             `Boolean(document.querySelector('form#loginForm, input[type="password"], input[name="WxCode"]'))`,
           );
-          if (needsInput && window.webContents.getURL() === url)
+          if (needsInput && campusRealUrl(window.webContents.getURL()) === url)
             finish(new CampusAuthError('学校统一认证需要你完成登录或验证'));
         } else if (isJluTimetableUrl(url)) {
           await probeJluTimetable();
@@ -60,7 +62,7 @@ export async function restoreJluTimetableSession(): Promise<void> {
         finish(new Error('无法连接学校统一认证，请检查网络或校园网/VPN'));
     });
     window.on('closed', () => finish(new Error('学校统一认证恢复已中断，请稍后重试')));
-    void window.loadURL(JLU_TIMETABLE_URL).catch((error: unknown) => {
+    void window.loadURL(campusUrl(JLU_TIMETABLE_URL)).catch((error: unknown) => {
       if (!(error instanceof Error && error.message.includes('ERR_ABORTED')))
         finish(new Error('无法连接学校统一认证，请检查网络或校园网/VPN'));
     });

@@ -3,6 +3,7 @@ import { LoaderCircle } from 'lucide-react';
 import type { TimetableState } from '../../../shared/timetable';
 import { jluServices } from '../../../shared/jlu';
 import { Button } from '../../components/ui/button';
+import { useNavigationStore } from '../../navigation/view';
 import { platformFailureHelp } from '../onboarding/platform-failure-help';
 
 type Attempt = {
@@ -197,11 +198,18 @@ export function AcademicConnection({
             ))}
           </ol>
           {help.checkWebsite && (
-            <div>
+            <div className="flex flex-wrap gap-2">
               <Button asChild size="sm" variant="outline">
                 <a href={jluServices[0].url} target="_blank" rel="noreferrer">
                   在浏览器检查教务
                 </a>
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => useNavigationStore.getState().navigate('campus')}
+              >
+                配置校外网络（VPN）
               </Button>
             </div>
           )}

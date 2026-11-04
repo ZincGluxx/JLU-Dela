@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindowConstructorOptions, Session, WebContents } from 'electron';
+import { JLU_WEBVPN_BASE } from '../../shared/campus-vpn';
+import { setCampusVpnConfig, toVpnUrl } from '../campus-vpn';
 
 const mock = vi.hoisted(() => ({
   userData: '',
@@ -476,5 +478,92 @@ describe('campusRequest', () => {
     expect((caught as Error).message).toBe('课表请求超时，请稍后重试');
     expect((caught as Error).cause).toBe('transient');
     expect(request.abort).toHaveBeenCalledOnce();
+  });
+});
+
+describe('У԰����У�� VPN', () => {
+  const campus = 'https://iedu.jlu.edu.cn/jwapp/sys/wdkb/modules/x.do';
+  const options = {
+    service: '�������',
+    loginError: '�����¼��ʧЧ�������µ�¼',
+    authRedirect: (target: string) => target.startsWith('https://cas.jlu.edu.cn/tpass/login'),
+  };
+
+  function requestFor(status: number | 'redirect', target?: string) {
+    const request = Object.assign(new EventEmitter(), {
+      setHeader: vi.fn(),
+      abort: vi.fn(),
+      end: vi.fn(() =>
+        queueMicrotask(() => {
+          if (status === 'redirect') {
+            request.emit('redirect', 302, 'GET', target);
+            return;
+          }
+          const response = Object.assign(new EventEmitter(), { statusCode: status });
+          request.emit('response', response);
+          response.emit('data', Buffer.from('{}'));
+          response.emit('end');
+        }),
+      ),
+    });
+    mock.netRequest.mockReturnValue(request);
+    return request;
+  }
+
+  it('wraps the request and its Origin under the gateway', async () => {
+    setCampusVpnConfig({ mode: 'webvpn' });
+    try {
+      requestFor(200);
+      await campusRequest({} as Session, campus, {
+        ...options,
+        headers: { Origin: 'https://iedu.jlu.edu.cn' },
+      });
+      const call = mock.netRequest.mock.calls.at(-1)![0] as { url: string };
+      expect(call.url).toBe(toVpnUrl(campus, { mode: 'webvpn', baseUrl: JLU_WEBVPN_BASE }));
+      expect(call.url).toContain(`${JLU_WEBVPN_BASE}/https/`);
+      const request = mock.netRequest.mock.results.at(-1)!.value as {
+        setHeader: ReturnType<typeof vi.fn>;
+      };
+      expect(request.setHeader).toHaveBeenCalledWith(
+        'Origin',
+        toVpnUrl('https://iedu.jlu.edu.cn', { mode: 'webvpn', baseUrl: JLU_WEBVPN_BASE }),
+      );
+    } finally {
+      setCampusVpnConfig({ mode: 'off' });
+    }
+  });
+
+  it('recognises the school login page even when the gateway wraps it', async () => {
+    setCampusVpnConfig({ mode: 'webvpn' });
+    try {
+      requestFor(
+        'redirect',
+        toVpnUrl('https://cas.jlu.edu.cn/tpass/login', {
+          mode: 'webvpn',
+          baseUrl: JLU_WEBVPN_BASE,
+        }),
+      );
+      const caught = await campusRequest({} as Session, campus, options).catch(
+        (error: unknown) => error,
+      );
+      expect(caught).toBeInstanceOf(CampusAuthError);
+      expect((caught as Error).message).toBe('�����¼��ʧЧ�������µ�¼');
+    } finally {
+      setCampusVpnConfig({ mode: 'off' });
+    }
+  });
+
+  it('reports an expired VPN session with a message that says what to do', async () => {
+    setCampusVpnConfig({ mode: 'webvpn' });
+    try {
+      requestFor('redirect', `${JLU_WEBVPN_BASE}/login?next=%2F`);
+      const caught = await campusRequest({} as Session, campus, options).catch(
+        (error: unknown) => error,
+      );
+      expect(caught).toBeInstanceOf(CampusAuthError);
+      expect((caught as Error).message).toContain('VPN');
+    } finally {
+      setCampusVpnConfig({ mode: 'off' });
+    }
   });
 });

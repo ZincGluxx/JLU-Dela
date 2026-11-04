@@ -2,6 +2,7 @@ import { ExternalLink, FolderOpen, GraduationCap } from 'lucide-react';
 import { jluServices, type JluServiceId } from '../../../shared/jlu';
 import { Button } from '../../components/ui/button';
 import { useNavigationStore } from '../../navigation/view';
+import { VpnCard } from './VpnCard';
 
 /** 每个平台的入口按钮：label 为文案，view 为应用内页面。 */
 const serviceActions: Record<
@@ -74,6 +75,7 @@ export function CampusView({
             </section>
           ))}
         </div>
+        <VpnCard />
         <section className="grid gap-3 rounded-xl bg-field p-5">
           <h2 className="text-base font-semibold text-ink">先整理你的课程资料</h2>
           <p className="text-13 leading-relaxed text-ink-3">

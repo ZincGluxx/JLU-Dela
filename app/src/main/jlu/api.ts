@@ -2,6 +2,7 @@ import type { WebContents } from 'electron';
 import { z } from 'zod';
 import type { JluPlatformResult } from '../../shared/jlu-platforms';
 import { CampusAuthError, createCampusLoginWindow, getCampusSession } from '../campus';
+import { campusUrl } from '../campus-vpn';
 import { getDatabase } from '../database';
 import { readSchoolPage } from './reader';
 import { learningScript, noticeDetailScript, noticeListScript } from '../../shared/jlu-collectors';
@@ -279,7 +280,7 @@ export async function syncRecordings(courseId: string, sender?: WebContents) {
 export async function openSchoolUrl(sender: WebContents, url: string, title: string) {
   await getCampusSession();
   const window = createCampusLoginWindow(sender, title);
-  await window.loadURL(url);
+  await window.loadURL(campusUrl(url));
   return window;
 }
 export async function openAttachment(

@@ -2,6 +2,14 @@ import { BrowserWindow, net, type Session, type WebContents } from 'electron';
 import { setTimeout as delay } from 'node:timers/promises';
 import { attachContextMenu } from './ipc';
 import { createCampusSessionStore } from './campus-session';
+import { CampusAuthError, CampusVpnAuthError } from './campus-error';
+import {
+  campusRealUrl,
+  campusUrl,
+  campusVpnConfig,
+  isVpnLoginUrl,
+  rewriteCampusHeaders,
+} from './campus-vpn';
 
 export const CAMPUS_PARTITION = 'persist:jlu-campus';
 const campusStore = createCampusSessionStore({
@@ -28,7 +36,7 @@ export interface CampusRequestOptions {
 }
 
 /** 登录失效错误：调用方据此引导重新登录，而非当作普通失败。 */
-export class CampusAuthError extends Error {}
+export { CampusAuthError, CampusVpnAuthError } from './campus-error';
 
 /**
  * 直接消费 Chromium 响应：Electron session.fetch 在内部构造 Response 时可能抛出未捕获的
@@ -41,8 +49,10 @@ export function campusRequest(
   options: CampusRequestOptions,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    // 开启校外 VPN 时把内网地址换成入口地址；请求头里的 Origin/Referer 同步替换。
+    const vpn = campusVpnConfig();
     const request = net.request({
-      url,
+      url: campusUrl(url),
       method: options.method ?? 'GET',
       session: campus,
       useSessionCookies: true,
@@ -61,10 +71,20 @@ export function campusRequest(
       () => fail(new Error(`${options.service}请求超时，请稍后重试`), true),
       15000,
     );
-    request.on('error', () => fail(new Error(`无法连接${options.service}，请检查网络`), true));
-    request.on('redirect', (_status, _method, target: string) => {
+    request.on('error', () => {
+      const error = new Error(
+        vpn.mode === 'webvpn'
+          ? `无法连接${options.service}，请确认已在校外 VPN 页面完成登录`
+          : `无法连接${options.service}，请检查网络`,
+      );
+      fail(error, true);
+    });
+    request.on('redirect', (_status, _method, value: string) => {
+      // 入口登录页说明 VPN 会话失效，按登录失效处理并引导重新登录 VPN。
+      if (isVpnLoginUrl(value))
+        return fail(new CampusVpnAuthError('校外 VPN 登录已失效，请重新登录学校 VPN 后再同步'));
       fail(
-        !options.authRedirect || options.authRedirect(target)
+        !options.authRedirect || options.authRedirect(campusRealUrl(value))
           ? new CampusAuthError(options.loginError)
           : new Error(`${options.service}返回了非登录跳转，请检查学校服务或校园网/VPN`),
       );
@@ -81,9 +101,13 @@ export function campusRequest(
       }
       if (status >= 300 && status < 400) {
         const location = response.headers?.location?.[0];
+        const target = location ? (URL.parse(location, url)?.href ?? '') : '';
+        if (location && isVpnLoginUrl(target)) {
+          fail(new CampusVpnAuthError('校外 VPN 登录已失效，请重新登录学校 VPN 后再同步'));
+          return;
+        }
         fail(
-          !options.authRedirect ||
-            (location && options.authRedirect(URL.parse(location, url)?.href ?? ''))
+          !options.authRedirect || (target && options.authRedirect(campusRealUrl(target)))
             ? new CampusAuthError(options.loginError)
             : new Error(`${options.service}返回了非登录跳转，请检查学校服务或校园网/VPN`),
         );
@@ -112,7 +136,7 @@ export function campusRequest(
         resolve(Buffer.concat(chunks).toString('utf8'));
       });
     });
-    for (const [name, value] of Object.entries(options.headers ?? {}))
+    for (const [name, value] of Object.entries(rewriteCampusHeaders(options.headers) ?? {}))
       request.setHeader(name, value);
     request.end(options.body);
   });
@@ -206,7 +230,9 @@ export async function openCampusLoginWindow(
     let currentUrl = '';
     const checkNavigation = async (url: string) => {
       currentUrl = url;
-      if (options.reached(url) && !checking && !completed) {
+      // 主体报告的可能是 VPN 入口地址，先还原成校园地址再判断是否到达目标站点。
+      const real = campusRealUrl(url);
+      if (options.reached(real) && !checking && !completed) {
         checking = true;
         try {
           await options.probe();
@@ -239,7 +265,7 @@ export async function openCampusLoginWindow(
         resolve({ ok: false, error: '未完成登录' });
       }
     });
-    void loginWindow.loadURL(options.url).catch((error: unknown) => {
+    void loginWindow.loadURL(campusUrl(options.url)).catch((error: unknown) => {
       finish({ ok: false, error: error instanceof Error ? error.message : String(error) });
     });
   });
@@ -267,7 +293,7 @@ export async function hiddenCampusLogin(url: string, probe: () => Promise<void>)
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   try {
     let failure: unknown;
-    window.loadURL(url).catch((error: unknown) => (failure = error));
+    window.loadURL(campusUrl(url)).catch((error: unknown) => (failure = error));
     for (let attempt = 1; ; attempt++) {
       await delay(1000);
       if (failure) throw failure;

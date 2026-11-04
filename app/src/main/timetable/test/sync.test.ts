@@ -3,18 +3,22 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 let database: Database.Database;
 vi.mock('../../database', () => ({ getDatabase: () => database }));
-vi.mock('../../campus', () => ({
-  CampusAuthError: class CampusAuthError extends Error {},
-  flushCampusSession: vi.fn(async () => {}),
-  openCampusLoginWindow: vi.fn(),
-}));
+vi.mock('../../campus', () => {
+  class CampusAuthError extends Error {}
+  return {
+    CampusAuthError,
+    CampusVpnAuthError: class CampusVpnAuthError extends CampusAuthError {},
+    flushCampusSession: vi.fn(async () => {}),
+    openCampusLoginWindow: vi.fn(),
+  };
+});
 vi.mock('../jlu', () => ({
   fetchJluTimetable: vi.fn(),
   probeJluTimetable: vi.fn(),
   JLU_TIMETABLE_URL: 'https://iedu.jlu.edu.cn/jwapp/sys/wdkb/*default/index.do',
 }));
 vi.mock('../auth', () => ({ restoreJluTimetableSession: vi.fn(async () => {}) }));
-import { CampusAuthError, flushCampusSession } from '../../campus';
+import { CampusAuthError, CampusVpnAuthError, flushCampusSession } from '../../campus';
 import { fetchJluTimetable } from '../jlu';
 import { restoreJluTimetableSession } from '../auth';
 import { getTimetableState, listLessons, querySchedule, syncTimetable } from '../api';
@@ -115,6 +119,19 @@ it('silently restores SSO once and retries the same requested semester', async (
   expect(restoreJluTimetableSession).toHaveBeenCalledOnce();
   expect(fetchTimetable.mock.calls).toEqual([['2026-2027-1'], ['2026-2027-1']]);
   expect(listLessons('2026-2027-1')).toHaveLength(1);
+});
+
+it('asks for a VPN re-login instead of trying SSO when the gateway session expired', async () => {
+  await syncTimetable();
+  const before = getTimetableState();
+  fetchTimetable.mockRejectedValueOnce(new CampusVpnAuthError('校外 VPN 登录已失效'));
+  expect(await syncTimetable()).toEqual({
+    ok: false,
+    error: '校外 VPN 登录已失效',
+    reason: 'auth',
+  });
+  expect(restoreJluTimetableSession).not.toHaveBeenCalled();
+  expect(getTimetableState()).toEqual(before);
 });
 
 it.each(['网络不可达', '教务拒绝访问（403）', '接口结构变化'])(
