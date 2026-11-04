@@ -15,6 +15,17 @@ const profile = mkdtempSync(join(tmpdir(), 'jlu-timetable-smoke-'));
 for (const name of ['userData', 'home', 'documents']) app.setPath(name, profile);
 process.argv.push('--terminal-smoke-test');
 const schoolUrl = 'https://iedu.jlu.edu.cn/jwapp/sys/wdkb/*default/index.do';
+// 校外 VPN：学校 WebVPN 入口与 iedu 的加密主机（AES-128-CFB，key=IV=wrdvpnisthebest!）。
+const vpnRoot = 'https://webvpn.jlu.edu.cn';
+const encodedIedu = (() => {
+  const key = Buffer.from('wrdvpnisthebest!', 'utf8');
+  const host = 'iedu.jlu.edu.cn';
+  const padded = host + '0'.repeat((16 - (host.length % 16)) % 16);
+  const cipher = require('node:crypto').createCipheriv('aes-128-cfb', key, key);
+  const encrypted = Buffer.concat([cipher.update(Buffer.from(padded, 'utf8')), cipher.final()]);
+  return key.toString('hex') + encrypted.toString('hex').slice(0, host.length * 2);
+})();
+let vpnExpired = false;
 let failure = 'none';
 let recovery = 'automatic';
 const schoolWindows = [];
@@ -44,7 +55,11 @@ const fixture = {
   xswpkc: [],
 };
 net.request = (options) => {
-  assert.equal(new URL(options.url).hostname, 'iedu.jlu.edu.cn');
+  const target = new URL(options.url);
+  assert.ok(
+    target.hostname === 'iedu.jlu.edu.cn' || target.hostname === 'webvpn.jlu.edu.cn',
+    `unexpected host: ${target.hostname}`,
+  );
   assert.equal(options.useSessionCookies, true);
   const request = new EventEmitter();
   let body = '';
@@ -57,6 +72,15 @@ net.request = (options) => {
     body += value ?? '';
     requests.push({ url: options.url, body });
     setImmediate(() => {
+      // VPN 入口本身：未登录时跳登录页，用来说明「能连上但还没登录」。
+      if (target.hostname === 'webvpn.jlu.edu.cn' && target.pathname === '/') {
+        request.emit('redirect', 302, 'GET', `${vpnRoot}/login`, {});
+        return;
+      }
+      if (vpnExpired && target.hostname === 'webvpn.jlu.edu.cn') {
+        request.emit('redirect', 302, 'GET', `${vpnRoot}/login?next=%2F`, {});
+        return;
+      }
       if (failure === 'offline') return request.emit('error', new Error('fixture offline'));
       if (failure === 'expired' || failure === 'redirect') {
         request.emit(
@@ -242,7 +266,47 @@ async function run(window) {
   assert.ok(
     requests.some((request) => new URLSearchParams(request.body).get('XNXQDM') === '2026-2027-1'),
   );
+
+  // 校外 VPN：启用后所有校园请求改走入口地址，入口登录失效时给出明确提示。
+  failure = 'none';
+  assert.equal((await js('window.dela.campusVpn.get()')).mode, 'off');
+  await js('window.dela.campusVpn.set({ mode: "webvpn" })');
+  assert.equal((await js('window.dela.campusVpn.get()')).mode, 'webvpn');
+  const status = await js('window.dela.campusVpn.status()');
+  assert.equal(status.reachable, true, 'gateway reachable');
+  assert.equal(status.authenticated, false, 'gateway login not yet done');
+
+  let mark = requests.length;
+  const wrapped = await js('window.dela.timetable.syncNow("2026-2027-1")');
+  assert.equal(wrapped.ok, true);
+  const wrappedUrls = requests.slice(mark).map((request) => request.url);
+  assert.ok(wrappedUrls.length > 0, 'requests issued through the gateway');
+  assert.ok(
+    wrappedUrls.every((url) => url.startsWith(`${vpnRoot}/https/`)),
+    'every campus request goes through the gateway',
+  );
+  assert.ok(
+    wrappedUrls.every((url) => url.includes(`/https/${encodedIedu}/`)),
+    'gateway address carries the encrypted campus host',
+  );
+
+  vpnExpired = true;
+  const expired = await js('window.dela.timetable.syncNow("2026-2027-1")');
+  assert.equal(expired.ok, false);
+  assert.equal(expired.reason, 'auth');
+  assert.ok(expired.error.includes('VPN'), 'VPN expiry is explained');
+
+  vpnExpired = false;
+  await js('window.dela.campusVpn.set({ mode: "off" })');
+  mark = requests.length;
+  const direct = await js('window.dela.timetable.syncNow("2026-2027-1")');
+  assert.equal(direct.ok, true);
+  assert.ok(
+    requests.slice(mark).every((request) => new URL(request.url).hostname === 'iedu.jlu.edu.cn'),
+    'turning VPN off goes back to direct requests',
+  );
+
   console.log(
-    'Timetable smoke passed with synthetic fixtures: login, SSO recovery, manual-only authentication, error classification, cache preservation, clock times, and four viewport widths. No school account or live school request was used.',
+    'Timetable smoke passed with synthetic fixtures: login, SSO recovery, manual-only authentication, error classification, VPN gateway wrapping and expiry guidance, cache preservation, clock times, and four viewport widths. No school account or live school request was used.',
   );
 }
