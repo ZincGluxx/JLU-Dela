@@ -4,10 +4,15 @@ export interface ChaoxingCourse {
   name: string;
   teacher: string;
   ended: boolean;
+  remark?: string;
+}
+export function chaoxingCourseLabel(course: Pick<ChaoxingCourse, 'name' | 'remark'>): string {
+  return course.remark || course.name;
 }
 export interface ChaoxingCourses {
   items: ChaoxingCourse[];
   syncedAt: string;
+  retainedCourseIds?: string[];
 }
 export interface ChaoxingLocalCourse {
   knowledgeCourseId: string;
@@ -45,6 +50,7 @@ export interface ChaoxingWork {
   timing: string;
   detailTiming?: string;
   detailSyncedAt?: string;
+  detailError?: string;
   /** 本地标记：手动标为已读的时间（与学校状态无关）。 */
   readAt?: string;
   /** 本地标记：被忽略的时间；忽略的作业不计入待完成，也不参与截止提醒。 */
@@ -76,6 +82,8 @@ export interface ChaoxingApi {
   syncCalendar(): Promise<ChaoxingCalendarSync>;
   courses(): Promise<ChaoxingCourses | null>;
   syncCourses(): Promise<ChaoxingResult<ChaoxingCourses>>;
+  setRetainedCourses(courseIds: string[]): Promise<ChaoxingCourses>;
+  setCourseRemark(courseId: string, remark: string): Promise<ChaoxingCourses>;
   files(courseId: string, folderId?: string): Promise<ChaoxingFolder | null>;
   syncFiles(courseId: string, folderId?: string): Promise<ChaoxingResult<ChaoxingFolder>>;
   works(courseId: string): Promise<ChaoxingWorks | null>;

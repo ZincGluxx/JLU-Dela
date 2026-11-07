@@ -63,6 +63,8 @@ import {
   getChaoxingFiles,
   getChaoxingWorks,
   syncChaoxingCourses,
+  setRetainedChaoxingCourses,
+  setChaoxingCourseRemark,
   syncChaoxingFiles,
   syncChaoxingWorks,
   importChaoxingFile,
@@ -96,7 +98,8 @@ async function seedCourse() {
         url: 'https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=1&clazzid=2&enc=private',
       },
     ]);
-  return syncChaoxingCourses();
+  await syncChaoxingCourses();
+  return setRetainedChaoxingCourses(['1:2']);
 }
 async function seedFile() {
   await seedCourse();
@@ -280,6 +283,156 @@ it('aggregates only cached course works, without reading a school page or exposi
   expect(JSON.stringify(getChaoxingCalendar())).not.toContain('private');
   expect(reader).not.toHaveBeenCalled();
 });
+
+it('requires a course selection and hides unretained works without deleting their cache', async () => {
+  await seedCourse();
+  db.prepare('DELETE FROM jlu_platform_cache WHERE key=?').run('cx:retained-courses');
+  expect(getChaoxingCourses()!.retainedCourseIds).toEqual([]);
+  db.prepare('INSERT INTO jlu_platform_cache VALUES (?, ?)').run(
+    'cx:works:1:2',
+    JSON.stringify({
+      courseId: '1:2',
+      syncedAt: '2026-11-07T00:00:00Z',
+      items: [{ id: 'w', title: '课程作业', status: '未交', timing: '截止时间：2026-11-08 23:59' }],
+    }),
+  );
+  expect(getChaoxingCalendar().works).toEqual([]);
+  setRetainedChaoxingCourses(['1:2']);
+  expect(getChaoxingCalendar().works).toHaveLength(1);
+  setRetainedChaoxingCourses([]);
+  expect(getChaoxingCalendar()).toMatchObject({ courses: [], works: [] });
+  expect(getChaoxingWorks('1:2')!.items[0]!.title).toBe('课程作业');
+  expect(() => setRetainedChaoxingCourses(['unknown'])).toThrow('列表已变化');
+  expect(getChaoxingCourses()!.retainedCourseIds).toEqual([]);
+  setRetainedChaoxingCourses(['1:2']);
+  expect(getChaoxingCalendar().works).toHaveLength(1);
+});
+
+it('stores course remarks separately, preserves them across sync and allows restoring the school name', async () => {
+  await seedCourse();
+  const renamed = setChaoxingCourseRemark('1:2', '  安卓课  ');
+  expect(renamed.items[0]).toMatchObject({ id: '1:2', name: '示例课程', remark: '安卓课' });
+  expect(renamed.retainedCourseIds).toEqual(['1:2']);
+  const schoolCache = db
+    .prepare("SELECT data FROM jlu_platform_cache WHERE key='cx:courses'")
+    .get() as { data: string };
+  expect(schoolCache.data).not.toContain('安卓课');
+  setRetainedChaoxingCourses([]);
+  expect(getChaoxingCourses()!.items[0]!.remark).toBe('安卓课');
+  reader
+    .mockResolvedValueOnce({ url: 'https://mooc2-ans.chaoxing.com/visit/interaction' })
+    .mockResolvedValueOnce([
+      {
+        id: '1:2',
+        name: '学校更新后的课程名',
+        teacher: '',
+        ended: true,
+        url: 'https://mooc1.chaoxing.com/mycourse/stu?courseid=1&clazzid=2',
+      },
+    ]);
+  const refreshed = await syncChaoxingCourses();
+  expect(refreshed.items[0]).toMatchObject({
+    name: '学校更新后的课程名',
+    remark: '安卓课',
+    ended: true,
+  });
+  expect(() => setChaoxingCourseRemark('unknown', '备注')).toThrow('自己的学习通课程');
+  expect(() => setChaoxingCourseRemark('1:2', '课'.repeat(81))).toThrow('80');
+  expect(getChaoxingCourses()!.items[0]!.remark).toBe('安卓课');
+  expect(setChaoxingCourseRemark('1:2', '   ').items[0]!.remark).toBeUndefined();
+  expect(getChaoxingCourses()!.items[0]!.name).toBe('学校更新后的课程名');
+});
+
+it('sorts courses by remark or original name after edits, clearing and catalog refresh', async () => {
+  const rows = [
+    { id: 'network', name: '计算机网络' },
+    { id: 'android', name: 'Android软件开发' },
+    { id: 'compiler', name: '编译原理' },
+    { id: 'math10', name: '微积分10' },
+    { id: 'math2', name: '微积分2' },
+  ].map((course) => ({
+    ...course,
+    teacher: '',
+    ended: false,
+    url: 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid=' + course.id,
+  }));
+  const refresh = () => {
+    reader
+      .mockResolvedValueOnce({ url: 'https://mooc2-ans.chaoxing.com/visit/interaction' })
+      .mockResolvedValueOnce(rows);
+    return syncChaoxingCourses();
+  };
+  const originalOrder = ['compiler', 'network', 'math2', 'math10', 'android'];
+  expect((await refresh()).items.map((course) => course.id)).toEqual(originalOrder);
+  setRetainedChaoxingCourses(rows.map((course) => course.id));
+  const remarkedOrder = ['android', 'compiler', 'network', 'math2', 'math10'];
+  expect(setChaoxingCourseRemark('android', '安卓课').items.map((course) => course.id)).toEqual(
+    remarkedOrder,
+  );
+  expect(getChaoxingCalendar().courses.map((course) => course.id)).toEqual(remarkedOrder);
+  expect((await refresh()).items.map((course) => course.id)).toEqual(remarkedOrder);
+  expect(setChaoxingCourseRemark('android', '').items.map((course) => course.id)).toEqual(
+    originalOrder,
+  );
+  expect(getChaoxingCalendar().courses.map((course) => course.id)).toEqual(originalOrder);
+  const schoolCache = db
+    .prepare("SELECT data FROM jlu_platform_cache WHERE key='cx:courses'")
+    .get() as { data: string };
+  expect(JSON.parse(schoolCache.data).items.map((course: { id: string }) => course.id)).toEqual(
+    rows.map((course) => course.id),
+  );
+});
+
+it('keeps the user selection after catalog refresh and syncs only retained courses', async () => {
+  await seedCourse();
+  const catalog = [
+    {
+      id: '1:2',
+      name: '示例课程',
+      teacher: '',
+      ended: false,
+      url: 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid=1&clazzid=2',
+    },
+    {
+      id: 'old',
+      name: '已结课课程',
+      teacher: '',
+      ended: true,
+      url: 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid=3',
+    },
+    {
+      id: 'new',
+      name: '新发现课程',
+      teacher: '',
+      ended: false,
+      url: 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid=4',
+    },
+  ];
+  reader.mockClear();
+  reader
+    .mockResolvedValueOnce({ url: 'https://mooc2-ans.chaoxing.com/visit/interaction' })
+    .mockResolvedValueOnce(catalog)
+    .mockResolvedValueOnce({ url: 'https://mooc1.chaoxing.com/list' })
+    .mockResolvedValueOnce([
+      {
+        id: 'w',
+        title: '本学期作业',
+        status: '未交',
+        timing: '',
+        url: 'https://mooc1.chaoxing.com/task?workId=w',
+      },
+    ]);
+  const result = await syncChaoxingCalendar();
+  expect(result.failures).toEqual([]);
+  expect(getChaoxingCourses()!.retainedCourseIds).toEqual(['1:2']);
+  expect(getChaoxingCourses()!.items).toHaveLength(3);
+  expect(result.data.courses.map((course) => course.id)).toEqual(['1:2']);
+  expect(result.data.works.map((work) => work.title)).toEqual(['本学期作业']);
+  expect(reader).toHaveBeenCalledTimes(4);
+  setRetainedChaoxingCourses(['old']);
+  expect(getChaoxingCourses()!.retainedCourseIds).toEqual(['old']);
+});
+
 it('continues after a course network failure, stops on authentication, and preserves previous snapshots', async () => {
   const courses = ['1', '2', '3'].map((key) => ({
     id: key,
@@ -288,6 +441,10 @@ it('continues after a course network failure, stops on authentication, and prese
     ended: false,
     url: 'https://mooc1.chaoxing.com/mycourse/stu?courseid=' + key,
   }));
+  db.prepare('INSERT INTO jlu_platform_cache VALUES (?, ?)').run(
+    'cx:retained-courses',
+    JSON.stringify(['1', '2', '3']),
+  );
   db.prepare('INSERT INTO jlu_platform_cache VALUES (?, ?)').run(
     'cx:works:1',
     JSON.stringify({
@@ -335,6 +492,61 @@ it('retains a detail deadline across relative list refreshes, but lets newer exp
   await refresh('截止时间：2026-11-04 21:00');
   expect(getChaoxingCalendar().works[0]?.deadline).toEqual({ date: '2026-11-04', time: '21:00' });
   expect(getChaoxingWorks('1:2')?.items[0]?.detailSyncedAt).toBeUndefined();
+});
+
+it('refreshes status and deadlines automatically and retains earlier detail times on partial failure', async () => {
+  await seedCourse();
+  reader
+    .mockResolvedValueOnce({ url: 'https://mooc1.chaoxing.com/course' })
+    .mockResolvedValueOnce({ url: 'https://mooc1.chaoxing.com/list' })
+    .mockResolvedValueOnce([
+      {
+        id: 'w1',
+        title: '报告',
+        status: 'To be marked',
+        timing: '剩余2小时0分钟',
+        detailTiming: '截止时间：2026-11-07 20:00',
+        url: 'https://mooc1.chaoxing.com/task?workId=w1&enc=private',
+      },
+    ]);
+  const initial = await syncChaoxingWorks('1:2');
+  expect(initial.items[0]).toMatchObject({
+    status: 'To be marked',
+    detailTiming: '截止时间：2026-11-07 20:00',
+    detailSyncedAt: expect.any(String),
+  });
+  expect(saveWorkTiming('1:2', 'w1', '截止时间：11-07 20:00（年份待确认）')).toBe(true);
+  expect(getChaoxingWorks('1:2')!.items[0]!.detailTiming).toBe(initial.items[0]!.detailTiming);
+  reader.mockResolvedValueOnce({ url: 'https://mooc1.chaoxing.com/list' }).mockResolvedValueOnce([
+    {
+      id: 'w1',
+      title: '报告',
+      status: 'reviewd',
+      timing: '',
+      detailError: '作业详情暂时无法读取，请稍后刷新',
+      url: 'https://mooc1.chaoxing.com/task?workId=w1&enc=private',
+    },
+  ]);
+  const refreshed = await syncChaoxingWorks('1:2');
+  expect(refreshed.items[0]).toMatchObject({
+    status: 'reviewd',
+    detailTiming: initial.items[0]!.detailTiming,
+    detailSyncedAt: initial.items[0]!.detailSyncedAt,
+    detailError: '作业详情暂时无法读取，请稍后刷新',
+  });
+  expect(getChaoxingCalendar().works[0]?.deadline).toEqual({ date: '2026-11-07', time: '20:00' });
+  reader.mockResolvedValueOnce({ url: 'https://mooc1.chaoxing.com/list' }).mockResolvedValueOnce([
+    {
+      id: 'w1',
+      title: '报告',
+      status: 'To be Submitted',
+      timing: '剩余20000小时0分钟',
+      detailTiming: '截止时间：11-07 20:00（年份待确认）',
+      url: 'https://mooc1.chaoxing.com/task?workId=w1&enc=private',
+    },
+  ]);
+  await syncChaoxingWorks('1:2');
+  expect(getChaoxingCalendar().works[0]?.deadline).toBeNull();
 });
 
 function localCourse() {

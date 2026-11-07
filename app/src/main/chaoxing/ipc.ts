@@ -7,6 +7,8 @@ import {
   syncChaoxingCalendar,
   getChaoxingCourses,
   syncChaoxingCourses,
+  setRetainedChaoxingCourses,
+  setChaoxingCourseRemark,
   getChaoxingFiles,
   syncChaoxingFiles,
   getChaoxingWorks,
@@ -39,6 +41,14 @@ export function registerChaoxingIpc() {
   ipcMain.handle('cx:courses:sync', (event) => {
     checkWorkspaceSender(event);
     return chaoxingResult(() => syncChaoxingCourses(event.sender));
+  });
+  ipcMain.handle('cx:courses:retain', (event, courseIds: unknown) => {
+    checkWorkspaceSender(event);
+    return setRetainedChaoxingCourses(courseIds);
+  });
+  ipcMain.handle('cx:course:remark', (event, courseId: string, remark: unknown) => {
+    checkWorkspaceSender(event);
+    return setChaoxingCourseRemark(courseId, remark);
   });
   ipcMain.handle('cx:files:get', (event, courseId: string, folderId?: string) => {
     checkWorkspaceSender(event);

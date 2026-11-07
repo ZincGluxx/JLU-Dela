@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Dialog } from 'radix-ui';
 import { ArrowLeft, BookOpen, Download, FileText, Folder, RefreshCw, Search } from 'lucide-react';
 import type {
   ChaoxingCourse,
@@ -8,13 +9,17 @@ import type {
   ChaoxingApi,
 } from '../../../shared/chaoxing';
 import type { KnowledgeState } from '../../../shared/knowledge';
+import { chaoxingCourseLabel } from '../../../shared/chaoxing';
 import {
   chaoxingWorkSort,
+  chaoxingWorkStatus,
   chaoxingWorkSummary,
   chaoxingWorkTime,
 } from '../../../shared/chaoxing-calendar';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { dialogOverlay, dialogPanel } from '../../components/ui/motion';
+import { cn } from '../../lib/utils';
 import { SegmentedControl } from '../../components/ui/beautifului/atoms/SegmentedControl';
 import { DesktopOnlyNotice } from '../../components/ui/desktop-only-notice';
 import { useNavigationStore } from '../../navigation/view';
@@ -35,6 +40,8 @@ export type ChaoxingPageApi = Omit<
   | 'setReminders'
   | 'checkReminders'
   | 'onOpenWork'
+  | 'setRetainedCourses'
+  | 'setCourseRemark'
 > &
   Partial<
     Pick<
@@ -51,6 +58,8 @@ export type ChaoxingPageApi = Omit<
       | 'setReminders'
       | 'checkReminders'
       | 'onOpenWork'
+      | 'setRetainedCourses'
+      | 'setCourseRemark'
     >
   >;
 export function ChaoxingView({ api = window.dela?.chaoxing }: { api?: ChaoxingPageApi } = {}) {
@@ -74,6 +83,11 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
   const [mode, setMode] = useState<'课程' | '作业'>('课程');
   const [path, setPath] = useState<{ id: string; name: string }[]>([]);
   const [query, setQuery] = useState('');
+  const [managingCourses, setManagingCourses] = useState(false);
+  const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
+  const [remarkCourse, setRemarkCourse] = useState<ChaoxingCourse | null>(null);
+  const [remark, setRemark] = useState('');
+  const [remarkError, setRemarkError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [knowledge, setKnowledge] = useState<KnowledgeState>({ roots: [], courses: [] });
@@ -111,10 +125,69 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
     setError(null);
     try {
       const result = await api.syncCourses();
-      if (result.ok) setData(result.data);
-      else setError(result.error);
+      if (result.ok) {
+        setData(result.data);
+        if (api.setRetainedCourses && !result.data.retainedCourseIds?.length) {
+          setSelectedCourses([]);
+          setManagingCourses(true);
+        }
+      } else setError(result.error);
     } catch (cause) {
       setError(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function manageCourses() {
+    setBusy(true);
+    setError(null);
+    try {
+      const latest = await api.courses();
+      setData(latest);
+      setSelectedCourses(
+        latest?.items
+          .filter((row) => !latest.retainedCourseIds || latest.retainedCourseIds.includes(row.id))
+          .map((row) => row.id) ?? [],
+      );
+      setQuery('');
+      setManagingCourses(true);
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveCourses() {
+    if (!api.setRetainedCourses) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setData(await api.setRetainedCourses(selectedCourses));
+      setManagingCourses(false);
+      setQuery('');
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+  function editRemark(next: ChaoxingCourse) {
+    setRemarkCourse(next);
+    setRemark(next.remark ?? '');
+    setRemarkError(null);
+  }
+  async function saveRemark() {
+    if (!remarkCourse || !api.setCourseRemark || busy) return;
+    setBusy(true);
+    setRemarkError(null);
+    try {
+      const next = await api.setCourseRemark(remarkCourse.id, remark);
+      setData(next);
+      if (course?.id === remarkCourse.id)
+        setCourse(next.items.find((row) => row.id === course.id) ?? course);
+      setRemarkCourse(null);
+    } catch (cause) {
+      setRemarkError(errorText(cause));
     } finally {
       setBusy(false);
     }
@@ -197,10 +270,15 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
       setError(errorText(cause));
     }
   }
-  const filtered =
-    data?.items.filter((row) =>
-      `${row.name} ${row.teacher}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+  const retained =
+    data?.items.filter(
+      (row) => !data.retainedCourseIds || data.retainedCourseIds.includes(row.id),
     ) ?? [];
+  const filtered = (managingCourses ? (data?.items ?? []) : retained).filter((row) =>
+    `${row.name} ${row.remark ?? ''} ${row.teacher}`
+      .toLocaleLowerCase()
+      .includes(query.trim().toLocaleLowerCase()),
+  );
   const snapshot = course ? (tab === '资料' ? files : works) : data;
   const board = !course && mode === '作业';
   return (
@@ -214,105 +292,281 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
             </div>
             <p className="mt-1 text-xs text-ink-3">
               {board
-                ? '汇总所有课程的作业与截止时间'
+                ? '汇总已保留课程的作业与截止时间'
                 : snapshot
                   ? `更新于 ${new Date(snapshot.syncedAt).toLocaleString('zh-CN')}`
                   : '尚未同步'}
             </p>
           </div>
-          {!board && (
-            <Button
-              size="sm"
-              disabled={busy}
-              onClick={() =>
-                void (course
-                  ? tab === '资料'
-                    ? loadFiles(course, path)
-                    : loadWorks(course)
-                  : syncCourses())
-              }
-            >
-              <RefreshCw className={busy ? 'size-4 animate-spin' : 'size-4'} />
-              {busy ? '正在读取…' : data ? '刷新' : '登录并同步'}
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {!course && data && api.setRetainedCourses && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || managingCourses}
+                onClick={() => void manageCourses()}
+              >
+                管理课程
+              </Button>
+            )}
+            {!board && !managingCourses && (
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  void (course
+                    ? tab === '资料'
+                      ? loadFiles(course, path)
+                      : loadWorks(course)
+                    : syncCourses())
+                }
+              >
+                <RefreshCw className={busy ? 'size-4 animate-spin' : 'size-4'} />
+                {busy ? '正在读取…' : data ? '刷新' : '登录并同步'}
+              </Button>
+            )}
+          </div>
         </header>
         {error && (
           <p role="alert" className="rounded-control bg-field p-3 text-13 text-ink">
             {error}
           </p>
         )}
-        {!course ? (
-          <>
-            <fieldset disabled={busy}>
-              <SegmentedControl
-                options={['课程', '作业'] as const}
-                value={mode}
-                onChange={setMode}
-              />
-            </fieldset>
-            {mode === '作业' ? (
-              <ChaoxingWorkBoard
-                api={api}
-                now={now}
-                onOpenCourse={(courseId) => {
-                  const row = data?.items.find((item) => item.id === courseId);
-                  if (!row) return;
-                  setCourse(row);
-                  setFiles(null);
-                  setWorks(null);
-                  setTab('作业');
-                  void loadWorks(row);
+        <Dialog.Root
+          open={remarkCourse !== null}
+          onOpenChange={(open) => {
+            if (!open && !busy) setRemarkCourse(null);
+          }}
+        >
+          <Dialog.Portal>
+            <Dialog.Overlay className={dialogOverlay} />
+            <Dialog.Content className={cn(dialogPanel, 'max-w-md')}>
+              <Dialog.Title className="text-base font-semibold">设置课程备注</Dialog.Title>
+              <Dialog.Description className="mt-2 break-words text-xs leading-relaxed text-ink-3">
+                原课程名：{remarkCourse?.name}
+              </Dialog.Description>
+              <form
+                className="mt-4 grid gap-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveRemark();
                 }}
-              />
-            ) : (
-              <>
-                <div className="relative">
-                  <Search className="absolute left-3 top-2 size-4 text-ink-3" />
+              >
+                <label className="grid gap-2 text-13 text-ink">
+                  备注名
                   <Input
-                    aria-label="筛选学习通课程"
-                    placeholder="搜索课程或教师"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    className="pl-9"
+                    aria-label="课程备注名"
+                    autoFocus
+                    maxLength={80}
+                    value={remark}
+                    disabled={busy}
+                    placeholder="例如：安卓课"
+                    onChange={(event) => setRemark(event.target.value)}
                   />
-                </div>
-                {!data && (
-                  <p className="py-12 text-center text-sm text-ink-3">
-                    登录学习通，读取课程中的资料和作业。需要验证时会显示学习通登录窗口。
+                </label>
+                <p className="text-xs text-ink-3">仅保存在本机；留空保存可恢复原名。</p>
+                {remarkError && (
+                  <p role="alert" className="text-13 text-red">
+                    {remarkError}
                   </p>
                 )}
-                {data && (
-                  <>
-                    <p className="text-xs text-ink-3">当前课程列表 · {data.items.length} 门</p>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {filtered.map((row) => (
-                        <button
-                          key={row.id}
-                          disabled={busy}
-                          className="grid min-w-0 gap-2 rounded-xl bg-field p-5 text-left hover:bg-hover disabled:opacity-50"
-                          onClick={() => {
-                            setCourse(row);
-                            setFiles(null);
-                            setWorks(null);
-                            setTab('资料');
-                            void loadFiles(row, []);
-                          }}
-                        >
-                          <h2 className="break-words text-base font-semibold text-ink">
-                            {row.name}
-                          </h2>
-                          <p className="break-words text-13 text-ink-3">{row.teacher}</p>
-                          <span className="text-xs text-ink-3">
-                            {row.ended ? '已结束课程' : '查看资料与作业'}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => setRemarkCourse(null)}
+                  >
+                    取消
+                  </Button>
+                  <Button type="submit" size="sm" disabled={busy}>
+                    {busy ? '正在保存…' : '保存备注'}
+                  </Button>
+                </div>
+              </form>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+        {!course ? (
+          <>
+            {managingCourses ? (
+              <section aria-label="选择保留的课程" className="grid gap-4">
+                <div className="grid gap-1">
+                  <h2 className="text-base font-semibold text-ink">选择保留的课程</h2>
+                  <p className="text-xs leading-relaxed text-ink-3">
+                    仅将所选课程的作业纳入同步、日历与提醒。取消保留不删除已下载的资料，可随时重新选择。
+                  </p>
+                </div>
+                <Input
+                  aria-label="搜索可保留课程"
+                  placeholder="搜索课程或教师"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  disabled={busy}
+                />
+                <fieldset disabled={busy} className="grid gap-3 md:grid-cols-2">
+                  {filtered.map((row) => (
+                    <div key={row.id} className="grid min-w-0 gap-2 rounded-control bg-field p-4">
+                      <label className="flex min-w-0 cursor-pointer items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 size-4 shrink-0 accent-ink"
+                          aria-label={`保留 ${row.name}`}
+                          checked={selectedCourses.includes(row.id)}
+                          onChange={(event) =>
+                            setSelectedCourses(
+                              event.target.checked
+                                ? [...selectedCourses, row.id]
+                                : selectedCourses.filter((id) => id !== row.id),
+                            )
+                          }
+                        />
+                        <span className="grid min-w-0 gap-1">
+                          <span className="break-words text-sm font-medium text-ink">
+                            {chaoxingCourseLabel(row)}
                           </span>
-                        </button>
-                      ))}
+                          {row.remark && (
+                            <span className="break-words text-xs text-ink-3">原名：{row.name}</span>
+                          )}
+                          <span className="break-words text-xs text-ink-3">{row.teacher}</span>
+                          <span className="text-xs text-ink-3">
+                            {row.ended ? '已结束课程' : '未结束课程'}
+                          </span>
+                        </span>
+                      </label>
+                      {api.setCourseRemark && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="justify-self-end"
+                          disabled={busy}
+                          aria-label={`备注 ${row.name}`}
+                          onClick={() => editRemark(row)}
+                        >
+                          备注
+                        </Button>
+                      )}
                     </div>
-                    {!filtered.length && (
-                      <p className="text-13 text-ink-3">
-                        {data.items.length ? '没有匹配的课程。' : '学校当前列表未返回课程。'}
+                  ))}
+                </fieldset>
+                {!filtered.length && <p className="text-sm text-ink-3">没有匹配的课程。</p>}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-ink-3">已选择 {selectedCourses.length} 门课程</p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => {
+                        setManagingCourses(false);
+                        setQuery('');
+                      }}
+                    >
+                      取消
+                    </Button>
+                    <Button size="sm" disabled={busy} onClick={() => void saveCourses()}>
+                      {busy ? '正在保存…' : '保存课程选择'}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <>
+                <fieldset disabled={busy}>
+                  <SegmentedControl
+                    options={['课程', '作业'] as const}
+                    value={mode}
+                    onChange={setMode}
+                  />
+                </fieldset>
+                {mode === '作业' ? (
+                  <ChaoxingWorkBoard
+                    api={api}
+                    now={now}
+                    onOpenCourse={(courseId) => {
+                      const row = data?.items.find((item) => item.id === courseId);
+                      if (!row) return;
+                      setCourse(row);
+                      setFiles(null);
+                      setWorks(null);
+                      setTab('作业');
+                      void loadWorks(row);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2 size-4 text-ink-3" />
+                      <Input
+                        aria-label="筛选学习通课程"
+                        placeholder="搜索课程或教师"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                    {!data && (
+                      <p className="py-12 text-center text-sm text-ink-3">
+                        登录学习通，读取课程中的资料和作业。需要验证时会显示学习通登录窗口。
                       </p>
+                    )}
+                    {data && (
+                      <>
+                        <p className="text-xs text-ink-3">已保留课程 · {retained.length} 门</p>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {filtered.map((row) => (
+                            <article
+                              key={row.id}
+                              className="grid min-w-0 gap-2 rounded-xl bg-field p-5 text-left hover:bg-hover disabled:opacity-50"
+                            >
+                              <button
+                                disabled={busy}
+                                className="grid min-w-0 gap-2 text-left disabled:opacity-50"
+                                onClick={() => {
+                                  setCourse(row);
+                                  setFiles(null);
+                                  setWorks(null);
+                                  setTab('资料');
+                                  void loadFiles(row, []);
+                                }}
+                              >
+                                <h2 className="break-words text-base font-semibold text-ink">
+                                  {chaoxingCourseLabel(row)}
+                                </h2>
+                                {row.remark && (
+                                  <p className="break-words text-xs text-ink-3">原名：{row.name}</p>
+                                )}
+                                <p className="break-words text-13 text-ink-3">{row.teacher}</p>
+                                <span className="text-xs text-ink-3">
+                                  {row.ended ? '已结束课程' : '查看资料与作业'}
+                                </span>
+                              </button>
+                              {api.setCourseRemark && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="justify-self-end"
+                                  disabled={busy}
+                                  aria-label={`备注 ${row.name}`}
+                                  onClick={() => editRemark(row)}
+                                >
+                                  备注
+                                </Button>
+                              )}
+                            </article>
+                          ))}
+                        </div>
+                        {!filtered.length && (
+                          <p className="text-13 text-ink-3">
+                            {data.retainedCourseIds?.length === 0 && data.items.length
+                              ? '尚未保留课程，请在「管理课程」中选择需要的课程。'
+                              : data.items.length
+                                ? '没有匹配的课程。'
+                                : '学校当前列表未返回课程。'}
+                          </p>
+                        )}
+                      </>
                     )}
                   </>
                 )}
@@ -338,8 +592,23 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="break-words text-lg font-semibold text-ink">{course.name}</h2>
+                <h2 className="break-words text-lg font-semibold text-ink">
+                  {chaoxingCourseLabel(course)}
+                </h2>
+                {course.remark && (
+                  <p className="mt-1 break-words text-xs text-ink-3">原名：{course.name}</p>
+                )}
                 <p className="mt-1 text-xs text-ink-3">{course.teacher}</p>
+                {api.setCourseRemark && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => editRemark(course)}
+                  >
+                    修改备注
+                  </Button>
+                )}
               </div>
               <fieldset disabled={busy}>
                 <SegmentedControl
@@ -578,9 +847,12 @@ function ChaoxingPage({ api }: { api: ChaoxingPageApi }) {
                       <h3 className="min-w-0 flex-1 break-words text-sm font-medium text-ink">
                         {row.title}
                       </h3>
-                      <span className="text-xs text-ink-3">{row.status}</span>
+                      <span className="text-xs text-ink-3" title={row.status}>
+                        {chaoxingWorkStatus(row.status)}
+                      </span>
                     </div>
                     <p className="text-xs text-ink-2">{chaoxingWorkTime(row, now)}</p>
+                    {row.detailError && <p className="text-xs text-ink-3">{row.detailError}</p>}
                     <p className="text-2xs text-ink-3">
                       更新于{' '}
                       {new Date(row.detailSyncedAt ?? works!.syncedAt).toLocaleString('zh-CN')}

@@ -1,13 +1,15 @@
 import type { ChaoxingCourses, ChaoxingWork, ChaoxingWorks } from './chaoxing';
+import { chaoxingCourseLabel } from './chaoxing';
 
 export interface ChaoxingCalendarWork extends ChaoxingWork {
   courseId: string;
   courseName: string;
+  courseOriginalName?: string;
   syncedAt: string;
   deadline: { date: string; time: string | null } | null;
 }
 export interface ChaoxingCalendar {
-  courses: { id: string; name: string; syncedAt: string | null }[];
+  courses: { id: string; name: string; originalName?: string; syncedAt: string | null }[];
   works: ChaoxingCalendarWork[];
   coursesSyncedAt: string | null;
 }
@@ -21,20 +23,26 @@ export function chaoxingAssignments(
   courses: ChaoxingCourses | null,
   works: (ChaoxingWorks | null)[],
 ): ChaoxingCalendar {
-  const items = courses?.items ?? [];
+  const items = (courses?.items ?? [])
+    .map((course, index) => ({ course, works: works[index] }))
+    .filter(
+      ({ course }) => !courses?.retainedCourseIds || courses.retainedCourseIds.includes(course.id),
+    );
   return {
     coursesSyncedAt: courses?.syncedAt ?? null,
-    courses: items.map((course, index) => ({
+    courses: items.map(({ course, works }) => ({
       id: course.id,
-      name: course.name,
-      syncedAt: works[index]?.syncedAt ?? null,
+      name: chaoxingCourseLabel(course),
+      ...(course.remark ? { originalName: course.name } : {}),
+      syncedAt: works?.syncedAt ?? null,
     })),
-    works: items.flatMap((course, index) =>
-      (works[index]?.items ?? []).map((work) => ({
+    works: items.flatMap(({ course, works }) =>
+      (works?.items ?? []).map((work) => ({
         ...work,
         courseId: course.id,
-        courseName: course.name,
-        syncedAt: works[index]!.syncedAt,
+        courseName: chaoxingCourseLabel(course),
+        ...(course.remark ? { courseOriginalName: course.name } : {}),
+        syncedAt: works!.syncedAt,
         deadline: chaoxingDeadline(work.detailTiming ?? '') ?? chaoxingDeadline(work.timing),
       })),
     ),
@@ -66,15 +74,28 @@ export function chaoxingDeadline(timing: string): ChaoxingCalendarWork['deadline
   };
 }
 
+export function chaoxingWorkStatus(status: string): string {
+  const value = status.trim().replace(/\s+/g, ' ');
+  if (/^(未交|未提交|未完成|to be submitted|not submitted|unsubmitted)$/i.test(value))
+    return '未提交';
+  if (/^(待批阅|待批改|待评分|to be marked|pending review|pending grading)$/i.test(value))
+    return '已提交 · 待批阅';
+  if (/^(已批阅|已批改|已评分|reviewd|reviewed|graded|marked)$/i.test(value)) return '已批阅';
+  if (/^(已交|已提交|submitted)$/i.test(value)) return '已提交';
+  if (/^(已完成|completed)$/i.test(value)) return '已完成';
+  return value || '状态待确认';
+}
+
 export function chaoxingWorkCompleted(status: string): boolean {
   return /^(已完成|已提交|已批阅|已批改|已评分|已交|completed|submitted|graded|marked)(?:\s|$)/i.test(
-    status.trim(),
+    chaoxingWorkStatus(status),
   );
 }
 
 export function chaoxingWorkTime(work: ChaoxingWork, now: number): string {
   const deadline = chaoxingDeadline(work.detailTiming ?? '') ?? chaoxingDeadline(work.timing);
   const snapshot = work.timing || (/left|remaining|剩余/i.test(work.status) ? work.status : '');
+  if (!deadline && work.detailTiming?.includes('（年份待确认）')) return work.detailTiming;
   if (!deadline)
     return snapshot ? `上次同步显示：${snapshot}` : '尚未读到截止时间，请打开原网页查看';
   const label = `截止 ${deadline.date}${deadline.time ? ` ${deadline.time}` : '（具体时刻待确认）'}`;
@@ -178,7 +199,8 @@ export function chaoxingReminderStage(
 ): { stage: ChaoxingReminderStage; dueAt: number } | null {
   if (work.mutedAt || chaoxingWorkCompleted(work.status)) return null;
   const dueAt = chaoxingWorkDueAt(work);
-  if (dueAt === null || !chaoxingDeadline(work.detailTiming ?? '')?.time) return null;
+  const deadline = chaoxingDeadline(work.detailTiming ?? '') ?? chaoxingDeadline(work.timing);
+  if (dueAt === null || !deadline?.time) return null;
   const remaining = dueAt - now;
   if (remaining > 24 * 3_600_000 || remaining <= -24 * 3_600_000) return null;
   const stage: ChaoxingReminderStage =
@@ -188,6 +210,6 @@ export function chaoxingReminderStage(
 
 /** 提醒去重键：截止时刻变化或进入下一阶段时会重新提醒。 */
 export function chaoxingReminderKey(work: ChaoxingWork, stage: ChaoxingReminderStage): string {
-  const deadline = chaoxingDeadline(work.detailTiming ?? '');
+  const deadline = chaoxingDeadline(work.detailTiming ?? '') ?? chaoxingDeadline(work.timing);
   return `${deadline?.date ?? ''}T${deadline?.time ?? ''}|${stage}`;
 }

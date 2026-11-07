@@ -111,6 +111,19 @@ const mount = () =>
   });
 
 describe('学习通作业看板', () => {
+  it('shows pending review as submitted and preserves the platform status as a tooltip', async () => {
+    current.works[0]!.status = 'To be marked';
+    current.works[1]!.detailError = '作业详情暂时无法读取，请稍后刷新';
+    await mount();
+    expect(host.textContent).toContain('待完成 3 份');
+    expect(host.textContent).not.toContain('逾期报告');
+    expect(host.textContent).toContain('作业详情暂时无法读取，请稍后刷新');
+    await act(async () => button('已完成').click());
+    const reviewed = host.querySelector('[aria-label="已完成 / 已批阅"]')!;
+    expect(reviewed.textContent).toContain('逾期报告');
+    expect(reviewed.querySelector('[title="To be marked"]')?.textContent).toBe('已提交 · 待批阅');
+  });
+
   it('groups pending works by deadline and keeps completed works behind the filter', async () => {
     await mount();
     expect(host.querySelector('[aria-label="已过截止时间"]')?.textContent).toContain('逾期报告');

@@ -54,6 +54,9 @@ export function webArguments(method: WebMethod, args: unknown[]): unknown[] {
       ])
       .parse(args);
   if (method === 'chaoxing.setReminders') return z.tuple([z.boolean()]).parse(args);
+  if (method === 'chaoxing.setRetainedCourses') return z.tuple([z.array(ids)]).parse(args);
+  if (method === 'chaoxing.setCourseRemark')
+    return z.tuple([ids, z.string().trim().max(80)]).parse(args);
   if (
     [
       'chaoxing.works',

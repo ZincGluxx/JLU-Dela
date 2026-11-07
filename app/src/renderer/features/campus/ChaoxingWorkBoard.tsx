@@ -7,6 +7,7 @@ import {
   chaoxingWorkSectionLabels,
   chaoxingWorkSections,
   chaoxingWorkSort,
+  chaoxingWorkStatus,
   chaoxingWorkSummary,
   chaoxingWorkTime,
   type ChaoxingCalendar,
@@ -98,6 +99,8 @@ export function ChaoxingWorkBoard({
       if (!courses.ok) throw new Error(courses.error);
       const next: ChaoxingCalendarSync['failures'] = [];
       for (const course of courses.data.items) {
+        if (courses.data.retainedCourseIds && !courses.data.retainedCourseIds.includes(course.id))
+          continue;
         const result = await api.syncWorks(course.id);
         if (!result.ok)
           next.push({ courseId: course.id, error: result.error, reason: result.reason });
@@ -164,7 +167,11 @@ export function ChaoxingWorkBoard({
   const visible = works
     .filter((work) => (courseId ? work.courseId === courseId : true))
     .filter((work) =>
-      needle ? `${work.title} ${work.courseName}`.toLocaleLowerCase().includes(needle) : true,
+      needle
+        ? `${work.title} ${work.courseName} ${work.courseOriginalName ?? ''}`
+            .toLocaleLowerCase()
+            .includes(needle)
+        : true,
     )
     .sort(chaoxingWorkSort);
   const sections = chaoxingWorkSections
@@ -277,7 +284,7 @@ export function ChaoxingWorkBoard({
           {(assignments?.courses ?? [])
             .filter((course) => works.some((work) => work.courseId === course.id))
             .map((course) => (
-              <option key={course.id} value={course.id}>
+              <option key={course.id} value={course.id} title={course.originalName}>
                 {course.name}
               </option>
             ))}
@@ -322,13 +329,16 @@ export function ChaoxingWorkBoard({
                   )}
                   {work.title}
                 </h4>
-                <span className="text-xs text-ink-3">{work.status || '状态待确认'}</span>
+                <span className="text-xs text-ink-3" title={work.status}>
+                  {chaoxingWorkStatus(work.status)}
+                </span>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 rounded-chip bg-surface px-2 py-0.5 hover:bg-hover"
                   onClick={() => onOpenCourse(work.courseId)}
+                  title={work.courseOriginalName}
                 >
                   <BookOpen className="size-3" />
                   {work.courseName}
@@ -345,6 +355,14 @@ export function ChaoxingWorkBoard({
                   </span>
                 )}
               </div>
+              {work.detailError && (
+                <p className="text-xs text-ink-3">
+                  {work.detailError}
+                  {work.detailSyncedAt
+                    ? `；时间保留自 ${new Date(work.detailSyncedAt).toLocaleString('zh-CN')}`
+                    : ''}
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 {canOpenInWorkbench && (
                   <Button
@@ -403,7 +421,7 @@ export function ChaoxingWorkBoard({
           {!loaded
             ? '正在读取作业…'
             : !works.length
-              ? '还没有作业缓存。点「同步全部作业」读取各课程的作业列表；需要验证时会显示学习通登录窗口。'
+              ? '还没有作业缓存。先在「管理课程」中选择需要的课程，再同步作业；需要验证时会显示学习通登录窗口。'
               : !visible.length
                 ? '没有匹配的作业。'
                 : filter === '已完成'
@@ -416,7 +434,7 @@ export function ChaoxingWorkBoard({
         </p>
       )}
       <p className="text-xs leading-relaxed text-ink-3">
-        截止时间来自作业列表与详情页；列表只显示相对时间时会在打开作业后补充具体时间。状态来自上次同步，提交与作答仍在学习通原网页完成。
+        同步时读取作业列表与详情时间；缺少年份时需与平台时间及倒计时核对，无法确认的时间不进入日历或提醒。状态来自上次同步，提交与作答仍在学习通原网页完成。
       </p>
     </div>
   );

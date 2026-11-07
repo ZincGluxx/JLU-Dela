@@ -76,6 +76,12 @@ it('preserves optional argument defaults and refuses injected chat attachments',
   expect(webArguments('chaoxing.syncFiles', ['course', ''])).toEqual(['course', '']);
   expect(webArguments('chaoxing.calendar', [])).toEqual([]);
   expect(webArguments('chaoxing.syncCalendar', [])).toEqual([]);
+  expect(webArguments('chaoxing.setRetainedCourses', [['1:2']])).toEqual([['1:2']]);
+  expect(webArguments('chaoxing.setRetainedCourses', [[]])).toEqual([[]]);
+  expect(webArguments('chaoxing.setCourseRemark', ['1:2', ' 安卓课 '])).toEqual(['1:2', '安卓课']);
+  expect(webArguments('chaoxing.setCourseRemark', ['1:2', ''])).toEqual(['1:2', '']);
+  expect(() => webArguments('chaoxing.setCourseRemark', ['1:2', '课'.repeat(81)])).toThrow();
+  expect(() => webArguments('chaoxing.setRetainedCourses', ['1:2'])).toThrow();
   expect(webArguments('schedule.sync', [])).toEqual([]);
   expect(webArguments('chat.create', [])).toEqual([null, 'chat']);
   expect(() => webArguments('chat.create', ['project'])).toThrow();

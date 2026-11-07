@@ -72,16 +72,18 @@ app.whenReady().then(() => {
           : `<iframe id="frame_content-zl" src="https://mooc2-ans.chaoxing.com/mooc2-ans/coursedata/stu-datalist?${privateQuery}"></iframe>`;
     else if (url.pathname === '/mooc2/work/list')
       html =
-        '<div class="bottomList"><li role="link" data="https://mooc1.chaoxing.com/mooc2/work/task?workId=w1&answerId=private"><div class="right-content"><p class="overHidden2">示例作业</p><p class="status">未交</p></div><div class="time">剩余2天</div></li></div>';
+        '<div class="bottomList"><li role="link" data="https://mooc1.chaoxing.com/mooc2/work/task?workId=w1&answerId=private"><div class="right-content"><p class="overHidden2">示例作业</p><p class="status">未交</p></div><div class="time">1hour59minutes left</div></li></div>';
     else if (url.pathname === '/mooc2/work/task') {
       if (requiresLogin) return Response.redirect('https://passport2.chaoxing.com/login');
       workLoads++;
       html =
-        '<h1>示例作业原网页</h1><p>截止时间：' +
-        deadlineDate +
+        '<script>window["currentTime"] = "' +
+        Date.now() +
+        '"</script><h1>示例作业原网页</h1><div class="infoHead"><p>Time range: <em>10-01 08:00</em> to <em>' +
+        deadlineDate.slice(5) +
         ' ' +
         deadlineTime +
-        '</p><p id="question">解释微控制器的工作过程</p><textarea id="answer" aria-label="示例作答"></textarea><a href="https://mooc1.chaoxing.com/fixture-next">下一页</a>';
+        '</em></p></div><p id="question">解释微控制器的工作过程</p><textarea id="answer" aria-label="示例作答"></textarea><a href="https://mooc1.chaoxing.com/fixture-next">下一页</a>';
     } else if (url.pathname === '/login')
       html = '<a href="https://mooc1.chaoxing.com/fixture-login-done">完成示例登录</a>';
     else if (url.pathname === '/fixture-login-done') {
@@ -144,6 +146,8 @@ async function run(window) {
   const courses = await js('window.dela.chaoxing.syncCourses()');
   assert.equal(courses.ok, true);
   assert.equal(courses.data.items.length, 1);
+  assert.deepEqual(courses.data.retainedCourseIds, []);
+  await js('window.dela.chaoxing.setRetainedCourses(["1:2"])');
   assert.ok(!JSON.stringify(courses).includes('fixture-private'));
   const files = await js('window.dela.chaoxing.syncFiles("1:2")');
   assert.equal(files.ok, true);
@@ -153,6 +157,11 @@ async function run(window) {
   );
   const works = await js('window.dela.chaoxing.syncWorks("1:2")');
   assert.equal(works.data.items[0].status, '未交');
+  assert.equal(works.data.items[0].detailTiming, '截止时间：' + deadlineDate + ' ' + deadlineTime);
+  assert.deepEqual((await js('window.dela.chaoxing.calendar()')).works[0].deadline, {
+    date: deadlineDate,
+    time: deadlineTime,
+  });
   const imported = await js('window.dela.chaoxing.importFile("1:2","f1","d1")');
   assert.ok(imported.id.startsWith(profile));
   assert.equal(readFileSync(imported.id, 'utf8'), pdf);
@@ -174,6 +183,99 @@ async function run(window) {
     `Array.from(document.querySelectorAll('#main-nav button')).find(b=>b.textContent.trim()==='学习通').click()`,
   );
   await wait('document.body.textContent.includes("示例课程")');
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent==='管理课程').click()`);
+  await wait(`!!document.querySelector('input[aria-label="保留 示例课程"]')`);
+  assert.equal(
+    await js(`document.querySelector('input[aria-label="保留 示例课程"]').checked`),
+    true,
+  );
+  window.setMinimumSize(360, 500);
+  await js(`document.querySelector('[aria-label="备注 示例课程"]').click()`);
+  await wait(`!!document.querySelector('[aria-label="课程备注名"]')`);
+  await js(`{
+    const input=document.querySelector('[aria-label="课程备注名"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'我的安卓课');
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+  }`);
+  await js(
+    'Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))',
+  );
+  for (const width of [600, 900, 1280, 1800]) {
+    window.setSize(width, 850);
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    assert.equal(
+      await js('document.documentElement.scrollWidth<=document.documentElement.clientWidth'),
+      true,
+      `course remark ${width}`,
+    );
+    if (!root.endsWith('.asar')) {
+      mkdirSync('.build', { recursive: true });
+      writeFileSync(
+        `.build/chaoxing-remark-${width}.png`,
+        (await window.webContents.capturePage()).toPNG(),
+      );
+    }
+  }
+  await js(
+    `[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent==='保存备注').click()`,
+  );
+  await wait(
+    `!document.querySelector('[role="dialog"]') && document.body.textContent.includes('我的安卓课')`,
+  );
+  const remarked = (await js('window.dela.chaoxing.courses()')).items[0];
+  assert.equal(remarked.name, '示例课程');
+  assert.equal(remarked.remark, '我的安卓课');
+  assert.equal((await js('window.dela.chaoxing.calendar()')).works[0].courseName, '我的安卓课');
+  for (const width of [600, 900, 1280, 1800]) {
+    window.setSize(width, 850);
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    assert.equal(
+      await js('document.documentElement.scrollWidth<=document.documentElement.clientWidth'),
+      true,
+      `course selection ${width}`,
+    );
+    if (!root.endsWith('.asar')) {
+      mkdirSync('.build', { recursive: true });
+      writeFileSync(
+        `.build/chaoxing-courses-${width}.png`,
+        (await window.webContents.capturePage()).toPNG(),
+      );
+    }
+  }
+  await js(`document.querySelector('[aria-label="备注 示例课程"]').click()`);
+  await wait(`!!document.querySelector('[aria-label="课程备注名"]')`);
+  await js(`{
+    const input=document.querySelector('[aria-label="课程备注名"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'');
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+  }`);
+  await js(
+    `[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent==='保存备注').click()`,
+  );
+  await wait(`!document.querySelector('[role="dialog"]')`);
+  assert.equal((await js('window.dela.chaoxing.courses()')).items[0].remark, undefined);
+  await js(`document.querySelector('input[aria-label="保留 示例课程"]').click()`);
+  await js(
+    `[...document.querySelectorAll('button')].find(b=>b.textContent==='保存课程选择').click()`,
+  );
+  await wait(`document.body.textContent.includes('尚未保留课程')`);
+  assert.deepEqual((await js('window.dela.chaoxing.calendar()')).works, []);
+  assert.equal((await js('window.dela.chaoxing.checkReminders()')).due, 0);
+  assert.equal((await js('window.dela.chaoxing.works("1:2")')).items[0].title, '示例作业');
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent==='管理课程').click()`);
+  await wait(`!!document.querySelector('input[aria-label="保留 示例课程"]')`);
+  assert.equal(
+    await js(`document.querySelector('input[aria-label="保留 示例课程"]').checked`),
+    false,
+  );
+  await js(`document.querySelector('input[aria-label="保留 示例课程"]').click()`);
+  await js(
+    `[...document.querySelectorAll('button')].find(b=>b.textContent==='保存课程选择').click()`,
+  );
+  await wait(`document.body.textContent.includes('已保留课程 · 1 门')`);
+  assert.deepEqual((await js('window.dela.chaoxing.syncCourses()')).data.retainedCourseIds, [
+    '1:2',
+  ]);
   await js(
     `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('示例课程')).click()`,
   );
@@ -225,7 +327,7 @@ async function run(window) {
   );
   await wait(`document.body.textContent.includes('待完成 1 份')`);
   await wait(
-    `document.querySelector('[aria-label="截止时间待确认"]')?.textContent.includes('示例作业')`,
+    `document.querySelector('[aria-label="7 天内截止"]')?.textContent.includes('示例作业')`,
   );
   await js(
     `Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='已完成').click()`,

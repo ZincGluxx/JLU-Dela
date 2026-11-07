@@ -71,6 +71,7 @@ async function run(window) {
     ],
     syncedAt,
   });
+  save('cx:retained-courses', ['a', ...Array.from({ length: 32 }, (_, i) => 'b' + i)]);
   save('cx:works:a', {
     courseId: 'a',
     syncedAt,

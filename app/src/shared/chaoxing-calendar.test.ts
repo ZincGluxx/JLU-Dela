@@ -8,6 +8,7 @@ import {
   chaoxingWorkDueAt,
   chaoxingWorkSection,
   chaoxingWorkSort,
+  chaoxingWorkStatus,
   chaoxingWorkSummary,
 } from './chaoxing-calendar';
 
@@ -41,9 +42,70 @@ describe('learning deadlines', () => {
     for (const value of ['未提交', '未完成', '已截止', '', '未知'])
       expect(chaoxingWorkCompleted(value)).toBe(false);
   });
+  it.each(['待批阅', '待批改', 'To be marked', 'reviewd', 'Reviewed', 'Completed'])(
+    'counts the platform status %s as submitted',
+    (status) => {
+      expect(chaoxingWorkCompleted(status)).toBe(true);
+      expect(chaoxingWorkSection({ id: 'w', title: '作业', status, timing: '' }, Date.now())).toBe(
+        'done',
+      );
+    },
+  );
+  it('shows readable submission labels while keeping unknown states unresolved', () => {
+    expect(chaoxingWorkStatus('To be Submitted')).toBe('未提交');
+    expect(chaoxingWorkStatus('To be marked')).toBe('已提交 · 待批阅');
+    expect(chaoxingWorkStatus('reviewd')).toBe('已批阅');
+    for (const value of ['To be Submitted', '未交', '已退回', 'Uncompleted', 'Not submitted'])
+      expect(chaoxingWorkCompleted(value)).toBe(false);
+    expect(chaoxingWorkStatus('')).toBe('状态待确认');
+  });
 });
 
 describe('assignment board grouping', () => {
+  it('uses the remark in calendar and work labels while retaining the original course name', () => {
+    const courses = {
+      items: [{ id: 'a', name: 'Android软件开发', remark: '安卓课', teacher: '', ended: false }],
+      syncedAt: '2026-11-07T00:00:00Z',
+      retainedCourseIds: ['a'],
+    };
+    const works = [
+      {
+        courseId: 'a',
+        syncedAt: courses.syncedAt,
+        items: [{ id: 'w', title: '报告', status: '未交', timing: '' }],
+      },
+    ];
+    expect(chaoxingAssignments(courses, works)).toMatchObject({
+      courses: [{ id: 'a', name: '安卓课', originalName: 'Android软件开发' }],
+      works: [{ courseName: '安卓课', courseOriginalName: 'Android软件开发' }],
+    });
+    expect(courses.items[0]!.name).toBe('Android软件开发');
+  });
+
+  it('filters unretained courses without shifting the work snapshots between courses', () => {
+    const courses = {
+      items: [
+        { id: 'a', name: '未保留课程', teacher: '', ended: false },
+        { id: 'b', name: '已保留课程', teacher: '', ended: true },
+      ],
+      syncedAt: '2026-11-07T00:00:00Z',
+      retainedCourseIds: ['b'],
+    };
+    const works = courses.items.map((course) => ({
+      courseId: course.id,
+      syncedAt: courses.syncedAt,
+      items: [{ id: course.id, title: course.name + '作业', status: '未交', timing: '' }],
+    }));
+    expect(chaoxingAssignments(courses, works)).toMatchObject({
+      courses: [{ id: 'b', name: '已保留课程' }],
+      works: [{ courseId: 'b', title: '已保留课程作业' }],
+    });
+    expect(chaoxingAssignments({ ...courses, retainedCourseIds: [] }, works)).toMatchObject({
+      courses: [],
+      works: [],
+    });
+  });
+
   const now = new Date('2026-11-03T02:00:00Z').getTime();
   const work = (
     overrides: Partial<Parameters<typeof chaoxingWorkDueAt>[0]> & {
@@ -164,6 +226,8 @@ describe('assignment marks and reminders', () => {
     for (const value of [
       work({ detailTiming: undefined, timing: '剩余2天' }),
       work({ status: '已提交' }),
+      work({ status: 'To be marked' }),
+      work({ status: 'reviewd' }),
       work({ mutedAt: '2026-11-03T00:00:00Z' }),
       work({ detailTiming: '截止时间：2026-11-10 08:00' }),
       work({ detailTiming: '截止时间：2026-10-01 08:00' }),
@@ -173,5 +237,13 @@ describe('assignment marks and reminders', () => {
     expect(chaoxingReminderKey(work(), 'soon')).toBe('2026-11-04T08:00|soon');
     expect(chaoxingReminderKey(work(), 'urgent')).not.toBe(chaoxingReminderKey(work(), 'soon'));
     expect(chaoxingReminderKey(work(), 'overdue')).not.toBe(chaoxingReminderKey(work(), 'urgent'));
+  });
+  it('also reminds when the full deadline is supplied by the list itself', () => {
+    const listed = work({ detailTiming: undefined, timing: '截止时间：2026-11-04 08:00' });
+    expect(chaoxingReminderStage(listed, now)?.stage).toBe('soon');
+    expect(chaoxingReminderKey(listed, 'soon')).toBe('2026-11-04T08:00|soon');
+    expect(
+      chaoxingReminderKey({ ...listed, timing: '截止时间：2026-11-04 09:00' }, 'soon'),
+    ).not.toBe(chaoxingReminderKey(listed, 'soon'));
   });
 });

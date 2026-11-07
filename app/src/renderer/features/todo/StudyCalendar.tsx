@@ -272,7 +272,9 @@ export function StudyCalendar({
           <span>
             学习通：
             {assignments?.coursesSyncedAt
-              ? `${assignments.courses.length - pendingCourses.length}/${assignments.courses.length} 门课程已有作业缓存`
+              ? assignments.courses.length
+                ? `${assignments.courses.length - pendingCourses.length}/${assignments.courses.length} 门课程已有作业缓存`
+                : '尚未保留课程，请在学习通的「管理课程」中选择'
               : '尚未同步课程'}
             ；仅包含本次读取的作业页面。
           </span>
@@ -425,6 +427,9 @@ export function StudyCalendar({
           ) : (
             <div className="mt-4 grid gap-2 text-13">
               <p>学习通 · {selected.work.courseName}</p>
+              {selected.work.courseOriginalName && (
+                <p>原课程名：{selected.work.courseOriginalName}</p>
+              )}
               <p className="font-medium">{chaoxingWorkTime(selected.work, now)}</p>
               <p>平台状态：{selected.work.status || '未知'}</p>
               <p className="whitespace-pre-wrap">

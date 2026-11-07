@@ -7,7 +7,7 @@ import {
 import { BrowserWindow, net, safeStorage, type IncomingMessage, type WebContents } from 'electron';
 import { mkdirSync, rmSync, createWriteStream, statSync, realpathSync } from 'node:fs';
 import { join, relative, isAbsolute, sep } from 'node:path';
-import type { ChaoxingFile, ChaoxingFolder } from '../../shared/chaoxing';
+import { chaoxingCourseLabel, type ChaoxingFile, type ChaoxingFolder } from '../../shared/chaoxing';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
@@ -60,10 +60,12 @@ const workSchema = z.object({
   title: z.string().min(1),
   status: z.string(),
   timing: z.string(),
-  detailTiming: z.string().optional(),
+  detailTiming: z.string().max(1800).optional(),
   detailSyncedAt: z.string().optional(),
+  detailError: z.string().optional(),
 });
 const coursesSchema = z.object({ items: z.array(courseSchema), syncedAt: z.string().datetime() });
+const courseRemarkSchema = z.string().trim().max(80, '备注名不能超过 80 个字符');
 const filesSchema = z.object({
   courseId: id,
   folderId: z.string(),
@@ -133,7 +135,43 @@ async function read(url: string, script: string, sender?: WebContents) {
   });
 }
 export function getChaoxingCourses() {
-  return cache('courses', coursesSchema);
+  const courses = cache('courses', coursesSchema);
+  if (!courses) return null;
+  const remarks = cache('course-remarks', z.record(id, courseRemarkSchema)) ?? {};
+  return {
+    ...courses,
+    items: courses.items
+      .map((course) => ({
+        ...course,
+        ...(remarks[course.id] ? { remark: remarks[course.id] } : {}),
+      }))
+      .sort((a, b) =>
+        chaoxingCourseLabel(a).localeCompare(chaoxingCourseLabel(b), 'zh-CN', {
+          numeric: true,
+          sensitivity: 'base',
+        }),
+      ),
+    retainedCourseIds: cache('retained-courses', z.array(id)) ?? [],
+  };
+}
+export function setChaoxingCourseRemark(courseId: string, remark: unknown) {
+  ownCourse(courseId);
+  const value = courseRemarkSchema.parse(remark);
+  const remarks = cache('course-remarks', z.record(id, courseRemarkSchema)) ?? {};
+  if (value) remarks[courseId] = value;
+  else delete remarks[courseId];
+  save('course-remarks', remarks);
+  return getChaoxingCourses()!;
+}
+export function setRetainedChaoxingCourses(courseIds: unknown) {
+  const selected = [...new Set(z.array(id).parse(courseIds))];
+  const courses = getChaoxingCourses();
+  if (!courses) throw new Error('请先同步学习通课程');
+  const known = new Set(courses.items.map((course) => course.id));
+  if (selected.some((courseId) => !known.has(courseId)))
+    throw new Error('课程列表已变化，请刷新后重新选择');
+  save('retained-courses', selected);
+  return { ...courses, retainedCourseIds: selected };
 }
 export async function syncChaoxingCourses(sender?: WebContents) {
   const entry = z
@@ -145,10 +183,11 @@ export async function syncChaoxingCourses(sender?: WebContents) {
   const routes = privateRoutes();
   for (const row of rows) routes['course:' + row.id] = row.url;
   saveRoutes(routes);
-  return save('courses', {
+  save('courses', {
     items: rows.map(({ url: _url, ...course }) => course),
     syncedAt: new Date().toISOString(),
   });
+  return getChaoxingCourses()!;
 }
 function ownCourse(courseId: string) {
   id.parse(courseId);
@@ -393,7 +432,7 @@ export async function syncChaoxingWorks(courseId: string, sender?: WebContents) 
   const previous = getChaoxingWorks(courseId)?.items ?? [];
   const items = rows.map(({ url: _url, ...work }) => {
     const saved = previous.find((item) => item.id === work.id);
-    const detailTiming = chaoxingDeadline(work.detailTiming ?? '') ? work.detailTiming : undefined;
+    const detailTiming = work.detailTiming?.trim() || undefined;
     const listHasDeadline = Boolean(chaoxingDeadline(work.timing));
     return {
       ...work,
@@ -540,7 +579,9 @@ export function syncChaoxingCalendar(sender?: WebContents): Promise<ChaoxingCale
         data: getChaoxingCalendar(),
         failures: [{ courseId: null, error: courses.error, reason: courses.reason }],
       };
-    for (const course of courses.data.items) {
+    for (const course of courses.data.items.filter((row) =>
+      courses.data.retainedCourseIds.includes(row.id),
+    )) {
       const result = await chaoxingResult(() => syncChaoxingWorks(course.id, sender));
       if (!result.ok) {
         failures.push({ courseId: course.id, error: result.error, reason: result.reason });
@@ -575,16 +616,28 @@ export async function resolveWorkEntry(courseId: string, workId: string, force =
   return result;
 }
 export function saveWorkTiming(courseId: string, workId: string, timing: string): boolean {
-  if (!chaoxingDeadline(timing)) return false;
+  if (
+    !chaoxingDeadline(timing) &&
+    !/^截止时间：\d{2}-\d{2} \d{2}:\d{2}(?::\d{2})?（年份待确认）$/.test(timing)
+  )
+    return false;
   const works = getChaoxingWorks(courseId);
   if (!works?.items.some((work) => work.id === workId)) return false;
   save('works:' + courseId, {
     ...works,
-    items: works.items.map((work) =>
-      work.id === workId
-        ? { ...work, detailTiming: timing, detailSyncedAt: new Date().toISOString() }
-        : work,
-    ),
+    items: works.items.map((work) => {
+      if (work.id !== workId) return work;
+      const confirmed = chaoxingDeadline(work.detailTiming ?? work.timing);
+      const sameDate =
+        confirmed?.time &&
+        timing === `截止时间：${confirmed.date.slice(5)} ${confirmed.time}（年份待确认）`;
+      return {
+        ...work,
+        detailTiming: sameDate ? (work.detailTiming ?? work.timing) : timing,
+        detailSyncedAt: new Date().toISOString(),
+        detailError: undefined,
+      };
+    }),
   });
   return true;
 }
