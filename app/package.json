@@ -56,7 +56,8 @@
     "web": "pnpm build:web && node scripts/web.ts",
     "smoke:web": "electron scripts/web-smoke.cjs",
     "smoke:setup": "electron scripts/setup-guide-smoke.cjs",
-    "smoke:study-calendar": "electron scripts/study-calendar-smoke.cjs"
+    "smoke:study-calendar": "electron scripts/study-calendar-smoke.cjs",
+    "smoke:places-community": "electron scripts/places-community-smoke.cjs"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.1.0",

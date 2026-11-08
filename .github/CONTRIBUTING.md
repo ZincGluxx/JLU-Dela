@@ -93,6 +93,7 @@ pnpm test
 | 离线运行时与 `dela` 桥      | `pnpm smoke:runtime`                                                                       |
 | 原生菜单、窗口关闭与恢复    | `pnpm smoke:desktop`                                                                       |
 | 工作区、文档组件、PDF、水源 | `pnpm smoke:workspace` / `pnpm smoke:documents` / `pnpm smoke:pdf` / `pnpm smoke:shuiyuan` |
+| 校园地图与校园社区          | `pnpm smoke:places-community`                                                              |
 | 远程项目真机回归            | `pnpm test:remote`，需要 `DELA_REMOTE_HOST`，可选 `DELA_REMOTE_KEY`                        |
 | 远程项目窗口冒烟            | `pnpm smoke:remote`，同样需要 `DELA_REMOTE_HOST`                                           |
 | 打包目录启动                | `pnpm package:dir` 后运行 `dist/win-unpacked/Dela.exe --smoke-test`                        |

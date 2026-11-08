@@ -51,6 +51,7 @@ jobs:
           pnpm smoke:platforms
           pnpm smoke:chaoxing
           pnpm smoke:study-calendar
+          pnpm smoke:places-community
           pnpm smoke:knowledge
           pnpm smoke:materials
           pnpm smoke:setup
