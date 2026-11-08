@@ -36,6 +36,8 @@ export type {
 import type { ShuiyuanApi } from './shuiyuan';
 import type { TimetableApi } from './timetable';
 import type { CampusVpnApi } from './campus-vpn';
+import type { PlacesApi } from './places';
+import type { CommunityApi } from './community';
 import type { TodoApi } from './todo';
 import type { TerminalApi } from './terminal';
 import type { UpdateApi } from './update';
@@ -47,6 +49,10 @@ export interface DelaApi {
   readonly webTabs: WebTabsApi;
   /** 校外访问学校平台的 VPN 设置（默认直连，可切到学校 WebVPN 入口）。 */
   readonly campusVpn: CampusVpnApi;
+  /** 校园地图与办事地点（骨架阶段内容为示例数据）。 */
+  readonly places: PlacesApi;
+  /** 校园社区（骨架阶段内容保存在本机）。 */
+  readonly community: CommunityApi;
   readonly knowledge: KnowledgeApi;
   readonly chaoxing: ChaoxingApi;
   readonly jluPlatforms: JluPlatformsApi;
@@ -127,6 +133,30 @@ export type {
   CampusVpnLoginResult,
   CampusVpnApi,
 } from './campus-vpn';
+export type {
+  PlacesSnapshot,
+  PlacesApi,
+  PlaceCampus,
+  PlaceBuilding,
+  PlaceOffice,
+  PlaceDepartment,
+  PlaceTeacher,
+  PlaceService,
+  PlaceCorrection,
+  PlaceOfficeInput,
+  PlaceCorrectionInput,
+  PlaceSearchHit,
+  PlaceSearchQuery,
+} from './places';
+export type {
+  CommunityApi,
+  CommunitySnapshot,
+  CommunityPost,
+  CommunityPostInput,
+  CommunityReview,
+  CommunityBoard,
+  CommunityPostStatus,
+} from './community';
 
 export type {
   ShuiyuanState,

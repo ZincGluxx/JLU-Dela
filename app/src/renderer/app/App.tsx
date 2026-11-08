@@ -7,6 +7,8 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { MailView } from '../features/mail';
 import { QqView } from '../features/qq/QqView';
 import { CampusView } from '../features/campus/CampusView';
+import { PlacesView } from '../features/places/PlacesView';
+import { CommunityView } from '../features/community/CommunityView';
 import { SchoolNoticesView } from '../features/campus/SchoolNoticesView';
 import { LearningView } from '../features/campus/LearningView';
 import { TimetableView } from '../features/timetable';
@@ -346,6 +348,8 @@ export default function App() {
                     />
                   )}
                   {view === 'campus' && <CampusView />}
+                  {view === 'places' && <PlacesView />}
+                  {view === 'community' && <CommunityView />}
                   {view === 'qq' && <QqView />}
                   {view === 'timetable' && (
                     <TimetableView

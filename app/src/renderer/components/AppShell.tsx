@@ -771,7 +771,9 @@ export function AppShell({
               view === 'classroom' ||
               view === 'chaoxing' ||
               view === 'knowledge' ||
-              view === 'shuiyuan'
+              view === 'shuiyuan' ||
+              view === 'places' ||
+              view === 'community'
                 ? view
                 : null
             }

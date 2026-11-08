@@ -1,6 +1,8 @@
 import { webTabs } from './web-tabs';
 import { qq } from './qq';
 import { campusVpn } from './campus-vpn';
+import { places } from './places';
+import { community } from './community';
 import { contextBridge } from 'electron';
 import { version } from '../../package.json';
 import type { DelaApi } from '../shared/api';
@@ -34,6 +36,8 @@ contextBridge.exposeInMainWorld('dela', {
   qq,
   webTabs,
   campusVpn,
+  places,
+  community,
   knowledge,
   chaoxing,
   jluPlatforms,

@@ -23,6 +23,8 @@ export type AppView =
   | 'chaoxing'
   | 'knowledge'
   | 'shuiyuan'
+  | 'places'
+  | 'community'
   | 'todo'
   | 'notifications'
   | 'settings';

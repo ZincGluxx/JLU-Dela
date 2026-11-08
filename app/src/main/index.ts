@@ -26,6 +26,8 @@ import { registerJluPlatformsIpc } from './jlu/ipc';
 import { registerKnowledgeIpc } from './knowledge/ipc';
 import { registerChaoxingIpc } from './chaoxing/ipc';
 import { registerCampusVpnIpc } from './campus-vpn-ipc';
+import { registerPlacesIpc } from './places';
+import { registerCommunityIpc } from './community';
 import { startWorkReminders } from './chaoxing/reminders';
 import { registerWebTabsIpc, hasWebTabs, closeAllWebTabs } from './chaoxing/web-tabs';
 import { registerVsjtuIpc } from './vsjtu/ipc';
@@ -230,6 +232,8 @@ app
     registerJluPlatformsIpc();
     registerChaoxingIpc();
     registerCampusVpnIpc();
+    registerPlacesIpc();
+    registerCommunityIpc();
     registerWebTabsIpc();
     registerKnowledgeIpc();
     registerVsjtuIpc();

@@ -7,8 +7,10 @@ import {
   FolderOpen,
   GraduationCap,
   Mail,
+  MapPin,
   MessageCircle,
   MonitorPlay,
+  Users,
 } from 'lucide-react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -25,6 +27,8 @@ export type NavEntryId =
   | 'knowledge'
   | 'shuiyuan'
   | 'campus'
+  | 'places'
+  | 'community'
   | 'notifications';
 
 export const navEntries: Array<{
@@ -38,6 +42,8 @@ export const navEntries: Array<{
   { id: 'timetable', label: '课表', icon: CalendarDays },
   { id: 'classroom', label: '学在吉大', icon: MonitorPlay },
   { id: 'chaoxing', label: '学习通', icon: BookOpen },
+  { id: 'places', label: '校园地图', icon: MapPin },
+  { id: 'community', label: '校园社区', icon: Users },
   { id: 'notifications', label: '学校通知', icon: Bell },
   { id: 'mail', label: '吉大邮箱', icon: Mail },
   { id: 'qq', label: 'QQ 群聊', icon: MessageCircle },

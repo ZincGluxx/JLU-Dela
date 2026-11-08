@@ -209,6 +209,13 @@ const schema: string[] = [
     effort TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_sessions_visibility ON sessions(project_id, archived, pinned, updated_at DESC)`,
+  // 校园地图与校园社区：骨架阶段按文档存 JSON，接入真实服务后替换为结构化表。
+  `CREATE TABLE IF NOT EXISTS campus_docs (
+    kind TEXT PRIMARY KEY,
+    version INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
 ];
 
 const createConsentRecords = `CREATE TABLE IF NOT EXISTS consent_records (

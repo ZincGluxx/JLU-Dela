@@ -83,10 +83,12 @@ Dela/
 │  ├─ main/                   Electron 主进程
 │  │  ├─ agent/               Pi 内核接入、工具与运行时
 │  │  ├─ canvas/              Canvas 课程资料
+│  │  ├─ community/           校园社区（本机示例数据与基础审核）
 │  │  ├─ documents/           文档读取与 Skill 组件
 │  │  ├─ mail/                校园邮箱与第三方 IMAP/SMTP
 │  │  ├─ migrations/          旧版用户的数据库迁移
 │  │  ├─ notifications/       通知轮询
+│  │  ├─ places/              校园地图与办事地点
 │  │  ├─ remotes/             远程项目与 helper 隧道
 │  │  ├─ search/              全局搜索
 │  │  ├─ settings/            设置与模型/网络配置
