@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { JluPlatformResult, JluStudyMedia } from '../../shared/jlu-platforms';
+import { jluNoticeSearchSchema } from '../../shared/jlu-platforms';
 import { webMethods, type WebMethod } from '../../shared/web';
 
 const bodySchema = z.object({ method: z.string(), args: z.array(z.unknown()).max(4) }).strict();
@@ -67,7 +68,13 @@ export function webArguments(method: WebMethod, args: unknown[]): unknown[] {
   )
     return z.tuple([ids]).parse(args);
   if (['notices.list', 'notices.sync'].includes(method))
-    return z.tuple([z.string().regex(/^\d+$/), z.number().int().min(1).max(10000)]).parse(args);
+    return z
+      .tuple([
+        z.string().regex(/^\d+$/),
+        z.number().int().min(1).max(10000),
+        jluNoticeSearchSchema.optional(),
+      ])
+      .parse(args);
   if (method === 'notices.read' || method === 'notices.cached')
     return z.tuple([z.string().regex(/^\d+$/), z.string().regex(/^\d+$/)]).parse(args);
   return z.tuple([]).parse(args);

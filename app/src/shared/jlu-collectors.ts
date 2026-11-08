@@ -13,8 +13,9 @@ export const noticeListScript = `(() => {
     };
   });
   const pagination = document.body.innerText.match(/第\\s*\\d+\\s*\\/\\s*(\\d+)\\s*页/);
-  if (!items.length && !/共\\s*0\\s*条记录/.test(document.body.innerText)) throw new Error('Unknown empty list');
-  return { ready: true, data: { items, totalPages: pagination ? Number(pagination[1]) : null } };
+  const emptySearch = !container.children.length && !container.textContent.trim() && document.querySelector('#gjzForm2 #searchnr') && document.querySelector('#gjzForm2 #searchlx');
+  if (!items.length && !emptySearch && !/共\\s*0\\s*条记录/.test(document.body.innerText)) throw new Error('Unknown empty list');
+  return { ready: true, data: { items, totalPages: pagination ? Number(pagination[1]) : items.length ? null : 1 } };
 })()`;
 
 export const noticeDetailScript = `(() => {

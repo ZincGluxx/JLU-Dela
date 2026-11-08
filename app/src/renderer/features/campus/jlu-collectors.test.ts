@@ -79,6 +79,18 @@ it('reads official video and subtitle fields without forwarding unrelated metada
   expect(JSON.stringify(result)).not.toContain('private');
   dom.close();
 });
+it('recognizes the native empty search layout while rejecting an unknown empty list', () => {
+  const dom = page(
+    '<form id="gjzForm2"><input id="searchnr"><select id="searchlx"><option>标题</option></select><div id="itemContainer">\n\t</div><div class="pages"><table><tbody><tr><td></td></tr></tbody></table></div></form>',
+  );
+  expect(dom.window.eval(noticeListScript)).toEqual({
+    ready: true,
+    data: { items: [], totalPages: 1 },
+  });
+  document.body.innerHTML = '<div id="itemContainer"></div>';
+  expect(() => dom.window.eval(noticeListScript)).toThrow('Unknown empty list');
+  dom.close();
+});
 it('keeps body text and both standard links and official scripted attachment entries', () => {
   const dom = page(
     '<div class="content_t">示例通知</div><div class="content_time">2026-10-30 示例单位</div><div class="content_font">正文<script>ignored()</script></div><span id="test.pdf" title="示例.pdf" onclick="downloadthis(this)">示例.pdf</span><a href="/defaultroot/rd/download/attachdownload.jsp?res=test">附表</a>',

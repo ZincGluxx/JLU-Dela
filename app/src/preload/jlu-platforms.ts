@@ -1,8 +1,10 @@
-import type { JluPlatformsApi } from '../shared/jlu-platforms';
+import type { JluNoticeSearch, JluPlatformsApi } from '../shared/jlu-platforms';
 import { invoke } from './lib';
 export const jluPlatforms = {
-  getNotices: (channel: string, page: number) => invoke('jlu:notices:get', channel, page),
-  syncNotices: (channel: string, page: number) => invoke('jlu:notices:sync', channel, page),
+  getNotices: (channel: string, page: number, search?: JluNoticeSearch) =>
+    invoke('jlu:notices:get', channel, page, search),
+  syncNotices: (channel: string, page: number, search?: JluNoticeSearch) =>
+    invoke('jlu:notices:sync', channel, page, search),
   getNotice: (id: string, channel: string) => invoke('jlu:notice:get', id, channel),
   readNotice: (id: string, channel: string) => invoke('jlu:notice:read', id, channel),
   getLearning: () => invoke('jlu:learning:get'),

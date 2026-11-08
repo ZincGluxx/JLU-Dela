@@ -1,3 +1,12 @@
+import { z } from 'zod';
+
+export const jluNoticeSearchSchema = z.object({
+  query: z.string().trim().min(1).max(200),
+  field: z.enum(['title', 'department', 'body']),
+  organization: z.string().trim().min(1).max(200).optional(),
+});
+export type JluNoticeSearch = z.infer<typeof jluNoticeSearchSchema>;
+
 export interface JluNotice {
   id: string;
   channel: string;
@@ -13,6 +22,7 @@ export interface JluNoticePage {
   totalPages: number | null;
   items: JluNotice[];
   syncedAt: string;
+  search?: JluNoticeSearch;
 }
 export interface JluNoticeDetail {
   id: string;
@@ -73,8 +83,16 @@ export interface JluStudyMaterial {
 export type JluPlatformResult<T> =
   { ok: true; data: T } | { ok: false; error: string; reason?: 'auth' };
 export interface JluPlatformsApi {
-  getNotices(channel: string, page: number): Promise<JluNoticePage | null>;
-  syncNotices(channel: string, page: number): Promise<JluPlatformResult<JluNoticePage>>;
+  getNotices(
+    channel: string,
+    page: number,
+    search?: JluNoticeSearch,
+  ): Promise<JluNoticePage | null>;
+  syncNotices(
+    channel: string,
+    page: number,
+    search?: JluNoticeSearch,
+  ): Promise<JluPlatformResult<JluNoticePage>>;
   getNotice(id: string, channel: string): Promise<JluNoticeDetail | null>;
   readNotice(id: string, channel: string): Promise<JluPlatformResult<JluNoticeDetail>>;
   getLearning(): Promise<JluLearning | null>;

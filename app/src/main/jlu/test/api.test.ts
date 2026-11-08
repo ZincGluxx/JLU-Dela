@@ -101,6 +101,63 @@ it('stores notice text and validates attachment destinations', async () => {
   await expect(readNotice('1', '179577')).rejects.toThrow('结构');
   expect(getNotice('1', '179577')?.text).toBe('正文');
 });
+it('queries all dates and keeps search pages separate by field, keyword and page', async () => {
+  reader.mockImplementation(async ({ url }) => {
+    const params = new URL(url).searchParams;
+    return {
+      items: [
+        {
+          id: '1',
+          channel: '179577',
+          title: params.get('searchnr') || '原列表',
+          department: '本科生院',
+          published: '2020-01-01',
+          pinned: false,
+          url: 'https://oa.jlu.edu.cn/defaultroot/PortalInformation!getInformation.action?id=1',
+        },
+      ],
+      totalPages: 97,
+    };
+  });
+  const title = { query: '奖学金 & 交流', field: 'title' as const };
+  const department = { query: title.query, field: 'department' as const };
+  const original = await syncNotices('179577', 1);
+  const first = await syncNotices('179577', 1, undefined, title);
+  const url = new URL(reader.mock.calls.at(-1)![0].url);
+  expect(url.searchParams.get('searchnr')).toBe(title.query);
+  expect(url.searchParams.get('searchlx')).toBe('0');
+  expect(url.searchParams.has('searchDate')).toBe(true);
+  expect(url.searchParams.get('searchDate')).toBe('');
+  expect(first).toMatchObject({
+    search: title,
+    totalPages: 97,
+    items: [{ published: '2020-01-01' }],
+  });
+  expect(getNotices('179577', 1)).toEqual(original);
+  expect(getNotices('179577', 1, title)).toEqual(first);
+  expect(getNotices('179577', 2, title)).toBeNull();
+  expect(getNotices('179577', 1, department)).toBeNull();
+  expect(getNotices('179577', 1, { ...title, query: '其他' })).toBeNull();
+  await syncNotices('179577', 2, undefined, title);
+  expect(new URL(reader.mock.calls.at(-1)![0].url).searchParams.get('startPage')).toBe('2');
+  expect(getNotices('179577', 2, title)?.page).toBe(2);
+  await syncNotices('179577', 1, undefined, department);
+  expect(new URL(reader.mock.calls.at(-1)![0].url).searchParams.get('searchlx')).toBe('1');
+  expect(getNotices('179577', 1, department)?.search).toEqual(department);
+  const body = { query: '奖学金', field: 'body' as const, organization: '本科生院' };
+  await syncNotices('179577', 1, undefined, body);
+  const bodyUrl = new URL(reader.mock.calls.at(-1)![0].url);
+  expect(bodyUrl.searchParams.get('searchlx')).toBe('2');
+  expect(bodyUrl.searchParams.get('orgname')).toBe('本科生院');
+  expect(bodyUrl.searchParams.get('searchDate')).toBe('');
+  expect(getNotices('179577', 1, body)?.search).toEqual(body);
+  expect(getNotices('179577', 1, { ...body, organization: '研究生院' })).toBeNull();
+  expect(getNotices('179577', 1, { query: body.query, field: body.field })).toBeNull();
+  reader.mockRejectedValueOnce(new Error('offline'));
+  await expect(syncNotices('179577', 1, undefined, title)).rejects.toThrow('offline');
+  expect(getNotices('179577', 1, title)).toEqual(first);
+  expect(getNotices('179577', 1)).toEqual(original);
+});
 it('keeps semester-specific courses and permits recordings only for a synced own course', async () => {
   reader.mockResolvedValueOnce([
     { id: 'term-1', year: '2026', num: '1', name: '秋', selected: '1' },

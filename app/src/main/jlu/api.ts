@@ -1,6 +1,10 @@
 import type { WebContents } from 'electron';
 import { z } from 'zod';
-import type { JluPlatformResult } from '../../shared/jlu-platforms';
+import {
+  jluNoticeSearchSchema,
+  type JluNoticeSearch,
+  type JluPlatformResult,
+} from '../../shared/jlu-platforms';
 import { CampusAuthError, createCampusLoginWindow, getCampusSession } from '../campus';
 import { campusUrl } from '../campus-vpn';
 import { getDatabase } from '../database';
@@ -45,6 +49,7 @@ export const noticePageSchema = z.object({
   totalPages: z.number().int().positive().nullable(),
   items: z.array(noticeSchema),
   syncedAt: z.string().datetime(),
+  search: jluNoticeSearchSchema.optional(),
 });
 export const noticeDetailSchema = z.object({
   id: digit,
@@ -126,18 +131,40 @@ export async function platformResult<T>(work: () => Promise<T>): Promise<JluPlat
     };
   }
 }
-function listUrl(channel: string, page: number): string {
-  return `${OA_ORIGIN}/defaultroot/PortalInformation!jldxList.action?${new URLSearchParams({ channelId: digit.parse(channel), startPage: String(z.number().int().positive().parse(page)) })}`;
+function noticeListRequest(channel: string, page: number, search?: JluNoticeSearch) {
+  const params = new URLSearchParams({
+    channelId: digit.parse(channel),
+    startPage: String(z.number().int().positive().parse(page)),
+  });
+  if (search) {
+    params.set('searchnr', search.query);
+    params.set(
+      'searchlx',
+      search.field === 'title' ? '0' : search.field === 'department' ? '1' : '2',
+    );
+    params.set('searchDate', '');
+    if (search.organization) params.set('orgname', search.organization);
+  }
+  return {
+    url: `${OA_ORIGIN}/defaultroot/PortalInformation!jldxList.action?${params}`,
+    key: search
+      ? `oa-search:${channel}:${search.field}:${encodeURIComponent(search.query)}:${page}${search.organization ? `:org:${encodeURIComponent(search.organization)}` : ''}`
+      : `oa:${channel}:${page}`,
+  };
 }
 function detailUrl(id: string, channel: string): string {
   return `${OA_ORIGIN}/defaultroot/PortalInformation!getInformation.action?${new URLSearchParams({ id: digit.parse(id), channelId: digit.parse(channel) })}`;
 }
-export function getNotices(channel: string, page: number) {
-  listUrl(channel, page);
-  return cached(`oa:${channel}:${page}`, noticePageSchema);
+export function getNotices(channel: string, page: number, search?: JluNoticeSearch) {
+  return cached(noticeListRequest(channel, page, search).key, noticePageSchema);
 }
-export async function syncNotices(channel: string, page: number, sender?: WebContents) {
-  const url = listUrl(channel, page);
+export async function syncNotices(
+  channel: string,
+  page: number,
+  sender?: WebContents,
+  search?: JluNoticeSearch,
+) {
+  const { url, key } = noticeListRequest(channel, page, search);
   const raw = await readSchoolPage({
     url,
     title: '电子校务通知',
@@ -152,6 +179,7 @@ export async function syncNotices(channel: string, page: number, sender?: WebCon
     channel,
     page,
     syncedAt: new Date().toISOString(),
+    ...(search ? { search } : {}),
   });
   if (!result.success) throw new Error('电子校务通知结构已变化，本地列表未更新');
   const date = (offset: number) =>
@@ -166,7 +194,7 @@ export async function syncNotices(channel: string, page: number, sender?: WebCon
       .replace(/^今天\s*/, `${date(0)} `)
       .replace(/^昨天\s*/, `${date(-1)} `)
       .trim();
-  return save(`oa:${channel}:${page}`, result.data);
+  return save(key, result.data);
 }
 export function getNotice(id: string, channel: string) {
   detailUrl(id, channel);

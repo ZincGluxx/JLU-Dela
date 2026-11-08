@@ -10,6 +10,7 @@ import {
 } from './study-materials';
 import { studyWorkspace } from './study-workspace';
 import { workspaceEntryIdSchema } from '../../shared/workspace';
+import { jluNoticeSearchSchema } from '../../shared/jlu-platforms';
 import {
   getLearning,
   getNotice,
@@ -75,13 +76,14 @@ export function registerJluPlatformsIpc(): void {
     checkWorkspaceSender(event);
     return platformResult(() => studyMedia(courseId, recordingId, event.sender));
   });
-  ipcMain.handle('jlu:notices:get', (event, channel: string, page: number) => {
+  ipcMain.handle('jlu:notices:get', (event, channel: string, page: number, search) => {
     checkWorkspaceSender(event);
-    return getNotices(channel, page);
+    return getNotices(channel, page, jluNoticeSearchSchema.optional().parse(search));
   });
-  ipcMain.handle('jlu:notices:sync', (event, channel: string, page: number) => {
+  ipcMain.handle('jlu:notices:sync', (event, channel: string, page: number, search) => {
     checkWorkspaceSender(event);
-    return platformResult(() => syncNotices(channel, page, event.sender));
+    const query = jluNoticeSearchSchema.optional().parse(search);
+    return platformResult(() => syncNotices(channel, page, event.sender, query));
   });
   ipcMain.handle('jlu:notice:get', (event, id: string, channel: string) => {
     checkWorkspaceSender(event);
