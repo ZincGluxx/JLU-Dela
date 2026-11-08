@@ -208,6 +208,7 @@ async function run(window: BrowserWindow) {
   assert.equal((await js('window.dela.qq.getState()')).phase, 'login');
   loggedIn = true;
   await wait('document.body.textContent.includes("示例用户")');
+  await wait('!!document.querySelector(\'input[aria-label="接入 计算机网络 · 示例课程群"]\')');
   await js(`document.querySelector('input[aria-label="接入 计算机网络 · 示例课程群"]').click()`);
   await wait('!document.querySelector(\'textarea[aria-label="QQ 消息内容"]\')');
   await click('完成并进入聊天');
@@ -215,6 +216,7 @@ async function run(window: BrowserWindow) {
   await wait(
     'Array.from(document.querySelectorAll("img")).filter(img=>img.naturalWidth>0).length===2',
   );
+  await wait(`!!document.querySelector('[aria-label="查看示例截图"]')`);
   await js(`document.querySelector('[aria-label="查看示例截图"]').click()`);
   await wait(`!!document.querySelector('[role="dialog"] img')`);
   await js(`document.querySelector('[aria-label="关闭图片"]').click()`);
