@@ -116,7 +116,29 @@ app.whenReady().then(async () => {
           },
         };
       if (method === 'notices.list')
-        return { channel: '179577', page: 1, totalPages: 1, syncedAt, items: [notice] };
+        return args[2]
+          ? null
+          : { channel: '179577', page: 1, totalPages: 1, syncedAt, items: [notice] };
+      if (method === 'notices.sync')
+        return {
+          ok: true,
+          data: {
+            channel: '179577',
+            page: args[1],
+            totalPages: args[2] ? 2 : 1,
+            syncedAt,
+            ...(args[2] ? { search: args[2] } : {}),
+            items: args[2]
+              ? [
+                  {
+                    ...notice,
+                    id: String(10 + args[1]),
+                    title: `${args[2].query} · 网页结果 ${args[1]}`,
+                  },
+                ]
+              : [notice],
+          },
+        };
       if (method === 'notices.cached') return null;
       if (method === 'notices.read')
         return {
@@ -300,6 +322,36 @@ app.whenReady().then(async () => {
     await capture('chaoxing');
     await navigate('学校通知');
     await wait(`document.body.textContent.includes('示例学校通知')`);
+    await js(`(() => {
+      const input = document.querySelector('[aria-label="搜索全部通知"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '网页跨页');
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+    })()`);
+    await js(`document.querySelector('form[aria-label="通知筛选"]').requestSubmit()`);
+    await wait(`document.body.textContent.includes('网页跨页 · 网页结果 1')`);
+    await js(`document.querySelector('[aria-label="下一页通知"]').click()`);
+    await wait(`document.body.textContent.includes('网页跨页 · 网页结果 2')`);
+    await js(`document.querySelector('[aria-label="清除通知筛选"]').click()`);
+    await wait(`document.body.textContent.includes('示例学校通知')`);
+    await js(
+      `Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='组合筛选').click()`,
+    );
+    await js(`(() => {
+      for (const [label,value] of [['组织','本科生院'],['标题','网页标题'],['正文','网页正文']]) {
+        const input=document.querySelector('[aria-label="筛选'+label+'"]');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+    })()`);
+    await js(`document.querySelector('form[aria-label="通知筛选"]').requestSubmit()`);
+    await wait(`document.body.textContent.includes('2 条结果')`);
+    assert.equal(await js(`!!document.querySelector('[aria-label="通知订阅"]')`), false);
+    await js(
+      `Array.from(document.querySelectorAll('form[aria-label="通知筛选"] button')).find(button=>button.textContent==='清除').click()`,
+    );
+    await wait(
+      `document.body.textContent.includes('示例学校通知') && !document.body.textContent.includes('2 条结果')`,
+    );
     await js(
       `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('示例学校通知')).click()`,
     );

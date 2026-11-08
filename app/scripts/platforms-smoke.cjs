@@ -17,6 +17,7 @@ const materialPath = join(profile, '示例课件.pptx');
 writeFileSync(materialPath, 'pptx-fixture');
 dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [materialPath] });
 let offline = false;
+const noticeSearchRequests = [];
 app.whenReady().then(() => {
   session.fromPartition('persist:jlu-campus').fetch = async (url, options = {}) => {
     assert.equal(url, 'https://ilearnres.jlu.edu.cn/fixture.webm');
@@ -49,9 +50,21 @@ BrowserWindow.prototype.loadURL = function (url, options) {
   if (offline) return Promise.reject(new Error('fixture offline'));
   let html;
   if (parsed.hostname === 'oa.jlu.edu.cn') {
-    html = parsed.pathname.includes('jldxList')
-      ? '<div id="itemContainer"><div class="li"><a class="font14" href="https://oa.jlu.edu.cn/defaultroot/PortalInformation!getInformation.action?id=1&channelId=179577">示例通知</a><a class="column">示例单位</a><span class="time">2026-10-30</span></div></div><p>第 1 /2 页 共 2 条记录</p>'
-      : '<div class="content_t">示例通知全文</div><div class="content_time">示例单位</div><div class="content_font">示例正文</div><a href="https://oa.jlu.edu.cn/defaultroot/rd/download/attachdownload.jsp?res=fixture">示例附件</a>';
+    const query = parsed.searchParams.get('searchnr');
+    if (query !== null && parsed.pathname.includes('jldxList')) {
+      const page = Number(parsed.searchParams.get('startPage'));
+      const field = parsed.searchParams.get('searchlx');
+      const organization = parsed.searchParams.get('orgname');
+      assert.equal(parsed.searchParams.get('searchDate'), '');
+      noticeSearchRequests.push({ query, page, field, ...(organization ? { organization } : {}) });
+      html =
+        query === '无匹配'
+          ? '<form id="gjzForm2"><input id="searchnr"><select id="searchlx"></select><div id="itemContainer"></div></form>'
+          : `<div id="itemContainer"><div class="li"><a class="font14" href="https://oa.jlu.edu.cn/defaultroot/PortalInformation!getInformation.action?id=${100 + page}&channelId=179577">${query} · 跨页结果 ${page}</a><a class="column">${organization || (field === '1' ? query : '历史发布单位')}</a><span class="time">2020-01-01</span></div></div><p>第 ${page} / 2 页 共 60 条记录</p>`;
+    } else
+      html = parsed.pathname.includes('jldxList')
+        ? '<div id="itemContainer"><div class="li"><a class="font14" href="https://oa.jlu.edu.cn/defaultroot/PortalInformation!getInformation.action?id=1&channelId=179577">示例通知</a><a class="column">示例单位</a><span class="time">2026-10-30</span></div></div><p>第 1 /2 页 共 2 条记录</p>'
+        : '<div class="content_t">示例通知全文</div><div class="content_time">示例单位</div><div class="content_font">示例正文</div><a href="https://oa.jlu.edu.cn/defaultroot/rd/download/attachdownload.jsp?res=fixture">示例附件</a>';
   } else if (parsed.hostname === 'ilearnres.jlu.edu.cn') {
     html = `<script>window.fetch=async(url)=>({ok:true,json:async()=>({status:'1',data:url.includes('videoClassInfo')?{videoList:[{videoName:'教师画面',videoPath:'https://ilearnres.jlu.edu.cn/fixture.webm'}]}:{textInfo:[{startTime:0,endTime:5000,text:'示例课堂字幕，用于引用和提问。'},{startTime:5000,endTime:10000,text:'第二段示例字幕。'}]}})});</script>`;
   } else {
@@ -100,7 +113,6 @@ async function run(window) {
     (await js('window.dela.jluPlatforms.readNotice("1","179577")')).data.attachments.length,
     1,
   );
-  const notice = await js('window.dela.jluPlatforms.getNotices("179577",1)');
   assert.equal((await js('window.dela.jluPlatforms.syncNotices("179577",2)')).ok, true);
   const learning = await js('window.dela.jluPlatforms.syncLearning()');
   assert.equal(learning.ok, true);
@@ -110,6 +122,16 @@ async function run(window) {
     `Array.from(document.querySelectorAll('#main-nav button')).find(b=>b.textContent.trim()==='学校通知').click()`,
   );
   await wait('document.body.textContent.includes("示例通知")');
+  const searchNotices = async (query) => {
+    await js(`(() => {
+      const input = document.querySelector('[aria-label="搜索全部通知"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(query)});
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+    })()`);
+    await js(`document.querySelector('form[aria-label="通知筛选"]').requestSubmit()`);
+  };
+  await searchNotices('跨页');
+  await wait('document.body.textContent.includes("跨页 · 跨页结果 1")');
   await js(
     'Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))',
   );
@@ -130,6 +152,65 @@ async function run(window) {
       );
     }
   }
+  await js(`document.querySelector('[aria-label="下一页通知"]').click()`);
+  await wait('document.body.textContent.includes("跨页 · 跨页结果 2")');
+  assert.deepEqual(noticeSearchRequests.at(-1), { query: '跨页', page: 2, field: '0' });
+  await js(`(() => {
+    const field = document.querySelector('[aria-label="搜索字段"]');
+    field.value = 'department';
+    field.dispatchEvent(new Event('change', {bubbles:true}));
+  })()`);
+  await searchNotices('本科生院');
+  await wait('document.body.textContent.includes("本科生院 · 跨页结果 1")');
+  assert.deepEqual(noticeSearchRequests.at(-1), { query: '本科生院', page: 1, field: '1' });
+  await searchNotices('无匹配');
+  await wait('document.body.textContent.includes("没有找到匹配的通知")');
+  assert.equal(await js(`document.querySelector('[aria-label="下一页通知"]').disabled`), true);
+  await js(`document.querySelector('[aria-label="清除通知筛选"]').click()`);
+  await wait(
+    'document.body.textContent.includes("示例通知") && !document.body.textContent.includes("全部时间")',
+  );
+  await js(
+    `(() => { const field = document.querySelector('[aria-label="搜索字段"]'); field.value='body'; field.dispatchEvent(new Event('change',{bubbles:true})); })()`,
+  );
+  await searchNotices('正文样例');
+  await wait('document.body.textContent.includes("正文样例 · 跨页结果 1")');
+  assert.equal(noticeSearchRequests.at(-1).field, '2');
+  await js(
+    `Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='组合筛选').click()`,
+  );
+  await js(`(() => {
+    for (const [label, value] of [['组织','本科生院'],['标题','标题条件'],['正文','正文条件']]) {
+      const input = document.querySelector('[aria-label="筛选'+label+'"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+  })()`);
+  await js(`document.querySelector('form[aria-label="通知筛选"]').requestSubmit()`);
+  await wait(
+    'document.body.textContent.includes("2 条结果") && !document.body.textContent.includes("正在组合筛选")',
+  );
+  assert.ok(noticeSearchRequests.slice(-4).every((request) => request.organization === '本科生院'));
+  for (const width of [600, 900, 1280, 1800]) {
+    window.setSize(width, 850);
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    assert.equal(
+      await js('document.documentElement.scrollWidth <= document.documentElement.clientWidth'),
+      true,
+      `combined notices ${width}`,
+    );
+    if (!root.endsWith('.asar'))
+      writeFileSync(
+        `.build/platforms-notices-combined-${width}.png`,
+        (await window.webContents.capturePage()).toPNG(),
+      );
+  }
+  await js(
+    `Array.from(document.querySelectorAll('form[aria-label="通知筛选"] button')).find(button=>button.textContent==='清除').click()`,
+  );
+  await wait(
+    'document.body.textContent.includes("示例通知") && !document.body.textContent.includes("2 条结果")',
+  );
   await js(
     `Array.from(document.querySelectorAll('#main-nav button')).find(b=>b.textContent.trim()==='学在吉大').click()`,
   );
@@ -272,6 +353,7 @@ async function run(window) {
     `document.querySelector('[aria-label="课程学习笔记"]')?.textContent.includes('示例学习笔记')`,
   );
   assert.deepEqual(await js('window.dela.jluPlatforms.studyWorkspace("c1","r1")'), tools);
+  const notice = await js('window.dela.jluPlatforms.getNotices("179577",1)');
   offline = true;
   const failed = await js('window.dela.jluPlatforms.syncNotices("179577",1)');
   assert.equal(failed.ok, false);
@@ -287,6 +369,6 @@ async function run(window) {
   await wait('document.body.textContent.includes("第 2")');
   assert.ok(preferences.every((p) => p.sandbox && p.contextIsolation && !p.preload));
   console.log(
-    'Platforms smoke passed with synthetic data: notices, courses, embedded video, subtitles, AI drafts, saved study notes, imported classroom slides, cache preservation, isolated sessions and four viewport widths. No live school or model requests.',
+    'Platforms smoke passed with synthetic data: notice quick search, combined filters and cross-page results, offline status, courses, embedded video, subtitles, AI drafts, saved study notes, imported classroom slides, cache preservation, isolated sessions and four viewport widths. No live school or model requests.',
   );
 }

@@ -96,6 +96,25 @@ it('rejects invalid pairing and does not return the connection token with RPC er
   expect(response.status).toBe(400);
   expect(await response.text()).not.toContain(new URL(service.url).hash.slice(1));
 });
+it('accepts cross-page notice queries and rejects invalid search fields or empty keywords', () => {
+  expect(webArguments('notices.list', ['179577', 1])).toEqual(['179577', 1]);
+  expect(
+    webArguments('notices.sync', ['179577', 2, { query: ' 奖学金 ', field: 'title' }]),
+  ).toEqual(['179577', 2, { query: '奖学金', field: 'title' }]);
+  expect(() =>
+    webArguments('notices.sync', ['179577', 1, { query: '奖学金', field: 'unknown' }]),
+  ).toThrow();
+  expect(() =>
+    webArguments('notices.sync', ['179577', 1, { query: '  ', field: 'title' }]),
+  ).toThrow();
+  expect(
+    webArguments('notices.sync', [
+      '179577',
+      1,
+      { query: '资助', field: 'body', organization: ' 本科生院 ' },
+    ]),
+  ).toEqual(['179577', 1, { query: '资助', field: 'body', organization: '本科生院' }]);
+});
 
 it('proxies only issued school media through an authenticated opaque URL and forwards ranges', async () => {
   const cookie = await connect();

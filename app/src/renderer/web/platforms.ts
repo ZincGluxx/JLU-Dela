@@ -32,8 +32,10 @@ export const chaoxingApi: ChaoxingPageApi = {
   setReminders: (enabled) => webCall('chaoxing.setReminders', [enabled]),
 };
 export const noticesApi: NoticesPageApi = {
-  getNotices: (channel, page) => webCall('notices.list', [channel, page]),
-  syncNotices: (channel, page) => webCall('notices.sync', [channel, page]),
+  getNotices: (channel, page, search) =>
+    webCall('notices.list', search ? [channel, page, search] : [channel, page]),
+  syncNotices: (channel, page, search) =>
+    webCall('notices.sync', search ? [channel, page, search] : [channel, page]),
   getNotice: (id, channel) => webCall('notices.cached', [id, channel]),
   readNotice: (id, channel) => webCall('notices.read', [id, channel]),
 };
