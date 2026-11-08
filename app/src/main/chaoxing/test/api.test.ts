@@ -516,7 +516,8 @@ it('refreshes status and deadlines automatically and retains earlier detail time
     detailSyncedAt: expect.any(String),
   });
   expect(saveWorkTiming('1:2', 'w1', '截止时间：11-07 20:00（年份待确认）')).toBe(true);
-  expect(getChaoxingWorks('1:2')!.items[0]!.detailTiming).toBe(initial.items[0]!.detailTiming);
+  const saved = getChaoxingWorks('1:2')!.items[0]!;
+  expect(saved.detailTiming).toBe(initial.items[0]!.detailTiming);
   reader.mockResolvedValueOnce({ url: 'https://mooc1.chaoxing.com/list' }).mockResolvedValueOnce([
     {
       id: 'w1',
@@ -531,7 +532,7 @@ it('refreshes status and deadlines automatically and retains earlier detail time
   expect(refreshed.items[0]).toMatchObject({
     status: 'reviewd',
     detailTiming: initial.items[0]!.detailTiming,
-    detailSyncedAt: initial.items[0]!.detailSyncedAt,
+    detailSyncedAt: saved.detailSyncedAt,
     detailError: '作业详情暂时无法读取，请稍后刷新',
   });
   expect(getChaoxingCalendar().works[0]?.deadline).toEqual({ date: '2026-11-07', time: '20:00' });
