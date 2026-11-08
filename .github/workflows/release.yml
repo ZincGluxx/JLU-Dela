@@ -57,6 +57,7 @@ jobs:
           pnpm smoke:platforms
           pnpm smoke:chaoxing
           pnpm smoke:study-calendar
+          pnpm smoke:places-community
           pnpm smoke:knowledge
           pnpm smoke:setup
       - name: Build DMG and ZIP
@@ -69,6 +70,7 @@ jobs:
           pnpm smoke:jlu "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"
           pnpm smoke:chaoxing "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"
           pnpm smoke:study-calendar "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"
+          pnpm smoke:places-community "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"
           pnpm smoke:setup "dist/mac-arm64/JLU-Dela.app/Contents/Resources/app.asar"
       - name: Record checksums, source and release notes
         run: |
@@ -83,7 +85,7 @@ jobs:
             .find(value => value.startsWith(`${version} `));
           if (!section) throw new Error('Missing versioned changelog');
           const changes = section.slice(section.indexOf('\n')).trim();
-          writeFileSync('dist/release-notes.md', `适用于 **macOS 13+ / Apple Silicon（M 系列芯片）** 和 **Windows 10/11 x64**。\n\nMac 下载 DMG 后，将 JLU-Dela.app 拖入 Applications；ZIP 为备用压缩包。Windows 下载 win-x64-setup.exe 并安装。\n\n这是开发预览版，Mac 包尚未做 Developer ID 签名与公证，Windows 安装包尚未签名，系统可能提示无法验证发布者；Intel Mac 不在本次发布范围。\n\n## 本版更新\n\n${changes}\n\nQQ 共享会话为 **macOS 实验功能**，Windows QQ 接入尚未适配；图片表情可预览，内置 QQ 小表情、语音、视频和合并转发仍显示占位。\n\n## 验证与来源\n\n通过格式、类型、构建、单元测试、校园与学习流程冒烟，以及 Mac DMG / ZIP 完整性与归档内应用启动检查；Windows 目录包启动、NSIS 安装、安装后启动和卸载检查。\n\n附 SHA256SUMS 和 source-commit.txt。源码：${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/commit/${process.env.GITHUB_SHA}。\n\n[使用指南](https://github.com/goya4140/JLU-Dela/blob/${process.env.GITHUB_SHA}/app/docs/user-guide.md) · [Mac 安装说明](https://github.com/goya4140/JLU-Dela/blob/${process.env.GITHUB_SHA}/app/docs/install-macos.md) · [Windows 安装说明](https://github.com/goya4140/JLU-Dela/blob/${process.env.GITHUB_SHA}/app/docs/windows-testing.md)\n`);
+          writeFileSync('dist/release-notes.md', `适用于 **macOS 13+ / Apple Silicon（M 系列芯片）** 和 **Windows 10/11 x64**。\n\nMac 下载 DMG 后，将 JLU-Dela.app 拖入 Applications；ZIP 为备用压缩包。Windows 下载 win-x64-setup.exe 并安装。\n\n这是开发预览版，Mac 包尚未做 Developer ID 签名与公证，Windows 安装包尚未签名，系统可能提示无法验证发布者；Intel Mac 不在本次发布范围。\n\n## 本版更新\n\n${changes}\n\n「校园地图」与「校园社区」为骨架版本，页面中的地点与帖子均为 AI 模拟的示例数据，只保存在本机，请以学校官方通知为准。\n\nQQ 共享会话为 **macOS 实验功能**，Windows QQ 接入尚未适配；图片表情可预览，内置 QQ 小表情、语音、视频和合并转发仍显示占位。\n\n## 验证与来源\n\n通过格式、类型、构建、单元测试、校园与学习流程冒烟，以及 Mac DMG / ZIP 完整性与归档内应用启动检查；Windows 目录包启动、NSIS 安装、安装后启动和卸载检查。\n\n附 SHA256SUMS 和 source-commit.txt。源码：${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/commit/${process.env.GITHUB_SHA}。\n\n[使用指南](https://github.com/goya4140/JLU-Dela/blob/${process.env.GITHUB_SHA}/app/docs/user-guide.md) · [Mac 安装说明](https://github.com/goya4140/JLU-Dela/blob/${process.env.GITHUB_SHA}/app/docs/install-macos.md) · [Windows 安装说明](https://github.com/goya4140/JLU-Dela/blob/${process.env.GITHUB_SHA}/app/docs/windows-testing.md)\n`);
           NODE
       - uses: actions/upload-artifact@v6
         with:
