@@ -23,9 +23,17 @@ export type WebPage =
   | 'chaoxing'
   | 'notifications'
   | 'knowledge'
+  | 'public-knowledge'
   | 'sources'
   | 'settings';
-const available = new Set(['campus', 'timetable', 'classroom', 'chaoxing', 'notifications']);
+const available = new Set([
+  'campus',
+  'timetable',
+  'classroom',
+  'chaoxing',
+  'notifications',
+  'public-knowledge',
+]);
 export function WebShell({
   page,
   onNavigate,

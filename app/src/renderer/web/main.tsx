@@ -5,6 +5,7 @@ import { LearningView } from '../features/campus/LearningView';
 import { ChaoxingView } from '../features/campus/ChaoxingView';
 import { SchoolNoticesView } from '../features/campus/SchoolNoticesView';
 import { DesktopOnlyNotice } from '../components/ui/desktop-only-notice';
+import { PublicCourseLibrary } from '../features/public-knowledge/PublicCourseLibrary';
 import { navEntries } from '../navigation/entries';
 import { Button } from '../components/ui/button';
 import { connectWeb, webCall } from './api';
@@ -85,6 +86,7 @@ function WebApp() {
           <WebAppearance />
           {page === 'home' && <WebChat draft={draft} onDraft={setDraft} />}
           {page === 'timetable' && <WebTimetable />}
+          {page === 'public-knowledge' && <PublicCourseLibrary />}
           {page === 'chaoxing' && <ChaoxingView api={chaoxingApi} />}
           {page === 'notifications' && <SchoolNoticesView api={noticesApi} />}
           {page === 'classroom' && (

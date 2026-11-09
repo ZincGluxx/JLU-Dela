@@ -10,6 +10,7 @@ import {
   MapPin,
   MessageCircle,
   MonitorPlay,
+  LibraryBig,
   Users,
 } from 'lucide-react';
 import { create } from 'zustand';
@@ -25,6 +26,7 @@ export type NavEntryId =
   | 'classroom'
   | 'chaoxing'
   | 'knowledge'
+  | 'public-knowledge'
   | 'shuiyuan'
   | 'campus'
   | 'places'
@@ -38,6 +40,7 @@ export const navEntries: Array<{
 }> = [
   { id: 'campus', label: '吉大校园', icon: GraduationCap },
   { id: 'knowledge', label: '知识库', icon: BookOpen },
+  { id: 'public-knowledge', label: '公共知识库', icon: LibraryBig },
   { id: 'sources', label: '课程资料', icon: FolderOpen },
   { id: 'timetable', label: '课表', icon: CalendarDays },
   { id: 'classroom', label: '学在吉大', icon: MonitorPlay },

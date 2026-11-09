@@ -42,6 +42,7 @@ import { showToast } from './toasts';
 import { useNavigationStore, type MobileDrawer } from '../navigation/view';
 import { useNotifications } from './notifications';
 import { KnowledgeView } from '../features/knowledge/KnowledgeView';
+import { PublicCourseLibrary } from '../features/public-knowledge/PublicCourseLibrary';
 import { ChaoxingView } from '../features/campus/ChaoxingView';
 import { useAppearance } from './theme';
 import { WorkbenchShell } from '../workbench/WorkbenchShell';
@@ -360,6 +361,7 @@ export default function App() {
                   {view === 'classroom' && <LearningView />}
                   {view === 'chaoxing' && <ChaoxingView />}
                   {view === 'knowledge' && <KnowledgeView />}
+                  {view === 'public-knowledge' && <PublicCourseLibrary />}
                   {view === 'todo' && <TodoView request={todoRequest ?? undefined} />}
                   {view === 'notifications' && <SchoolNoticesView />}
                   {view === 'settings' && (

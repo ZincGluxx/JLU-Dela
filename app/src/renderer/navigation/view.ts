@@ -22,6 +22,7 @@ export type AppView =
   | 'classroom'
   | 'chaoxing'
   | 'knowledge'
+  | 'public-knowledge'
   | 'shuiyuan'
   | 'places'
   | 'community'
