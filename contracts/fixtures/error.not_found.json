@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Route not found.",
+    "request_id": "fixture-not-found-request",
+    "retryable": false,
+    "fields": []
+  }
+}
