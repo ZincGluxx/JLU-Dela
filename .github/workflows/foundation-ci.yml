@@ -145,8 +145,16 @@ jobs:
           curl --fail --silent -H "Authorization: Bearer ci-secret-token" -H "Cookie: session=ci-secret-cookie" http://127.0.0.1:8080/health/live > /dev/null
           sleep 1
           $COMPOSE_LOCAL logs --no-color > /tmp/jlu-dela-compose.log
-          ! grep -q "ci-secret" /tmp/jlu-dela-compose.log
-          grep -q "REDACTED" /tmp/jlu-dela-compose.log
+          bash infra/assert-no-credentials.sh /tmp/jlu-dela-compose.log ci-secret
+          grep -q "Authorization.*REDACTED" /tmp/jlu-dela-compose.log
+          grep -q "Cookie.*REDACTED" /tmp/jlu-dela-compose.log
+
+          printf 'Authorization: Bearer ci-secret-token\nCookie: session=ci-secret-cookie\n' > /tmp/jlu-dela-leaked.log
+          if bash infra/assert-no-credentials.sh /tmp/jlu-dela-leaked.log ci-secret; then
+            echo "redaction guard failed to reject a leaked log" >&2
+            exit 1
+          fi
+          echo "redaction guard failure path verified"
       - name: Verify PostgreSQL and Redis are internal only
         run: |
           $COMPOSE_LOCAL config --format json > /tmp/jlu-dela-compose-config.json
