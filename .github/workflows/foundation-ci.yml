@@ -149,8 +149,8 @@ jobs:
           grep -q "REDACTED" /tmp/jlu-dela-compose.log
       - name: Verify PostgreSQL and Redis are internal only
         run: |
-          test -z "$($COMPOSE_LOCAL port postgres 5432)"
-          test -z "$($COMPOSE_LOCAL port redis 6379)"
+          $COMPOSE_LOCAL config --format json > /tmp/jlu-dela-compose-config.json
+          node -e "const c=require('/tmp/jlu-dela-compose-config.json'); const leaked=Object.entries(c.services).filter(([n,s]) => n !== 'caddy' && Array.isArray(s.ports) && s.ports.length > 0).map(([n]) => n); if (leaked.length) { console.error('host-published services: ' + leaked.join(', ')); process.exit(1); }"
       - name: Verify graceful API shutdown
         run: |
           $COMPOSE_LOCAL stop api
