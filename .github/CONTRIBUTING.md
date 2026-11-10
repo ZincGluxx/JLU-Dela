@@ -33,6 +33,29 @@
 - 文档纠错与补充说明可直接提交 PR。面向用户的变化应同步更新 README，重要改动应同步更新 CHANGELOG。
 - 发现安全漏洞时请勿公开讨论，应按 [SECURITY.md](SECURITY.md) 的方式私下联系作者。
 
+## 重构中的新工程（A01 起）
+
+仓库同时保留旧 Electron 实现与新工程底座。新方向为 Flutter + Dart 客户端、Rust + Axum + Tokio 服务端、SQLx/PostgreSQL、Redis、Caddy 与 Docker Compose；`app/` 的规则只约束旧实现，不适用于新目录。
+
+| 目录                 | 内容                                           | 负责人                       |
+| -------------------- | ---------------------------------------------- | ---------------------------- |
+| `server/`            | Rust 模块化单体、SQLx 迁移、服务端测试         | A；B/C/D/E 各自领域模块      |
+| `clients/flutter/`   | Flutter 客户端、主题、API 客户端与诊断页       | A 公共层；B/C/D/E 各自功能页 |
+| `contracts/`         | 设计优先 OpenAPI 3.0.3、夹具与生成 Dart 客户端 | A 总审                       |
+| `infra/`             | Compose 本地/staging、Caddy、环境模板          | A                            |
+| `docs/foundation.md` | 新工程启动、环境、迁移、验证与交接             | A                            |
+
+新工程的命令：
+
+```sh
+cd server && cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings
+cd clients/flutter && flutter analyze && flutter test
+cd contracts/tools && npm ci && npm run verify
+cd infra && docker compose --env-file .env -f compose.yaml config
+```
+
+新代码通过 PR 进入受保护分支，禁止自动合并。契约、迁移和公共配置改动需要 A 与对应消费者评审；实际命令与结果写入 PR 描述。详细交接见 [docs/foundation.md](../docs/foundation.md)。
+
 ## 开发环境
 
 | 工具            | 版本                               | 何时需要              |

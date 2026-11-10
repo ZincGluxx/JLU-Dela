@@ -25,6 +25,8 @@
 
 > **开发预览 · 非吉林大学官方产品。** 提供 macOS 13+ M 系列 DMG 和 Windows 10/11 x64 安装包，均为未签名预览；Mac 包尚未公证，Intel Mac 未验证。[Mac 安装说明](app/docs/install-macos.md) · [Windows 安装说明](app/docs/windows-testing.md)。
 
+> **架构重构中（A01）**：仓库正在从 Electron 单应用迁移到 Flutter + Rust 多端工作台。新工程位于 `server/`、`clients/flutter/`、`contracts/` 与 `infra/`，`app/` 保留为旧实现和行为参考。新底座不是学生正式首页；启动、契约生成与验证命令见 [docs/foundation.md](docs/foundation.md)。现有安装包仍由 `app/` 构建。
+
 ## 从「今天学什么」开始
 
 课表、学习通作业和个人待办汇入同一份学习日历。按周安排、按月浏览，或切换列表逐项查看。明确的截止时间显示倒计时；只有相对时间的作业保留同步快照，避免把旧提示误当实时状态。
