@@ -4,5 +4,7 @@
   "pubDescription": "Generated Dart client for the JLU Dela HTTP API. Do not edit by hand.",
   "pubAuthor": "JLU Dela contributors",
   "pubHomepage": "https://github.com/ZincGluxx/JLU-Dela",
-  "dateLibrary": "core"
+  "dateLibrary": "core",
+  "useOptional": true,
+  "templateDir": "templates"
 }

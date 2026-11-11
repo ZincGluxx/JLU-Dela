@@ -183,12 +183,24 @@ class ApiClient {
           return valueString == 'true' || valueString == '1';
         case 'DateTime':
           return value is DateTime ? value : DateTime.tryParse(value);
+        case 'AssignmentItem':
+          return AssignmentItem.fromJson(value);
+        case 'CalendarData':
+          return CalendarData.fromJson(value);
+        case 'CalendarItem':
+          return CalendarItem.fromJson(value);
+        case 'CalendarResponse':
+          return CalendarResponse.fromJson(value);
+        case 'CreateTodoRequest':
+          return CreateTodoRequest.fromJson(value);
         case 'ErrorDetail':
           return ErrorDetail.fromJson(value);
         case 'ErrorField':
           return ErrorField.fromJson(value);
         case 'ErrorResponse':
           return ErrorResponse.fromJson(value);
+        case 'LessonItem':
+          return LessonItem.fromJson(value);
         case 'ListMeta':
           return ListMeta.fromJson(value);
         case 'LiveResponse':
@@ -213,12 +225,28 @@ class ApiClient {
           return RefreshRequest.fromJson(value);
         case 'RequestIdMeta':
           return RequestIdMeta.fromJson(value);
+        case 'RevisionConflictDetail':
+          return RevisionConflictDetail.fromJson(value);
+        case 'RevisionConflictResponse':
+          return RevisionConflictResponse.fromJson(value);
         case 'ServiceMeta':
           return ServiceMeta.fromJson(value);
+        case 'SourceStatus':
+          return SourceStatus.fromJson(value);
+        case 'Todo':
+          return Todo.fromJson(value);
+        case 'TodoItem':
+          return TodoItem.fromJson(value);
+        case 'TodoListResponse':
+          return TodoListResponse.fromJson(value);
+        case 'TodoResponse':
+          return TodoResponse.fromJson(value);
         case 'TokenPair':
           return TokenPair.fromJson(value);
         case 'TokenPairResponse':
           return TokenPairResponse.fromJson(value);
+        case 'UpdateTodoRequest':
+          return UpdateTodoRequest.fromJson(value);
         default:
           dynamic match;
           if (value is List && (match = _regList.firstMatch(targetType)?.group(1)) != null) {

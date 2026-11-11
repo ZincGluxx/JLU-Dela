@@ -14,12 +14,16 @@ info:
     - POST /api/v1/auth/refresh
     - POST /api/v1/auth/logout
     - GET /api/v1/me
+    - GET /api/v1/todos, POST /api/v1/todos, PATCH and DELETE /api/v1/todos/{id}
+
+    Endpoints described but not yet served:
+    - GET /api/v1/calendar (contract fixed, aggregation pending the campus sources)
 
     The session endpoints operate on an opaque token pair. Activation and login
     are not part of this contract yet: the workbench identity scheme still needs
     human approval, so no client may assume invitation accounts or school SSO.
-    Campuses, sync jobs, courses, assignments, notices, materials, todos and
-    calendar remain planning proposals and are not available.
+    Campuses, sync jobs, courses, assignments, notices and materials remain
+    planning proposals and are not available.
 
     Protocol conventions:
     - JSON field names use snake_case.
@@ -72,6 +76,10 @@ tags:
     description: Workbench session lifecycle. Campus source authorization is separate.
   - name: Me
     description: The authenticated workbench user.
+  - name: Todos
+    description: Personal todos with idempotent creation and optimistic concurrency.
+  - name: Calendar
+    description: Study calendar aggregation over lessons, assignments and personal todos.
 
 x-contract-status:
   implemented:
@@ -81,8 +89,13 @@ x-contract-status:
     - POST /api/v1/auth/refresh
     - POST /api/v1/auth/logout
     - GET /api/v1/me
+    - GET /api/v1/todos
+    - POST /api/v1/todos
+    - PATCH /api/v1/todos/{id}
+    - DELETE /api/v1/todos/{id}
   design-only:
-    note: Activation and login, connections, sync jobs and all business endpoints are not exposed by the service and must not be treated as available.
+    - GET /api/v1/calendar
+  note: Activation and login, connections, sync jobs, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available.
 
 paths:
   /health/live:
@@ -292,6 +305,409 @@ paths:
         '5XX':
           $ref: '#/components/responses/ServerError'
 
+
+  /api/v1/todos:
+    get:
+      operationId: listTodos
+      tags:
+        - Todos
+      security:
+        - bearerAuth: []
+      summary: List the caller's todos
+      description: |
+        The caller is the user of the bearer session. The server ignores any
+        user identifier supplied by the client.
+
+        Sorted by the effective due key ascending with nulls last, then by `id`
+        ascending so the order is stable across pages.
+
+        The effective due key is `COALESCE(due_at, due_date at Asia/Shanghai
+        midnight)`, so a `date_only` todo sorts as the start of that calendar
+        day in the display timezone, not as UTC midnight.
+
+        The cursor is bound to the `completed` filter: changing the filter
+        mid-pagination returns 400 `BAD_CURSOR`.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: completed
+          in: query
+          required: false
+          description: Filter by completion state. Omit to return both.
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque `meta.next_cursor` from the previous page. Clients must not construct it.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One page of todos.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoListResponse'
+              example:
+                data:
+                  - id: 38da5dcb-f7e1-4d24-9d63-6b0f17868f20
+                    title: 整理课堂笔记
+                    notes: ''
+                    due_kind: exact
+                    due_date: null
+                    due_at: '2026-11-12T09:00:00Z'
+                    color: teal
+                    completed: false
+                    show_in_calendar: true
+                    revision: 1
+                    created_at: '2026-11-10T12:00:00Z'
+                    updated_at: '2026-11-10T12:00:00Z'
+                  - id: 5b2f3a10-9c4e-4a71-8d55-2e6f7b1c3d90
+                    title: 交第三章作业
+                    notes: ''
+                    due_kind: date_only
+                    due_date: '2026-11-13'
+                    due_at: null
+                    color: null
+                    completed: false
+                    show_in_calendar: true
+                    revision: 1
+                    created_at: '2026-11-10T12:05:00Z'
+                    updated_at: '2026-11-10T12:05:00Z'
+                meta:
+                  request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+                  next_cursor: null
+                  has_more: false
+        '400':
+          $ref: '#/components/responses/BadCursor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+    post:
+      operationId: createTodo
+      tags:
+        - Todos
+      security:
+        - bearerAuth: []
+      summary: Create a todo idempotently
+      description: |
+        The `Idempotency-Key` header carries a client-generated UUID and is
+        valid for 24 hours:
+
+        - same key and same request: returns the first result again with 201
+        - same key and a different request: 409 `IDEMPOTENCY_CONFLICT`
+        - the idempotency record and the todo are written in one transaction
+
+        The server trims `title` before validating 1-200 characters. `notes` is
+        limited to 20,000 characters. `id`, `revision`, `owner_id` and
+        `source_status` are server-managed and rejected with 422.
+
+        Omitting `due_kind` makes the server infer it from the values supplied:
+        `due_at` alone means `exact`, `due_date` alone means `date_only`, and no
+        due field at all means `none`. Supplying both `due_at` and `due_date`,
+        or a `due_kind` that does not match the values, is rejected with 422 and
+        `fields[].path` points at the conflicting field.
+
+        Creation infers the kind from the values; update never does. Once a
+        todo exists, changing its deadline requires an explicit `due_kind`.
+
+        A missing or malformed `Idempotency-Key` is 422 with
+        `fields[].path = "Idempotency-Key"`, not 400 or 401.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated UUID. A retry of the same creation must reuse the same value.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTodoRequest'
+            example:
+              title: 整理课堂笔记
+              notes: ''
+              due_kind: exact
+              due_at: '2026-11-12T09:00:00Z'
+              color: teal
+              show_in_calendar: true
+      responses:
+        '201':
+          description: Created. A retry with the same idempotency key returns the same body.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoResponse'
+              example:
+                data:
+                  id: 38da5dcb-f7e1-4d24-9d63-6b0f17868f20
+                  title: 整理课堂笔记
+                  notes: ''
+                  due_kind: exact
+                  due_date: null
+                  due_at: '2026-11-12T09:00:00Z'
+                  color: teal
+                  completed: false
+                  show_in_calendar: true
+                  revision: 1
+                  created_at: '2026-11-10T12:00:00Z'
+                  updated_at: '2026-11-10T12:00:00Z'
+                meta:
+                  request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/todos/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestId'
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: updateTodo
+      tags:
+        - Todos
+      security:
+        - bearerAuth: []
+      summary: Update a todo with optimistic concurrency
+      description: |
+        `revision` is required. Fields that are absent keep their current value.
+
+        Due fields are replaced as a group: once `due_kind` appears in the body,
+        the server writes all three due fields at once and clears whichever one
+        the kind does not use. `{"revision": 2, "due_kind": "none"}` therefore
+        clears the deadline.
+
+        Supplying `due_date` or `due_at` (including an explicit `null`) without
+        `due_kind` is rejected with 422 and `fields[].path` at the stray field.
+        The update never infers the kind, so a client that sends
+        `Optional.present(null)` on a nullable due field cannot silently leave
+        the stored deadline in place. Clearing a deadline always means sending
+        an explicit `due_kind`.
+
+        A body that carries only `revision` is accepted and still increments
+        `revision` by one.
+
+        `color` has three states: absent keeps the current value, explicit
+        `null` restores the default colour, and a value sets it. Generated Dart
+        clients must be able to tell "absent" from "explicit null", otherwise
+        they cannot express "restore the default colour".
+
+        A stale `revision` returns 409 `REVISION_CONFLICT` with the server's
+        current todo in `error.current`, so the client can keep the user's draft
+        and let them choose. A successful update increments `revision` by one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTodoRequest'
+            example:
+              revision: 1
+              title: 整理课堂笔记（含例题）
+              due_kind: date_only
+              due_date: '2026-11-14'
+              completed: true
+      responses:
+        '200':
+          description: The updated todo.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RevisionConflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      operationId: deleteTodo
+      tags:
+        - Todos
+      security:
+        - bearerAuth: []
+      summary: Soft-delete a todo with optimistic concurrency
+      description: |
+        `If-Match` carries the revision the client holds, as a decimal string.
+        A stale revision returns 409 `REVISION_CONFLICT`; the client should
+        refetch and decide again.
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          description: The revision the client holds, for example `"3"`.
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RevisionConflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/calendar:
+    get:
+      operationId: getCalendar
+      tags:
+        - Calendar
+      security:
+        - bearerAuth: []
+      summary: Read study calendar entries in a date range
+      description: |
+        `from` is inclusive and `to` is exclusive, both interpreted as calendar
+        days in `Asia/Shanghai`. The first release accepts at most 93 days.
+
+        Boundaries use interval overlap rather than point containment:
+
+        - lesson: `starts_at < to AND ends_at > from`
+        - assignment and todo: `due_at >= from AND due_at < to`, or the whole
+          calendar day for `date_only`
+
+        `items` is a discriminated union on `kind` (`lesson`, `assignment`,
+        `todo`). Lessons come from the timetable source, assignments from the
+        assignment source and todos from this service. An assignment is never
+        duplicated into a todo.
+
+        Ordering is stable: time ascending, then `kind` in the fixed order
+        lesson, assignment, todo, then title, then id.
+
+        A failing campus source does not remove the other sources' items; its
+        state is reported structurally in `sources[]`.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: from
+          in: query
+          required: true
+          description: Inclusive start day in Asia/Shanghai.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          description: Exclusive end day in Asia/Shanghai.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Calendar entries plus the state of each contributing source.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarResponse'
+              example:
+                data:
+                  from: '2026-11-10'
+                  to: '2026-11-17'
+                  items:
+                    - kind: lesson
+                      id: 'lesson:123:2026-11-10T00:00:00Z'
+                      lesson_id: '123'
+                      course_offering_id: 7f1c2a64-0b7b-4b9c-9f4f-0d1f0c8e6a11
+                      title: 高等数学
+                      starts_at: '2026-11-10T00:00:00Z'
+                      ends_at: '2026-11-10T01:40:00Z'
+                      location: 逸夫楼201
+                      period_start: 1
+                      period_end: 2
+                    - kind: assignment
+                      id: 'assignment:456'
+                      assignment_id: '456'
+                      course_offering_id: 7f1c2a64-0b7b-4b9c-9f4f-0d1f0c8e6a11
+                      title: 第三章作业
+                      due_at: '2026-11-12T09:00:00Z'
+                      due_kind: exact
+                      timing_text: ''
+                      source_status: pending
+                      read_at: null
+                      muted_at: null
+                    - kind: todo
+                      id: 'todo:789'
+                      todo_id: 38da5dcb-f7e1-4d24-9d63-6b0f17868f20
+                      title: 整理课堂笔记
+                      due_kind: exact
+                      due_at: '2026-11-12T09:00:00Z'
+                      due_date: null
+                      color: teal
+                      show_in_calendar: true
+                      completed: false
+                  sources:
+                    - source: jlu_iedu
+                      status: connected
+                      last_success_at: '2026-11-10T11:50:00Z'
+                    - source: chaoxing
+                      status: auth_required
+                      last_success_at: '2026-11-09T22:14:00Z'
+                meta:
+                  request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/SourceAuthRequired'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+
 components:
   securitySchemes:
     bearerAuth:
@@ -352,6 +768,45 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
 
+    NotFound:
+      description: The object does not exist or is not visible to the caller. Both cases use 404 so existence does not leak.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadCursor:
+      description: The cursor is malformed or does not match the current filters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationFailed:
+      description: Field validation failed. `error.fields` names each offending path.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    IdempotencyConflict:
+      description: The idempotency key was already used with a different request body.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RevisionConflict:
+      description: The object was modified by another client. `error.current` carries the server's current version.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RevisionConflictResponse'
+    SourceAuthRequired:
+      description: |
+        A campus source needs to be reconnected (409 + `SOURCE_AUTH_REQUIRED`).
+        Its data may be stale. Clients must guide the user to reconnect that
+        source and must not sign the user out of the workbench identity.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
   schemas:
     RequestIdMeta:
       type: object
@@ -488,8 +943,7 @@ components:
 
     PaginationMeta:
       type: object
-      description: Reserved list metadata shape. No list endpoint is implemented in this contract version.
-      x-reserved: true
+      description: List metadata shared by paginated endpoints.
       required:
         - next_cursor
         - has_more
@@ -502,12 +956,490 @@ components:
           type: boolean
 
     ListMeta:
-      description: Reserved list envelope metadata. No list endpoint is implemented in this contract version.
-      x-reserved: true
+      description: List envelope metadata for paginated endpoints.
       allOf:
         - $ref: '#/components/schemas/RequestIdMeta'
         - $ref: '#/components/schemas/PaginationMeta'
 
+    Todo:
+      type: object
+      description: |
+        A personal todo. The due fields are discriminated by `due_kind`, and the
+        other two must be null:
+
+        | due_kind | due_date | due_at | Example |
+        |---|---|---|---|
+        | `none` | null | null | no deadline |
+        | `date_only` | `2026-11-13` | null | due Friday |
+        | `exact` | null | `2026-11-13T09:00:00Z` | due Friday 17:00 Beijing |
+
+        A `date_only` todo occupies the whole calendar day in Asia/Shanghai and
+        becomes overdue at the next local midnight. Only `exact` shows a time and
+        drives a precise countdown. `none` appears in the todo list only and never
+        in the calendar.
+      required:
+        - id
+        - title
+        - notes
+        - due_kind
+        - due_date
+        - due_at
+        - color
+        - completed
+        - show_in_calendar
+        - revision
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Trimmed by the server, then validated as 1-200 characters.
+        notes:
+          type: string
+          maxLength: 20000
+        due_kind:
+          type: string
+          enum:
+            - none
+            - date_only
+            - exact
+          description: Personal todos use these three only. `relative` and `unknown` describe assignment source uncertainty.
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          description: Set only when `due_kind=date_only`. A calendar day in Asia/Shanghai.
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set only when `due_kind=exact`. UTC RFC 3339 with a `Z` suffix.
+        color:
+          type: string
+          nullable: true
+          enum:
+            - rose
+            - peach
+            - sand
+            - sage
+            - teal
+            - blue
+            - lilac
+            - slate
+            - null
+          description: Calendar colour key, matching the legacy `calendarEventColors`. Null renders as the default slate.
+        completed:
+          type: boolean
+        show_in_calendar:
+          type: boolean
+          description: Whether the todo appears in the calendar. Has no effect while `due_kind=none`.
+        revision:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateTodoRequest:
+      type: object
+      required:
+        - title
+      additionalProperties: false
+      description: |
+        Omitting `due_kind` makes the server infer it from the values supplied:
+        `due_at` alone means `exact`, `due_date` alone means `date_only`, and no
+        due field at all means `none`. Supplying both `due_at` and `due_date`,
+        or a `due_kind` that does not match the values, is rejected with 422 and
+        `fields[].path` points at the conflicting field.
+
+        Creation infers the kind from the values; update never does.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        notes:
+          type: string
+          maxLength: 20000
+          default: ''
+        due_kind:
+          type: string
+          enum:
+            - none
+            - date_only
+            - exact
+          description: |
+            Omitting this field means `none`, which is what the server stores.
+            The default is documented rather than declared because
+            openapi-generator emits an illegal `const XEnum._('none')` for an
+            enum with a schema default, and Dart enhanced enums cannot be
+            instantiated.
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          enum:
+            - rose
+            - peach
+            - sand
+            - sage
+            - teal
+            - blue
+            - lilac
+            - slate
+            - null
+        show_in_calendar:
+          type: boolean
+          default: true
+
+    UpdateTodoRequest:
+      type: object
+      required:
+        - revision
+      additionalProperties: false
+      description: |
+        Absent fields keep their current value.
+
+        Due fields are replaced as a group: once `due_kind` appears, the server
+        writes all three due fields and clears whichever one the kind does not
+        use, so `{"revision": 2, "due_kind": "none"}` clears the deadline.
+
+        Supplying `due_date` or `due_at` (including an explicit `null`) without
+        `due_kind` is rejected with 422: the update never infers the kind, so a
+        client cannot silently leave the stored deadline in place by sending
+        `Optional.present(null)`.
+
+        A body that carries only `revision` is accepted and still increments
+        `revision` by one.
+
+        `color` is three-state: absent keeps the value, explicit null restores
+        the default, a value sets it. Generated clients must distinguish absent
+        from explicit null to express "restore the default colour".
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+          description: The revision the client last read.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        notes:
+          type: string
+          maxLength: 20000
+        due_kind:
+          type: string
+          enum:
+            - none
+            - date_only
+            - exact
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          enum:
+            - rose
+            - peach
+            - sand
+            - sage
+            - teal
+            - blue
+            - lilac
+            - slate
+            - null
+        completed:
+          type: boolean
+        show_in_calendar:
+          type: boolean
+
+    TodoResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          $ref: '#/components/schemas/Todo'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+
+    TodoListResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Todo'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+
+    RevisionConflictDetail:
+      allOf:
+        - $ref: '#/components/schemas/ErrorDetail'
+        - type: object
+          required:
+            - current
+          properties:
+            current:
+              description: The server's current version, so the client can show it and let the user decide.
+              allOf:
+                - $ref: '#/components/schemas/Todo'
+
+    RevisionConflictResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/RevisionConflictDetail'
+
+    CalendarResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          $ref: '#/components/schemas/CalendarData'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+
+    CalendarData:
+      type: object
+      required:
+        - from
+        - to
+        - items
+        - sources
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarItem'
+        sources:
+          type: array
+          description: State of each campus source contributing to this range.
+          items:
+            $ref: '#/components/schemas/SourceStatus'
+
+    CalendarItem:
+      x-dart-discriminated-union: true
+      oneOf:
+        - $ref: '#/components/schemas/LessonItem'
+        - $ref: '#/components/schemas/AssignmentItem'
+        - $ref: '#/components/schemas/TodoItem'
+      discriminator:
+        propertyName: kind
+        mapping:
+          lesson: '#/components/schemas/LessonItem'
+          assignment: '#/components/schemas/AssignmentItem'
+          todo: '#/components/schemas/TodoItem'
+
+    LessonItem:
+      type: object
+      required:
+        - kind
+        - id
+        - lesson_id
+        - course_offering_id
+        - title
+        - starts_at
+        - ends_at
+      properties:
+        kind:
+          type: string
+          enum:
+            - lesson
+        id:
+          type: string
+          description: '`lesson:<lesson_id>:<starts_at>`, unique per occurrence of a course.'
+        lesson_id:
+          type: string
+        course_offering_id:
+          type: string
+        title:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        location:
+          type: string
+          nullable: true
+        period_start:
+          type: integer
+          nullable: true
+        period_end:
+          type: integer
+          nullable: true
+
+    AssignmentItem:
+      type: object
+      required:
+        - kind
+        - id
+        - assignment_id
+        - title
+        - due_kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - assignment
+        id:
+          type: string
+          description: '`assignment:<assignment_id>`'
+        assignment_id:
+          type: string
+        course_offering_id:
+          type: string
+          nullable: true
+        title:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: May be set only when `due_kind` is `exact` or `date_only`.
+        due_kind:
+          type: string
+          enum:
+            - exact
+            - date_only
+            - relative
+            - unknown
+        timing_text:
+          type: string
+          description: Source wording such as "3 days left". Kept verbatim; never converted into a timestamp.
+        source_status:
+          type: string
+        read_at:
+          type: string
+          format: date-time
+          nullable: true
+        muted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    TodoItem:
+      type: object
+      description: |
+        A personal todo on the calendar. The due kind carries over:
+
+        - `exact`: `due_at` is set, it occupies an instant and drives a precise countdown
+        - `date_only`: `due_date` is set, it fills the whole day and is overdue from the next local midnight
+        - `none`: never appears in this endpoint
+      required:
+        - kind
+        - id
+        - todo_id
+        - title
+        - due_kind
+        - show_in_calendar
+        - completed
+      properties:
+        kind:
+          type: string
+          enum:
+            - todo
+        id:
+          type: string
+          description: '`todo:<todo_id>`'
+        todo_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        due_kind:
+          type: string
+          enum:
+            - date_only
+            - exact
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        color:
+          type: string
+          nullable: true
+          enum:
+            - rose
+            - peach
+            - sand
+            - sage
+            - teal
+            - blue
+            - lilac
+            - slate
+            - null
+          description: Null renders as the default slate.
+        show_in_calendar:
+          type: boolean
+        completed:
+          type: boolean
+
+    SourceStatus:
+      type: object
+      required:
+        - source
+        - status
+      properties:
+        source:
+          type: string
+          enum:
+            - jlu_iedu
+            - chaoxing
+            - jlu_oa
+            - jlu_ilearn
+        status:
+          type: string
+          enum:
+            - connected
+            - auth_required
+            - disconnected
+        last_success_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null before the first successful sync.
     RefreshRequest:
       type: object
       additionalProperties: false

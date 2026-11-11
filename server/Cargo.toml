@@ -14,12 +14,14 @@ integration = []
 anyhow = "1.0"
 axum = "0.8"
 base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
 getrandom = "0.3"
 hex = "0.4"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 sha2 = "0.10"
 time = "0.3"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 sqlx = { version = "0.9", default-features = false, features = [
   "runtime-tokio",
   "tls-rustls-ring-webpki",
@@ -27,6 +29,7 @@ sqlx = { version = "0.9", default-features = false, features = [
   "migrate",
   "macros",
   "time",
+  "chrono",
   "uuid",
 ] }
 tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "signal", "time"] }
@@ -37,7 +40,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2.5"
 
 [dev-dependencies]
-serde_json = "1.0"
 
 [profile.release]
 strip = true

@@ -1,0 +1,51 @@
+class {{classname}} {
+  {{classname}}._(this.actualInstance);
+
+{{#discriminator.mappedModels}}
+  {{classname}}.from{{modelName}}({{modelName}} value) : actualInstance = value;
+{{/discriminator.mappedModels}}
+
+  final Object actualInstance;
+
+  Map<String, dynamic> toJson() {
+    final value = actualInstance;
+{{#discriminator.mappedModels}}
+    if (value is {{modelName}}) return value.toJson();
+{{/discriminator.mappedModels}}
+    throw StateError('Invalid {{classname}} instance');
+  }
+
+  static {{classname}}? fromJson(dynamic value) {
+    if (value is! Map) return null;
+    switch (value[r'{{discriminator.propertyBaseName}}']) {
+{{#discriminator.mappedModels}}
+      case '{{mappingName}}':
+        return {{classname}}._({{modelName}}.fromJson(value)!);
+{{/discriminator.mappedModels}}
+      default:
+        throw FormatException('Unknown {{classname}} discriminator', value[r'{{discriminator.propertyBaseName}}']);
+    }
+  }
+
+  static List<{{classname}}> listFromJson(dynamic json, {bool growable = false}) =>
+      json is List
+          ? json.map((value) => fromJson(value)!).toList(growable: growable)
+          : <{{classname}}>[];
+
+  static Map<String, {{classname}}> mapFromJson(dynamic json) =>
+      json is Map
+          ? json.map((key, value) => MapEntry(key as String, fromJson(value)!))
+          : <String, {{classname}}>{};
+
+  static Map<String, List<{{classname}}>> mapListFromJson(dynamic json, {bool growable = false}) =>
+      json is Map
+          ? json.map((key, value) => MapEntry(key as String, listFromJson(value, growable: growable)))
+          : <String, List<{{classname}}>>{};
+
+  @override
+  bool operator ==(Object other) =>
+      other is {{classname}} && actualInstance == other.actualInstance;
+
+  @override
+  int get hashCode => actualInstance.hashCode;
+}

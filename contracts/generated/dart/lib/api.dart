@@ -27,15 +27,24 @@ part 'auth/api_key_auth.dart';
 part 'auth/oauth.dart';
 part 'auth/http_basic_auth.dart';
 part 'auth/http_bearer_auth.dart';
+part 'optional.dart';
 
 part 'api/auth_api.dart';
+part 'api/calendar_api.dart';
 part 'api/health_api.dart';
 part 'api/me_api.dart';
 part 'api/meta_api.dart';
+part 'api/todos_api.dart';
 
+part 'model/assignment_item.dart';
+part 'model/calendar_data.dart';
+part 'model/calendar_item.dart';
+part 'model/calendar_response.dart';
+part 'model/create_todo_request.dart';
 part 'model/error_detail.dart';
 part 'model/error_field.dart';
 part 'model/error_response.dart';
+part 'model/lesson_item.dart';
 part 'model/list_meta.dart';
 part 'model/live_response.dart';
 part 'model/live_status.dart';
@@ -48,9 +57,17 @@ part 'model/ready_response.dart';
 part 'model/ready_status.dart';
 part 'model/refresh_request.dart';
 part 'model/request_id_meta.dart';
+part 'model/revision_conflict_detail.dart';
+part 'model/revision_conflict_response.dart';
 part 'model/service_meta.dart';
+part 'model/source_status.dart';
+part 'model/todo.dart';
+part 'model/todo_item.dart';
+part 'model/todo_list_response.dart';
+part 'model/todo_response.dart';
 part 'model/token_pair.dart';
 part 'model/token_pair_response.dart';
+part 'model/update_todo_request.dart';
 
 
 /// An [ApiClient] instance that uses the default values obtained from

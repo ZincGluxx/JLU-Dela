@@ -32,6 +32,8 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .route("/api/v1/auth/refresh", post(auth::refresh))
         .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/me", get(auth::me))
+        .merge(crate::todos::router())
+        .merge(crate::calendar::router())
         .fallback(not_found)
         .with_state(state);
 

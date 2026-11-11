@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod calendar;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -9,3 +10,4 @@ pub mod logging;
 pub mod meta;
 pub mod response;
 pub mod state;
+pub mod todos;
