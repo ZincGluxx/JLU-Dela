@@ -149,6 +149,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('keeps diagnostics usable with large text on a phone', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(() {
+      tester.binding.setSurfaceSize(null);
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
+    });
+
+    await openDiagnostics(tester, serviceFor(successClient()));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('diagnostics-report')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.drag(
+      find.byType(SingleChildScrollView).first,
+      const Offset(0, -900),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('opens destinations without fabricating data and toggles glass', (
     tester,
   ) async {

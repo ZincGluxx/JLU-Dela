@@ -151,7 +151,7 @@ pub async fn list_example(
 1. 业务页面放在 `lib/features/<domain>/`，公共主题、`AppShell` 与玻璃表面从 `lib/app/` 复用。业务目录只依赖 `lib/app/`、`lib/core/` 与生成客户端，不互相导入其他业务目录。
 2. `AppShell` 负责桌面侧栏、顶部工具栏、手机底部导航与手机端「更多」入口。宽度 `>= 768` 使用侧栏（1280 以上 224，以下 184），更窄使用底部导航；未注册的 `AppDestination` 显示「此功能尚未开放」，不展示示例业务数字。
 3. 页面接入通过 `AppDestination -> AppPageBuilder` 注册：在 `lib/app/app.dart` 的 `pages` map 中增加一行 `AppDestination.<入口>: (context) => const <页面>()`。业务页面只新增自己的 `lib/features/<domain>/` 文件；公共注册行随页面小 PR 一起提交，由 A 审核，不在业务目录另建导航或主题。
-4. 导航、工具栏与底部栏使用 `GlassSurface`（`glassEnabled=false` 切换为实色，布局不变）；课程、作业与正文等内容面使用实色 `AppTheme.surfaceDecoration` 或白色 `Material`，不要用 `GlassSurface` 包裹正文。颜色、圆角与间距取 `AppTheme` / `AppSpacing`，不要在新页面另建 token 表。
+4. 导航、工具栏与底部栏使用 `GlassSurface`（`glassEnabled=false` 切换为实色，布局不变）；手机业务页的日期选择条等窄条也可复用 `GlassSurface`。课程、作业与正文等内容面使用实色 `AppTheme.surfaceDecoration` 或白色 `Material`，不要用 `GlassSurface` 包裹正文。颜色、圆角与间距取 `AppTheme` / `AppSpacing`，不要在新页面另建 token 表。
 5. 新接口必须先进入 `contracts/openapi.yaml`，再生成 `jlu_dela_api`；不要在客户端手写重复 DTO。
 6. 统一错误映射在 `lib/core/api/api_failure.dart`；新错误码在展示层给出可读文案。
 7. 当前没有引入路由/状态管理库：`MaterialApp` + `StatefulWidget` 管理当前入口与玻璃开关。页面注册不是路由器，没有深链、多标签或 URL 还原需求；出现第三个独立应用级状态域或 B–E 多页导航时再选型。
