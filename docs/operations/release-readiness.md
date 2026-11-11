@@ -68,12 +68,12 @@ bash smoke.sh https://<staging-domain>
 2. `/health/ready` 返回 `"status":"ready"`，其 `data.schema_version` 与本次发布预期一致。
 3. `/api/v1/meta` 的 `data.build_id` 等于本次 `APP_BUILD_ID`（即源码 commit）。
 
-登记本次发布（在 staging 宿主机、`infra/` 目录）：
+登记本次发布（在 staging 宿主机、`infra/` 目录）：将下方占位符替换为本次已部署 `.env` 中的 `API_IMAGE`（完整镜像名与 digest）、`APP_BUILD_ID`（完整源码 commit）及 ready 返回的 schema version。Compose 的 `--env-file` 不会设置当前 shell 的变量；此命令直接传值，新开 shell 也可执行，无需加载或导出 `.env`。
 
 ```sh
 bash release-manifest.sh record \
-  --image "$API_IMAGE" \
-  --commit "$APP_BUILD_ID" \
+  --image "<与 .env 的 API_IMAGE 相同的镜像名>@sha256:<64 位十六进制 digest>" \
+  --commit "<与 .env 的 APP_BUILD_ID 相同的完整源码 commit>" \
   --schema-version "<ready 返回的 schema_version>"
 ```
 
