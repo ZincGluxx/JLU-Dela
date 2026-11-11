@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jlu_dela/app/app.dart';
+import 'package:jlu_dela/app/glass_surface.dart';
 import 'package:jlu_dela/core/api/diagnostics_service.dart';
 
 void main() {
@@ -38,6 +39,15 @@ void main() {
     });
   }
 
+  Future<void> openDiagnostics(
+    WidgetTester tester,
+    DiagnosticsService service,
+  ) async {
+    await tester.pumpWidget(JluDelaApp(diagnosticsService: service));
+    await tester.tap(find.byKey(const Key('destination-settings')));
+    await tester.pump();
+  }
+
   testWidgets('shows loading, then real server and database status', (
     tester,
   ) async {
@@ -52,7 +62,7 @@ void main() {
       };
     });
 
-    await tester.pumpWidget(JluDelaApp(diagnosticsService: serviceFor(client)));
+    await openDiagnostics(tester, serviceFor(client));
 
     expect(find.byKey(const Key('diagnostics-loading')), findsOneWidget);
     await tester.pumpAndSettle();
@@ -71,10 +81,9 @@ void main() {
   testWidgets('keeps the service connected when the database is not ready', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      JluDelaApp(
-        diagnosticsService: serviceFor(successClient(databaseReady: false)),
-      ),
+    await openDiagnostics(
+      tester,
+      serviceFor(successClient(databaseReady: false)),
     );
     await tester.pumpAndSettle();
 
@@ -98,13 +107,15 @@ void main() {
       };
     });
 
-    await tester.pumpWidget(JluDelaApp(diagnosticsService: serviceFor(client)));
+    await openDiagnostics(tester, serviceFor(client));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('diagnostics-error')), findsOneWidget);
     expect(find.textContaining('无法连接服务'), findsOneWidget);
 
     failLive = false;
+    await tester.ensureVisible(find.byKey(const Key('diagnostics-retry')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('diagnostics-retry')));
     await tester.pump();
     expect(find.byKey(const Key('diagnostics-loading')), findsOneWidget);
@@ -118,13 +129,11 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(640, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(
-      JluDelaApp(diagnosticsService: serviceFor(successClient())),
-    );
+    await openDiagnostics(tester, serviceFor(successClient()));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('工程底座诊断'), findsOneWidget);
-    expect(find.textContaining('真实服务连接与环境验收'), findsNothing);
+    expect(find.byKey(const Key('mobile-navigation')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-sidebar')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -132,13 +141,41 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
+    await openDiagnostics(tester, serviceFor(successClient()));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('desktop-sidebar')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-navigation')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('opens destinations without fabricating data and toggles glass', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       JluDelaApp(diagnosticsService: serviceFor(successClient())),
     );
-    await tester.pumpAndSettle();
+    expect(find.text('此功能尚未开放'), findsOneWidget);
+    expect(requests, isEmpty);
 
-    expect(find.textContaining('真实服务连接与环境验收'), findsOneWidget);
-    expect(find.textContaining('工程底座诊断'), findsNothing);
+    await tester.tap(find.byKey(const Key('destination-assignments')));
+    await tester.pumpAndSettle();
+    expect(find.text('作业'), findsWidgets);
+    expect(find.text('此功能尚未开放'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('destination-settings')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widgetList<GlassSurface>(find.byType(GlassSurface))
+          .every((surface) => !surface.enabled),
+      isTrue,
+    );
+    expect(find.byKey(const Key('diagnostics-report')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

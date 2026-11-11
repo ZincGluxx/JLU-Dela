@@ -10,30 +10,36 @@ abstract final class AppSpacing {
 }
 
 abstract final class AppBreakpoints {
-  static const double desktop = 900;
+  static const double desktop = 768;
   static const double cardGrid = 720;
 }
 
 abstract final class AppTheme {
-  static const Color _seed = Color(0xFF0B5FA5);
-  static const Color _background = Color(0xFFF5F7FA);
-  static const Color _border = Color(0xFFDDE3EA);
+  static const Color primary = Color(0xFF2680EB);
+  static const Color background = Color(0xFFF8F8FA);
+  static const Color border = Color(0xFFE7E9EE);
+  static const Color foreground = Color(0xFF202127);
+  static const Color muted = Color(0xFF747984);
+  static const Color blueSoft = Color(0xFFEAF2FD);
+  static const double surfaceRadius = 16;
+  static const double glassRadius = 24;
+  static const double blurSigma = 24;
 
   static ThemeData light() {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: _seed,
+      seedColor: primary,
       brightness: Brightness.light,
-    );
+    ).copyWith(primary: primary, surface: Colors.white);
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: _background,
+      scaffoldBackgroundColor: background,
     );
 
     return base.copyWith(
       textTheme: base.textTheme.apply(
-        bodyColor: const Color(0xFF202832),
-        displayColor: const Color(0xFF101820),
+        bodyColor: foreground,
+        displayColor: foreground,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -42,19 +48,19 @@ abstract final class AppTheme {
             vertical: AppSpacing.md,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(999),
           ),
         ),
       ),
-      dividerTheme: const DividerThemeData(color: _border, space: 1),
+      dividerTheme: const DividerThemeData(color: border, space: 1),
     );
   }
 
   static BoxDecoration surfaceDecoration(BuildContext context) {
     return BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: _border),
+      borderRadius: BorderRadius.circular(surfaceRadius),
+      border: Border.all(color: border),
     );
   }
 }

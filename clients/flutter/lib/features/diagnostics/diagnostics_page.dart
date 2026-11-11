@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../app/app_shell.dart';
 import '../../app/theme.dart';
 import '../../core/api/api_failure.dart';
 import '../../core/api/diagnostics_service.dart';
@@ -32,26 +31,24 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppShell(
-      child: FutureBuilder<DiagnosticsReport>(
-        future: _report,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const _LoadingView();
-          }
-          if (snapshot.hasError) {
-            return _FailureView(
-              error: snapshot.error!,
-              apiBaseUri: widget.service.apiBaseUri,
-              onRetry: _retry,
-            );
-          }
-          if (snapshot.hasData) {
-            return _ReportView(report: snapshot.data!, onRetry: _retry);
-          }
+    return FutureBuilder<DiagnosticsReport>(
+      future: _report,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const _LoadingView();
-        },
-      ),
+        }
+        if (snapshot.hasError) {
+          return _FailureView(
+            error: snapshot.error!,
+            apiBaseUri: widget.service.apiBaseUri,
+            onRetry: _retry,
+          );
+        }
+        if (snapshot.hasData) {
+          return _ReportView(report: snapshot.data!, onRetry: _retry);
+        }
+        return const _LoadingView();
+      },
     );
   }
 }
