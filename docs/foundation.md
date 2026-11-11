@@ -99,8 +99,9 @@ npm run verify     # lint + generate + drift
 ## 4. 数据库迁移
 
 - 迁移文件：`server/migrations/`，由 SQLx 顺序执行并记录在 `_sqlx_migrations`。
-- `20261110000000_create_service_meta.sql` 创建 `service_meta`；`20261111000000_create_identity.sql` 创建 `users`、`sessions` 并把 `schema_version` 推进到 `2`。`GET /health/ready` 依赖该行。
+- `20261110000000_create_service_meta.sql` 创建 `service_meta`；`20261111000000_create_identity.sql` 创建 `users`、`sessions`；`20261111010000_create_sync_jobs.sql` 创建 `sync_jobs` 并把 `schema_version` 推进到 `3`。`GET /health/ready` 依赖该行。
 - 会话只保存访问令牌与刷新令牌的 SHA-256 摘要。访问令牌 15 分钟，刷新令牌 30 天；刷新时两者同时轮换，旧值立即失效；退出按会话撤销。
+- `sync_jobs` 先落库再返回 202；同一用户、来源、资源和规范化 scope 的 queued/running 任务通过部分唯一索引复用。运行中的任务有 120 秒租约，进程中断后租约过期会重新排队，第三次中断标记 `SYNC_INTERRUPTED`。
 - 独立命令：`cargo run --bin migrate`；Compose 使用一次性 `migrate` 服务。
 - API 进程不执行迁移。发布时先跑迁移，再滚动 API；回滚前确认旧版本兼容当前 schema。
 - 新迁移由领域作者提出，A 审核；不要在已发布迁移上直接改 SQL。
@@ -146,6 +147,8 @@ pub async fn list_example(
 
 测试或运维需要创建会话时使用 `auth::session::issue_for_user(&pool, user_id)`。该函数只签发会话，不创建用户；用户创建随身份方案确定后接入。
 
+来源同步通过 `SyncRegistry` 注册：`AppState::with_sync(pool, build_id, registry)` 接收来源与资源列表，`SyncHandler` 返回 `SyncOutcome` 或 `SyncFailure`。只有已验证来源才注册；未注册来源的 `POST /api/v1/sync-jobs` 返回 422，不创建任务。`sync::worker::spawn` 在 registry 为空时不启动 worker，避免空转。handler 内的失败只返回稳定错误码，上传原始响应、URL、Cookie 或学号均不允许。
+
 ### Flutter
 
 1. 业务页面放在 `lib/features/<domain>/`，公共主题与 `AppShell` 从 `lib/app/` 复用。
@@ -185,6 +188,7 @@ Flutter DiagnosticsPage
 - `GET /health/live`、`GET /health/ready`、`GET /api/v1/meta`。
 - request_id、统一 JSON 错误、CORS 白名单、请求体限制、请求超时、结构化日志与敏感值过滤。
 - 工作台会话：`users`/`sessions` 迁移、访问与刷新令牌签发及轮换、退出撤销、Bearer 认证上下文、`GET /api/v1/me`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`。双用户隔离、令牌过期、刷新复用拒绝与退出撤销由 8 个真实 PostgreSQL 集成测试覆盖。
+- 同步任务公共入口：`sync_jobs` 迁移、`POST /api/v1/sync-jobs`、`GET /api/v1/sync-jobs/{id}`、scope 规范化与活跃任务复用、120 秒租约恢复、失败状态与 `SYNC_INTERRUPTED`。并发复用、跨用户 404、worker 成功/失败、租约重排与三次中断上限由 7 个真实 PostgreSQL 集成测试覆盖。**当前没有注册任何来源适配器**，创建任务返回 422。
 - OpenAPI 3.0.3 契约、Redocly 校验、锁定版本的 Dart 客户端与漂移检查。
 - Flutter Windows 构建、桌面/窄屏布局、真实健康接口诊断、失败重试。
 - Compose 本地栈、Caddy 入口、内部 PG/Redis、健康检查、持久卷、staging 覆盖模板；配置已在本机校验，启动冒烟由 CI 执行。
@@ -192,7 +196,7 @@ Flutter DiagnosticsPage
 尚未实现，不能标记为完成：
 
 - 激活与登录入口、用户创建/邀请流程：工作台身份方案尚未获人工批准，当前只交付与方案无关的会话生命周期。
-- 校园来源连接 challenge/action、来源会话托管与 `sync-jobs`。
+- 校园来源连接 challenge/action 与来源会话托管；`sync-jobs` 机制已存在，但没有来源适配器，不能宣称任何来源已接入。
 - 客户端会话安全存储与登录页面；Flutter 仍只有诊断页。
 - Redis 会话/限流/缓存；Compose 中的 Redis 当前未被 API 使用。
 - 课表、作业、通知、资料、待办、日历、笔记、邮箱、AI、社区等业务接口。
@@ -230,6 +234,7 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 DATABASE_URL='postgres://.../jlu_dela_test' cargo test --all-targets --features integration
 DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test auth --features integration
+DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test sync --features integration
 cargo build --locked --release --bins
 
 # Flutter
@@ -258,13 +263,13 @@ bash smoke.sh
 - **C（学习通/作业）**：先定义课程偏好、作业状态与截止时间契约；接入来源前先补认证/连接公共机制（A02），不要把开发者 Cookie 写入服务。
 - **D（通知/资料）**：先提交通知列表/详情与资料目录契约；附件访问必须做用户可见范围检查，后续再接对象存储。
 - **E（待办/日历）**：先定义 Todo revision/幂等键与日历判别联合；复用 A01 的请求超时、错误结构和 Flutter 错误映射。
-- **A**：A02 会话核心已交付；激活/登录等待身份方案确认，来源连接与同步任务在人工决定执行位置后推进。A03 部署/备份/恢复另开任务，不混入身份 PR。
+- **A**：A02 会话核心与 `sync-jobs` 公共机制已交付；激活/登录等待身份方案确认，来源连接与真实来源适配在人工决定执行位置后推进。A03 部署/备份/恢复另开任务，不混入身份 PR。
 - **B/C/D**：2026-11-11 已提交来源授权的只读证据与契约需求；B01/C01/D01 仍阻塞于来源授权执行位置与人工实测条件，先用夹具推进允许的部分。
 
 ## 12. 分支与 CI
 
 - A01 合并提交：`8d590f4`（`upstream/main`），A01 分支提交 `c17f8ec`。
-- A02 开发分支：`codex/a02-auth-session`，基于 `upstream/main`；身份 PR 合并后再叠加来源连接与同步任务 PR，不混入同一 PR。
+- A02 身份分支：`codex/a02-auth-session`，基于 `upstream/main`。同步机制分支：`codex/a02-sync-jobs`，基于身份分支，作为堆叠 PR 评审；身份 PR 合并后再改为基于 `upstream/main`。来源连接在决策后另开分支。
 - 开发分支不得直接推送 `main`，禁止自动合并。
 - PR 合并检查使用 `Foundation required`。只有 `Server (Rust)`、`Contracts (OpenAPI)`、`Flutter (Windows)` 和 `Infra (Compose)` 均成功时才通过。旧 Electron macOS 检查按需手动运行。
 - 分支保护、必需检查、CODEOWNERS 与人工审批需要主开发在仓库设置中落实；本 PR 不修改远程保护设置。
@@ -293,5 +298,5 @@ bash smoke.sh
 
 A02 验收缺口：
 
-- 没有已批准的来源接入，sync-jobs 只能验证持久化、复用、恢复与失败状态；不得用固定成功响应替代真实来源。
+- 没有已批准的来源接入，sync-jobs 只能验证持久化、复用、恢复与失败状态；真实来源的 scope 粒度、完整性判定、退避数值与错误映射仍未验证，不得用固定成功响应替代。
 - 校园来源连接、Flutter 登录与连接页在决策后另开 PR；本文不把诊断页当作正式产品设计。
