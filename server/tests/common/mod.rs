@@ -36,6 +36,7 @@ pub fn config(overrides: &[(&str, &str)]) -> Config {
     Config::from_variables(variables).expect("test configuration is valid")
 }
 
+#[allow(dead_code)]
 pub fn router(config: &Config) -> Router {
     let state = AppState::new(db::connect_lazy(config), config.build_id.clone());
     http::router(state, config)

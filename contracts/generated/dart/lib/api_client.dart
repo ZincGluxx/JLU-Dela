@@ -195,6 +195,12 @@ class ApiClient {
           return LiveResponse.fromJson(value);
         case 'LiveStatus':
           return LiveStatus.fromJson(value);
+        case 'LogoutRequest':
+          return LogoutRequest.fromJson(value);
+        case 'Me':
+          return Me.fromJson(value);
+        case 'MeResponse':
+          return MeResponse.fromJson(value);
         case 'MetaResponse':
           return MetaResponse.fromJson(value);
         case 'PaginationMeta':
@@ -203,10 +209,16 @@ class ApiClient {
           return ReadyResponse.fromJson(value);
         case 'ReadyStatus':
           return ReadyStatus.fromJson(value);
+        case 'RefreshRequest':
+          return RefreshRequest.fromJson(value);
         case 'RequestIdMeta':
           return RequestIdMeta.fromJson(value);
         case 'ServiceMeta':
           return ServiceMeta.fromJson(value);
+        case 'TokenPair':
+          return TokenPair.fromJson(value);
+        case 'TokenPairResponse':
+          return TokenPairResponse.fromJson(value);
         default:
           dynamic match;
           if (value is List && (match = _regList.firstMatch(targetType)?.group(1)) != null) {

@@ -1,6 +1,8 @@
 analysis_options.yaml
 lib/api.dart
+lib/api/auth_api.dart
 lib/api/health_api.dart
+lib/api/me_api.dart
 lib/api/meta_api.dart
 lib/api_client.dart
 lib/api_exception.dart
@@ -16,10 +18,16 @@ lib/model/error_response.dart
 lib/model/list_meta.dart
 lib/model/live_response.dart
 lib/model/live_status.dart
+lib/model/logout_request.dart
+lib/model/me.dart
+lib/model/me_response.dart
 lib/model/meta_response.dart
 lib/model/pagination_meta.dart
 lib/model/ready_response.dart
 lib/model/ready_status.dart
+lib/model/refresh_request.dart
 lib/model/request_id_meta.dart
 lib/model/service_meta.dart
+lib/model/token_pair.dart
+lib/model/token_pair_response.dart
 pubspec.yaml

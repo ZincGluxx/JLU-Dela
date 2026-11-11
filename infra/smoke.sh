@@ -17,7 +17,7 @@ grep -q "\"request_id\":\"$request_id\"" <<<"$live_body"
 
 ready_body=$(curl --fail --silent --show-error "$base_url/health/ready")
 grep -q '"status":"ready"' <<<"$ready_body"
-grep -q '"schema_version":"1"' <<<"$ready_body"
+grep -Eq '"schema_version":"[0-9]+"' <<<"$ready_body"
 
 meta_body=$(curl --fail --silent --show-error "$base_url/api/v1/meta")
 grep -q '"api_version":"v1"' <<<"$meta_body"

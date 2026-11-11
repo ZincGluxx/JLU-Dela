@@ -6,7 +6,7 @@ use axum::{
     http::{HeaderName, Method, StatusCode, header},
     middleware::{self, Next},
     response::Response,
-    routing::get,
+    routing::{get, post},
 };
 use tower_http::{
     cors::CorsLayer,
@@ -15,6 +15,7 @@ use tower_http::{
 use tracing::{debug, info};
 
 use crate::{
+    auth,
     config::Config,
     error::{AppError, request_id, request_id_from_extensions},
     health, meta,
@@ -28,6 +29,9 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/api/v1/meta", get(meta::get))
+        .route("/api/v1/auth/refresh", post(auth::refresh))
+        .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/me", get(auth::me))
         .fallback(not_found)
         .with_state(state);
 
