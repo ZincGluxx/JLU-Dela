@@ -204,6 +204,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('resizing across the breakpoint preserves an unsaved draft', (
+    tester,
+  ) async {
+    await pumpShell(
+      tester,
+      pages: {AppDestination.calendar: (context) => const TextField()},
+    );
+    await tester.enterText(find.byType(TextField), '未保存的课程笔记');
+    final editorState = tester.state<EditableTextState>(
+      find.byType(EditableText),
+    );
+
+    for (final width in [767.0, 768.0, 390.0, 1280.0]) {
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      await tester.pumpAndSettle();
+
+      expect(find.text('未保存的课程笔记'), findsOneWidget);
+      expect(tester.state(find.byType(EditableText)), same(editorState));
+      expect(
+        find.byKey(Key(width >= 768 ? 'desktop-sidebar' : 'mobile-navigation')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets(
+    'destinations with the same page type have separate draft state',
+    (tester) async {
+      await pumpShell(
+        tester,
+        pages: {
+          AppDestination.calendar: (context) => const TextField(),
+          AppDestination.teaching: (context) => const TextField(),
+        },
+      );
+      await tester.enterText(find.byType(TextField), '日历草稿');
+      final calendarEditor = tester.state(find.byType(EditableText));
+
+      await tester.tap(find.byKey(const Key('destination-teaching')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('日历草稿'), findsNothing);
+      expect(
+        tester.state(find.byType(EditableText)),
+        isNot(same(calendarEditor)),
+      );
+      await tester.enterText(find.byType(TextField), '课表草稿');
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      await tester.pumpAndSettle();
+      expect(find.text('课表草稿'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('the selected destination is exposed to semantics', (
     tester,
   ) async {

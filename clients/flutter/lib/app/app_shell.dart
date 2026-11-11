@@ -20,7 +20,7 @@ enum AppDestination {
   final IconData icon;
 }
 
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.destination,
@@ -47,6 +47,13 @@ class AppShell extends StatelessWidget {
   ];
 
   @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  final _pageKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: DecoratedBox(
@@ -60,23 +67,29 @@ class AppShell extends StatelessWidget {
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final page =
-                  pages[destination]?.call(context) ??
-                  _UnavailablePage(destination: destination);
+              final page = KeyedSubtree(
+                key: _pageKey,
+                child: KeyedSubtree(
+                  key: ValueKey(widget.destination),
+                  child:
+                      widget.pages[widget.destination]?.call(context) ??
+                      _UnavailablePage(destination: widget.destination),
+                ),
+              );
               if (constraints.maxWidth >= AppBreakpoints.desktop) {
                 return _DesktopLayout(
-                  destination: destination,
+                  destination: widget.destination,
                   page: page,
-                  glassEnabled: glassEnabled,
+                  glassEnabled: widget.glassEnabled,
                   sidebarWidth: constraints.maxWidth >= 1200 ? 224 : 184,
-                  onDestinationSelected: onDestinationSelected,
+                  onDestinationSelected: widget.onDestinationSelected,
                 );
               }
               return _MobileLayout(
-                destination: destination,
+                destination: widget.destination,
                 page: page,
-                glassEnabled: glassEnabled,
-                onDestinationSelected: onDestinationSelected,
+                glassEnabled: widget.glassEnabled,
+                onDestinationSelected: widget.onDestinationSelected,
               );
             },
           ),
