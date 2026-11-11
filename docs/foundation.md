@@ -192,6 +192,8 @@ Flutter DiagnosticsPage
 - OpenAPI 3.0.3 契约、Redocly 校验、锁定版本的 Dart 客户端与漂移检查。
 - Flutter Windows 构建、桌面/平板/窄屏布局、真实健康接口诊断、失败重试。
 - 公共应用壳：桌面玻璃侧栏与顶部工具栏、手机玻璃底栏与「更多」入口、`AppDestination -> AppPageBuilder` 页面注册、玻璃/实色同布局切换、未接入页面明确显示尚未开放。窗口缩放、文字缩放（2.0）与 390/820/1280 宽度由 widget 测试覆盖；Windows release 构建通过。Android 未构建、未真机验证。
+
+当前壳截图：[桌面 1280×720](client/app-shell-desktop.png) · [手机 390×844](client/app-shell-mobile.png)。两张图来自 Windows release 构建，页面显示「此功能尚未开放」，不含业务数据。
 - Compose 本地栈、Caddy 入口、内部 PG/Redis、健康检查、持久卷、staging 覆盖模板；配置已在本机校验，启动冒烟由 CI 执行。
 
 尚未实现，不能标记为完成：
