@@ -4,6 +4,7 @@ lib/api/auth_api.dart
 lib/api/health_api.dart
 lib/api/me_api.dart
 lib/api/meta_api.dart
+lib/api/sync_api.dart
 lib/api_client.dart
 lib/api_exception.dart
 lib/api_helper.dart
@@ -12,6 +13,7 @@ lib/auth/authentication.dart
 lib/auth/http_basic_auth.dart
 lib/auth/http_bearer_auth.dart
 lib/auth/oauth.dart
+lib/model/create_sync_job_request.dart
 lib/model/error_detail.dart
 lib/model/error_field.dart
 lib/model/error_response.dart
@@ -28,6 +30,12 @@ lib/model/ready_status.dart
 lib/model/refresh_request.dart
 lib/model/request_id_meta.dart
 lib/model/service_meta.dart
+lib/model/sync_job.dart
+lib/model/sync_job_accepted.dart
+lib/model/sync_job_accepted_response.dart
+lib/model/sync_job_error.dart
+lib/model/sync_job_response.dart
+lib/model/sync_job_status.dart
 lib/model/token_pair.dart
 lib/model/token_pair_response.dart
 pubspec.yaml

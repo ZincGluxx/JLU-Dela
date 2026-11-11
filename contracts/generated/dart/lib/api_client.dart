@@ -183,6 +183,8 @@ class ApiClient {
           return valueString == 'true' || valueString == '1';
         case 'DateTime':
           return value is DateTime ? value : DateTime.tryParse(value);
+        case 'CreateSyncJobRequest':
+          return CreateSyncJobRequest.fromJson(value);
         case 'ErrorDetail':
           return ErrorDetail.fromJson(value);
         case 'ErrorField':
@@ -215,6 +217,18 @@ class ApiClient {
           return RequestIdMeta.fromJson(value);
         case 'ServiceMeta':
           return ServiceMeta.fromJson(value);
+        case 'SyncJob':
+          return SyncJob.fromJson(value);
+        case 'SyncJobAccepted':
+          return SyncJobAccepted.fromJson(value);
+        case 'SyncJobAcceptedResponse':
+          return SyncJobAcceptedResponse.fromJson(value);
+        case 'SyncJobError':
+          return SyncJobError.fromJson(value);
+        case 'SyncJobResponse':
+          return SyncJobResponse.fromJson(value);
+        case 'SyncJobStatus':
+          return SyncJobStatusTypeTransformer().decode(value);
         case 'TokenPair':
           return TokenPair.fromJson(value);
         case 'TokenPairResponse':

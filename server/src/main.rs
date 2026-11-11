@@ -13,6 +13,7 @@ async fn main() -> Result<()> {
         .with_context(|| format!("connect to PostgreSQL at {}", config.database.target()))?;
 
     let state = AppState::new(pool.clone(), config.build_id.clone());
+    let _sync_worker = jlu_dela_api::sync::worker::spawn(state.clone());
     let app = http::router(state, &config);
     let listener = TcpListener::bind((config.host, config.port))
         .await

@@ -32,7 +32,9 @@ part 'api/auth_api.dart';
 part 'api/health_api.dart';
 part 'api/me_api.dart';
 part 'api/meta_api.dart';
+part 'api/sync_api.dart';
 
+part 'model/create_sync_job_request.dart';
 part 'model/error_detail.dart';
 part 'model/error_field.dart';
 part 'model/error_response.dart';
@@ -49,6 +51,12 @@ part 'model/ready_status.dart';
 part 'model/refresh_request.dart';
 part 'model/request_id_meta.dart';
 part 'model/service_meta.dart';
+part 'model/sync_job.dart';
+part 'model/sync_job_accepted.dart';
+part 'model/sync_job_accepted_response.dart';
+part 'model/sync_job_error.dart';
+part 'model/sync_job_response.dart';
+part 'model/sync_job_status.dart';
 part 'model/token_pair.dart';
 part 'model/token_pair_response.dart';
 
