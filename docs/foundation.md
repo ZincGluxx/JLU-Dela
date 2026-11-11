@@ -151,7 +151,8 @@ pub async fn list_example(
 1. 业务页面放在 `lib/features/<domain>/`，公共主题与 `AppShell` 从 `lib/app/` 复用。
 2. 新接口必须先进入 `contracts/openapi.yaml`，再生成 `jlu_dela_api`；不要在客户端手写重复 DTO。
 3. 统一错误映射在 `lib/core/api/api_failure.dart`；新错误码在展示层给出可读文案。
-4. 当前没有引入路由/状态管理库：单页诊断骨架使用 `StatefulWidget + FutureBuilder`。出现第二个真实页面时再选型并记录理由，不为简单页面预建层级。
+4. 当前没有引入路由/状态管理库：单页诊断骨架使用 `StatefulWidget + FutureBuilder`。登录/会话恢复与来源连接这两个真实页面计划采用 `MaterialApp` + 一个 `AuthController extends ChangeNotifier` + `ListenableBuilder`；不引入 go_router 或 Riverpod。理由是两个页面只有一个应用级状态域（会话），且没有深链、多标签或 URL 还原需求；出现第三个独立状态域或 B–E 多页导航时再选型。登录/连接页本身尚未实现，等待身份方案与视觉基线。
+5. 客户端令牌计划存入平台安全存储（例如 `flutter_secure_storage`），SQLite 不保存刷新令牌。本次未引入该依赖，也未实现登录/恢复页面。
 
 ## 7. 一次完整请求路径
 
