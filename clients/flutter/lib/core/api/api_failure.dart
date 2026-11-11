@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
 import 'package:jlu_dela_api/api.dart';
 
 enum ApiFailureKind { network, timeout, server, protocol }
@@ -50,6 +51,12 @@ ApiFailure mapApiException(ApiException error) {
     return ApiFailure(
       kind: ApiFailureKind.network,
       technicalMessage: inner.toString(),
+    );
+  }
+  if (inner is http.ClientException) {
+    return ApiFailure(
+      kind: ApiFailureKind.network,
+      technicalMessage: inner.message,
     );
   }
   if (inner is TimeoutException) {

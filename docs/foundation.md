@@ -1,6 +1,6 @@
 # A01 工程底座启动与交接
 
-状态：本地服务、迁移、契约生成、Flutter Windows 构建与真实诊断页已验证。Compose 启动冒烟在 CI 执行，本机没有 Docker daemon。
+状态：本地服务、迁移、契约生成、Flutter Windows 构建与真实诊断页已验证。Compose 启动冒烟在 CI 执行，本机没有 Docker daemon。公共应用壳已按暂定视觉基线交接；设备端校园可见登录仍在验证，真实学校认证需授权用户人工完成。
 
 A02 已实现工作台会话生命周期（刷新、退出、当前用户、令牌轮换与撤销、认证上下文）。登录与激活入口尚未实现：工作台身份方案仍需人工确认，客户端不得假设邀请账号或学校统一认证。校园来源连接与同步任务尚未落地。
 
@@ -148,11 +148,15 @@ pub async fn list_example(
 
 ### Flutter
 
-1. 业务页面放在 `lib/features/<domain>/`，公共主题与 `AppShell` 从 `lib/app/` 复用。
-2. 新接口必须先进入 `contracts/openapi.yaml`，再生成 `jlu_dela_api`；不要在客户端手写重复 DTO。
-3. 统一错误映射在 `lib/core/api/api_failure.dart`；新错误码在展示层给出可读文案。
-4. 当前没有引入路由/状态管理库：单页诊断骨架使用 `StatefulWidget + FutureBuilder`。登录/会话恢复与来源连接这两个真实页面计划采用 `MaterialApp` + 一个 `AuthController extends ChangeNotifier` + `ListenableBuilder`；不引入 go_router 或 Riverpod。理由是两个页面只有一个应用级状态域（会话），且没有深链、多标签或 URL 还原需求；出现第三个独立状态域或 B–E 多页导航时再选型。登录/连接页本身尚未实现，等待身份方案与视觉基线。
-5. 客户端令牌计划存入平台安全存储（例如 `flutter_secure_storage`），SQLite 不保存刷新令牌。本次未引入该依赖，也未实现登录/恢复页面。
+1. 业务页面放在 `lib/features/<domain>/`，公共主题、`AppShell` 与玻璃表面从 `lib/app/` 复用。业务目录只依赖 `lib/app/`、`lib/core/` 与生成客户端，不互相导入其他业务目录。
+2. `AppShell` 负责桌面侧栏、顶部工具栏、手机底部导航与手机端「更多」入口。宽度 `>= 768` 使用侧栏（1280 以上 224，以下 184），更窄使用底部导航；未注册的 `AppDestination` 显示「此功能尚未开放」，不展示示例业务数字。
+3. 页面接入通过 `AppDestination -> AppPageBuilder` 注册：在 `lib/app/app.dart` 的 `pages` map 中增加一行 `AppDestination.<入口>: (context) => const <页面>()`。业务页面只新增自己的 `lib/features/<domain>/` 文件；公共注册行随页面小 PR 一起提交，由 A 审核，不在业务目录另建导航或主题。
+4. 导航、工具栏与底部栏使用 `GlassSurface`（`glassEnabled=false` 切换为实色，布局不变）；手机业务页的日期选择条等窄条也可复用 `GlassSurface`。课程、作业与正文等内容面使用实色 `AppTheme.surfaceDecoration` 或白色 `Material`，不要用 `GlassSurface` 包裹正文。颜色、圆角与间距取 `AppTheme` / `AppSpacing`，不要在新页面另建 token 表。
+5. 新接口必须先进入 `contracts/openapi.yaml`，再生成 `jlu_dela_api`；不要在客户端手写重复 DTO。
+6. 统一错误映射在 `lib/core/api/api_failure.dart`；新错误码在展示层给出可读文案。
+7. 当前没有引入路由/状态管理库：`MaterialApp` + `StatefulWidget` 管理当前入口与玻璃开关。页面注册不是路由器，没有深链、多标签或 URL 还原需求；出现第三个独立应用级状态域或 B–E 多页导航时再选型。
+8. 客户端令牌计划存入平台安全存储（例如 `flutter_secure_storage`），SQLite 不保存刷新令牌。本次未引入该依赖，也未实现登录/恢复页面。
+9. 设备端校园登录尚在验证，公共层不保存 Cookie；未获人工决定前不把来源会话上传服务端，也不开放无认证的私有业务 API。
 
 ## 7. 一次完整请求路径
 
@@ -186,14 +190,17 @@ Flutter DiagnosticsPage
 - request_id、统一 JSON 错误、CORS 白名单、请求体限制、请求超时、结构化日志与敏感值过滤。
 - 工作台会话：`users`/`sessions` 迁移、访问与刷新令牌签发及轮换、退出撤销、Bearer 认证上下文、`GET /api/v1/me`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`。双用户隔离、令牌过期、刷新复用拒绝与退出撤销由 8 个真实 PostgreSQL 集成测试覆盖。
 - OpenAPI 3.0.3 契约、Redocly 校验、锁定版本的 Dart 客户端与漂移检查。
-- Flutter Windows 构建、桌面/窄屏布局、真实健康接口诊断、失败重试。
+- Flutter Windows 构建、桌面/平板/窄屏布局、真实健康接口诊断、失败重试。
+- 公共应用壳：桌面玻璃侧栏与顶部工具栏、手机玻璃底栏与「更多」入口、`AppDestination -> AppPageBuilder` 页面注册、玻璃/实色同布局切换、未接入页面明确显示尚未开放。窗口缩放、文字缩放（2.0）与 390/820/1280 宽度由 widget 测试覆盖；Windows release 构建通过。Android 未构建、未真机验证。
+
+当前壳截图：[桌面 1280×720](client/app-shell-desktop.png) · [手机 390×844](client/app-shell-mobile.png)。两张图来自 Windows release 构建，页面显示「此功能尚未开放」，不含业务数据。
 - Compose 本地栈、Caddy 入口、内部 PG/Redis、健康检查、持久卷、staging 覆盖模板；配置已在本机校验，启动冒烟由 CI 执行。
 
 尚未实现，不能标记为完成：
 
 - 激活与登录入口、用户创建/邀请流程：工作台身份方案尚未获人工批准，当前只交付与方案无关的会话生命周期。
 - 校园来源连接 challenge/action、来源会话托管与 `sync-jobs`。
-- 客户端会话安全存储与登录页面；Flutter 仍只有诊断页。
+- 客户端会话安全存储与登录页面；Flutter 当前有公共应用壳、设置与诊断页，业务页面和登录页尚未接入。
 - Redis 会话/限流/缓存；Compose 中的 Redis 当前未被 API 使用。
 - 课表、作业、通知、资料、待办、日历、笔记、邮箱、AI、社区等业务接口。
 - 对象存储、备份恢复演练、监控告警、生产发布。
