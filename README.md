@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/goya4140/JLU-Dela/releases/tag/v0.1.0-alpha.17"><img alt="开发预览 v0.1.0-alpha.17" src="https://img.shields.io/badge/preview-v0.1.0--alpha.17-8dd8c3?style=flat-square" /></a>
-  <a href="https://github.com/goya4140/JLU-Dela/actions/workflows/ci.yml"><img alt="macOS CI" src="https://github.com/goya4140/JLU-Dela/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
+  <a href="https://github.com/goya4140/JLU-Dela/actions/workflows/foundation-ci.yml"><img alt="Foundation CI" src="https://github.com/goya4140/JLU-Dela/actions/workflows/foundation-ci.yml/badge.svg?branch=main" /></a>
   <a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-aac5f5?style=flat-square" /></a>
 </p>
 

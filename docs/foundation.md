@@ -237,6 +237,5 @@ bash smoke.sh
 ## 12. 分支与 CI
 
 - 开发分支：`codex/a01-foundation`；禁止直接推送 `main`，禁止自动合并。
-- 新增检查名称：`Server (Rust)`、`Contracts (OpenAPI)`、`Flutter (Windows)`、`Infra (Compose)`、`Foundation required`。
-- 旧工程检查保留在现有 workflow 中；两者都应作为必需检查配置。
+- PR 合并检查使用 `Foundation required`。只有 `Server (Rust)`、`Contracts (OpenAPI)`、`Flutter (Windows)` 和 `Infra (Compose)` 均成功时才通过。旧 Electron macOS 检查按需手动运行。
 - 分支保护、必需检查、CODEOWNERS 与人工审批需要主开发在仓库设置中落实；本 PR 不修改远程保护设置。

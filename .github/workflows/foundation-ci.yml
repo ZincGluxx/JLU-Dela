@@ -150,8 +150,10 @@ jobs:
           grep -q "Cookie.*REDACTED" /tmp/jlu-dela-compose.log
 
           printf 'Authorization: Bearer ci-secret-token\nCookie: session=ci-secret-cookie\n' > /tmp/jlu-dela-leaked.log
-          if bash infra/assert-no-credentials.sh /tmp/jlu-dela-leaked.log ci-secret; then
-            echo "redaction guard failed to reject a leaked log" >&2
+          status=0
+          bash infra/assert-no-credentials.sh /tmp/jlu-dela-leaked.log ci-secret || status=$?
+          if [ "$status" -ne 1 ]; then
+            echo "expected the redaction guard to detect a leak, got exit status $status" >&2
             exit 1
           fi
           echo "redaction guard failure path verified"
@@ -178,8 +180,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check required job results
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
         run: |
-          test "${{ needs.server.result }}" = "success"
-          test "${{ needs.contracts.result }}" = "success"
-          test "${{ needs.flutter.result }}" = "success"
-          test "${{ needs.infra.result }}" = "success"
+          node -e '
+            const jobs = Object.entries(JSON.parse(process.env.JOB_RESULTS));
+            for (const [job, { result }] of jobs) console.log(`${job}: ${result}`);
+            if (!jobs.length || jobs.some(([, { result }]) => result !== "success")) process.exit(1);
+          '

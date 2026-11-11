@@ -123,7 +123,7 @@ pnpm test
 
 - 修改 `src/main/remotes/`、`helper/` 或远端路径与上下文镜像时，必须通过 `pnpm test:remote` 在真机上执行回归；该套件在默认测试与 CI 中均会跳过。
 - 冒烟脚本使用独立测试目录与脱敏数据。除显式联网的 `agent-smoke`、`mingit-smoke` 与 `smoke:documents` 外，不应向真实服务发送请求。
-- CI 入口为 `.github/workflows/ci.yml`，在 PR 创建、更新、重新打开以及推送到 `main` 时运行，按变更范围调用 quality、test、helper、desktop-windows 和 desktop-macos workflow，并由 `CI required` 汇总结果。普通文档只检查格式；workflow 改动额外检查 GitHub Actions 配置。CI 分步执行命令，并检查冻结锁文件安装、打包布局与打包后启动；本地 `pnpm check` 通过不代表 CI 一定通过。
+- PR 使用 `.github/workflows/foundation-ci.yml`。`Foundation required` 汇总 Rust、OpenAPI、Flutter Windows 和 Compose，四项均通过后才可人工合并。旧 Electron 的 macOS 检查可手动运行，旧版发布由独立 workflow 验证。
 - 修改 `helper/` 后应执行 `pnpm build:helper --all`，重建 amd64 与 arm64 产物并一并提交；仅重建 amd64 会导致入库的 arm64 产物停留在旧版本。
 
 ## 架构总览
