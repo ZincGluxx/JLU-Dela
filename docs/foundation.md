@@ -221,6 +221,8 @@ Flutter DiagnosticsPage
 
 未获明确授权前不部署生产，不运行会破坏现有数据库或卷的命令。本机 Compose 启动冒烟因缺少 Docker daemon 未执行；CI 的 `Infra (Compose)` 会执行构建、启动、健康检查、内部端口检查与优雅退出检查。
 
+A03 的缺项清单、发布顺序、备份/恢复与回滚命令见 [operations/release-readiness.md](operations/release-readiness.md)。
+
 ## 10. 验证命令
 
 ```sh
