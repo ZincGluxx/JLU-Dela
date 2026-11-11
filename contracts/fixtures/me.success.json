@@ -1,0 +1,10 @@
+{
+  "data": {
+    "id": "0b6a4f8e-6f0e-4a5c-9b6d-2f4a7c1d8e30",
+    "display_name": "示例用户",
+    "timezone": "Asia/Shanghai"
+  },
+  "meta": {
+    "request_id": "fixture-me-request"
+  }
+}

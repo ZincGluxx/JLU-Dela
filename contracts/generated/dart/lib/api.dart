@@ -28,7 +28,9 @@ part 'auth/oauth.dart';
 part 'auth/http_basic_auth.dart';
 part 'auth/http_bearer_auth.dart';
 
+part 'api/auth_api.dart';
 part 'api/health_api.dart';
+part 'api/me_api.dart';
 part 'api/meta_api.dart';
 
 part 'model/error_detail.dart';
@@ -37,12 +39,18 @@ part 'model/error_response.dart';
 part 'model/list_meta.dart';
 part 'model/live_response.dart';
 part 'model/live_status.dart';
+part 'model/logout_request.dart';
+part 'model/me.dart';
+part 'model/me_response.dart';
 part 'model/meta_response.dart';
 part 'model/pagination_meta.dart';
 part 'model/ready_response.dart';
 part 'model/ready_status.dart';
+part 'model/refresh_request.dart';
 part 'model/request_id_meta.dart';
 part 'model/service_meta.dart';
+part 'model/token_pair.dart';
+part 'model/token_pair_response.dart';
 
 
 /// An [ApiClient] instance that uses the default values obtained from

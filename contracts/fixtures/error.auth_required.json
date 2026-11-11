@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Authentication required.",
+    "request_id": "fixture-auth-request",
+    "retryable": false,
+    "fields": []
+  }
+}

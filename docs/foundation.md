@@ -2,6 +2,8 @@
 
 状态：本地服务、迁移、契约生成、Flutter Windows 构建与真实诊断页已验证。Compose 启动冒烟在 CI 执行，本机没有 Docker daemon。
 
+A02 已实现工作台会话生命周期（刷新、退出、当前用户、令牌轮换与撤销、认证上下文）。登录与激活入口尚未实现：工作台身份方案仍需人工确认，客户端不得假设邀请账号或学校统一认证。校园来源连接与同步任务尚未落地。
+
 本文对应规划 A01。新架构以 Flutter + Rust 为目标；`app/` 保留为旧 Electron 实现与行为参考。`AGENTS.md` 仍只由人类维护。
 
 ## 1. 工具链基线
@@ -97,20 +99,21 @@ npm run verify     # lint + generate + drift
 ## 4. 数据库迁移
 
 - 迁移文件：`server/migrations/`，由 SQLx 顺序执行并记录在 `_sqlx_migrations`。
-- 当前迁移创建 `service_meta`，写入 `schema_version=1`；`GET /health/ready` 依赖该行。
+- `20261110000000_create_service_meta.sql` 创建 `service_meta`；`20261111000000_create_identity.sql` 创建 `users`、`sessions` 并把 `schema_version` 推进到 `2`。`GET /health/ready` 依赖该行。
+- 会话只保存访问令牌与刷新令牌的 SHA-256 摘要。访问令牌 15 分钟，刷新令牌 30 天；刷新时两者同时轮换，旧值立即失效；退出按会话撤销。
 - 独立命令：`cargo run --bin migrate`；Compose 使用一次性 `migrate` 服务。
 - API 进程不执行迁移。发布时先跑迁移，再滚动 API；回滚前确认旧版本兼容当前 schema。
 - 新迁移由领域作者提出，A 审核；不要在已发布迁移上直接改 SQL。
 
 ## 5. 目录与 owner
 
-| 目录                                                                                                                                                                       | Owner   | 边界                                     |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------- |
-| `server/src/{config,db,error,http,health,meta,state,response,logging}`、`migrations/`、`infra/`、`.github/workflows/foundation-ci.yml`、`contracts/`、`docs/foundation.md` | A       | 公共契约、身份权限、发布与合并           |
-| `server/src/connectors/{iedu,chaoxing,oa}`、`server/src/{teaching,assignments,notices,materials}`                                                                          | B/C/D   | 各自校园来源与业务模块                   |
-| `clients/flutter/lib/features/{teaching,assignments,content,planner}`                                                                                                      | B/C/D/E | 各自业务页面，先消费契约夹具             |
-| `clients/flutter/lib/{app,core}`、`contracts/openapi.yaml`                                                                                                                 | A       | 公共主题、路由入口、API 客户端与契约总审 |
-| `server/src/{todos,calendar}`、`clients/flutter/lib/features/planner`                                                                                                      | E       | 待办、幂等、冲突与日历聚合               |
+| 目录                                                                                                                                                                                                                              | Owner   | 边界                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------- |
+| `server/src/{config,db,error,http,health,json,meta,state,response,logging,auth}`、`server/src/{connections,sync}`（A02 计划）、`migrations/`、`infra/`、`.github/workflows/foundation-ci.yml`、`contracts/`、`docs/foundation.md` | A       | 公共契约、身份权限、发布与合并           |
+| `server/src/connectors/{iedu,chaoxing,oa}`、`server/src/{teaching,assignments,notices,materials}`                                                                                                                                 | B/C/D   | 各自校园来源与业务模块                   |
+| `clients/flutter/lib/features/{teaching,assignments,content,planner}`                                                                                                                                                             | B/C/D/E | 各自业务页面，先消费契约夹具             |
+| `clients/flutter/lib/{app,core,features/auth}`、`contracts/openapi.yaml`                                                                                                                                                          | A       | 公共主题、路由入口、API 客户端与契约总审 |
+| `server/src/{todos,calendar}`、`clients/flutter/lib/features/planner`                                                                                                                                                             | E       | 待办、幂等、冲突与日历聚合               |
 
 具体任务映射见工作区的 `output/planning/JLU-Dela-Development-Plan.md`。该规划文档由用户维护，当前未纳入本 PR。
 
@@ -119,11 +122,29 @@ npm run verify     # lint + generate + drift
 ### 路由与状态
 
 1. 在 `server/src/` 新建实际使用的领域模块，例如 `todos/`，不要预建空目录或通用 Repository/Service 基类。
-2. Handler 使用 `State<AppState>` 获取 `PgPool`；返回 `Result<Json<ApiResponse<T>>, AppError>` 时沿用统一包装与错误响应。
+2. Handler 使用 `State<AppState>` 获取 `PgPool`；需要当前用户时加入 `AuthenticatedUser`，JSON 请求体用 `ApiJson<T>`（拒绝未知字段，映射 415/422）。成功返回 `Json(ApiResponse::new(data, request_id))`，失败调用 `error.response(&request_id)`；不要另写错误包装。
 3. 在 `server/src/http.rs` 注册路由，统一挂到 `/api/v1` 下；HTTP 契约先改 `contracts/openapi.yaml` 并生成客户端。
 4. 需要新配置时在 `config.rs` 增加带默认值的变量并校验；不要把秘密写进代码或日志。
-5. 需要新错误码时扩展 `AppError`，保持 `{error:{code,message,request_id,retryable,fields}}` 结构。
+5. 需要新错误码时扩展 `AppError`，保持 `{error:{code,message,request_id,retryable,fields}}` 结构。401 只表示工作台身份问题（`AUTH_REQUIRED`、`INVALID_TOKEN`、`TOKEN_EXPIRED`、`SESSION_REVOKED`）；校园来源失效必须用 409 `SOURCE_AUTH_REQUIRED`，不能把用户登出工作台。
 6. 需要迁移时新增 `server/migrations/<timestamp>_<name>.sql`，同步更新 `service_meta.schema_version`（由迁移负责）并补集成测试。
+
+认证上下文的最小用法：
+
+```rust
+pub async fn list_example(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Extension(request_id_value): Extension<RequestId>,
+) -> Response {
+    let request_id = request_id(&request_id_value);
+    match example::list(&state.pool, user.user_id).await {
+        Ok(data) => Json(ApiResponse::new(data, request_id)).into_response(),
+        Err(error) => error.response(&request_id),
+    }
+}
+```
+
+测试或运维需要创建会话时使用 `auth::session::issue_for_user(&pool, user_id)`。该函数只签发会话，不创建用户；用户创建随身份方案确定后接入。
 
 ### Flutter
 
@@ -162,13 +183,16 @@ Flutter DiagnosticsPage
 - Rust 配置校验、PostgreSQL 连接池、独立迁移命令与优雅退出信号处理（退出日志由 Compose CI 验证）。
 - `GET /health/live`、`GET /health/ready`、`GET /api/v1/meta`。
 - request_id、统一 JSON 错误、CORS 白名单、请求体限制、请求超时、结构化日志与敏感值过滤。
+- 工作台会话：`users`/`sessions` 迁移、访问与刷新令牌签发及轮换、退出撤销、Bearer 认证上下文、`GET /api/v1/me`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`。双用户隔离、令牌过期、刷新复用拒绝与退出撤销由 8 个真实 PostgreSQL 集成测试覆盖。
 - OpenAPI 3.0.3 契约、Redocly 校验、锁定版本的 Dart 客户端与漂移检查。
 - Flutter Windows 构建、桌面/窄屏布局、真实健康接口诊断、失败重试。
 - Compose 本地栈、Caddy 入口、内部 PG/Redis、健康检查、持久卷、staging 覆盖模板；配置已在本机校验，启动冒烟由 CI 执行。
 
 尚未实现，不能标记为完成：
 
-- 应用身份、登录、权限、校园来源连接。
+- 激活与登录入口、用户创建/邀请流程：工作台身份方案尚未获人工批准，当前只交付与方案无关的会话生命周期。
+- 校园来源连接 challenge/action、来源会话托管与 `sync-jobs`。
+- 客户端会话安全存储与登录页面；Flutter 仍只有诊断页。
 - Redis 会话/限流/缓存；Compose 中的 Redis 当前未被 API 使用。
 - 课表、作业、通知、资料、待办、日历、笔记、邮箱、AI、社区等业务接口。
 - 对象存储、备份恢复演练、监控告警、生产发布。
@@ -204,6 +228,7 @@ cd server
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 DATABASE_URL='postgres://.../jlu_dela_test' cargo test --all-targets --features integration
+DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test auth --features integration
 cargo build --locked --release --bins
 
 # Flutter
@@ -232,10 +257,40 @@ bash smoke.sh
 - **C（学习通/作业）**：先定义课程偏好、作业状态与截止时间契约；接入来源前先补认证/连接公共机制（A02），不要把开发者 Cookie 写入服务。
 - **D（通知/资料）**：先提交通知列表/详情与资料目录契约；附件访问必须做用户可见范围检查，后续再接对象存储。
 - **E（待办/日历）**：先定义 Todo revision/幂等键与日历判别联合；复用 A01 的请求超时、错误结构和 Flutter 错误映射。
-- **A**：A02 身份与连接/同步公共机制、A03 部署/备份门禁；A01 PR 合并前补齐人工评审与分支保护。
+- **A**：A02 会话核心已交付；激活/登录等待身份方案确认，来源连接与同步任务在人工决定执行位置后推进。A03 部署/备份/恢复另开任务，不混入身份 PR。
+- **B/C/D**：2026-11-11 已提交来源授权的只读证据与契约需求；B01/C01/D01 仍阻塞于来源授权执行位置与人工实测条件，先用夹具推进允许的部分。
 
 ## 12. 分支与 CI
 
-- 开发分支：`codex/a01-foundation`；禁止直接推送 `main`，禁止自动合并。
+- A01 合并提交：`8d590f4`（`upstream/main`），A01 分支提交 `c17f8ec`。
+- A02 开发分支：`codex/a02-auth-session`，基于 `upstream/main`；身份 PR 合并后再叠加来源连接与同步任务 PR，不混入同一 PR。
+- 开发分支不得直接推送 `main`，禁止自动合并。
 - PR 合并检查使用 `Foundation required`。只有 `Server (Rust)`、`Contracts (OpenAPI)`、`Flutter (Windows)` 和 `Infra (Compose)` 均成功时才通过。旧 Electron macOS 检查按需手动运行。
 - 分支保护、必需检查、CODEOWNERS 与人工审批需要主开发在仓库设置中落实；本 PR 不修改远程保护设置。
+
+## 13. A02 待人类决定与验收缺口
+
+以下问题在 2026-11-11 仍没有仓库内证据表明已获批准，不能把提案当作实现依据：
+
+| 决策             | 现状与证据                                                                                                                                                                           | 影响                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| 工作台身份       | `API-Contract.md` 的“受控邀请账号”是提案；仓库没有学校 OAuth/OIDC 证据                                                                                                               | 激活、登录与用户创建未实现；刷新、退出、`/me` 与会话撤销已实现       |
+| 来源授权执行位置 | 旧 Electron 只证明“可见学校窗口 + 用户手工完成 CAS/登录”的客户端会话；没有服务器可达或无人交互登录证据；Flutter 当前没有 webview 依赖                                                | connections/challenge、来源会话托管、sync-jobs 与 B/C/D 来源实现阻塞 |
+| 正式应用壳与视觉 | 诊断页品牌侧栏明确不是正式业务导航；没有批准稿                                                                                                                                       | 登录页、导航与主题基线不落地                                         |
+| 来源实测条件     | 教务：文档自述本人会话可用，缺新用户、自然过期与换账号；学习通：发起人账号 33 门课程，缺第二账号与过期；电子校务：匿名列表与 6 篇正文可读，网络位置未核实，附件必须由学校页面执行 JS | 来源只能标记“未验证/未接入”，不能宣称已连接                          |
+
+已确认的来源边界：
+
+- 教务、电子校务、学在吉大共享 `jlu.edu.cn` Cookie；学习通独立认证。断开某一来源若清空共享会话，会影响其他来源，契约必须写清影响范围。
+- 来源失效与网络失败必须分开。旧实现对 403、结构变化和超时的分类不完整，不能直接当作新契约语义。
+- 电子校务附件要在学校页面内执行两段 POST；学习通资料需要 C 的会话与受权入口。两者都不能用开发者 Cookie 代填新用户流程。
+
+人工设置缺口：
+
+- `GET /repos/goya4140/JLU-Dela/branches/main/protection` 在本次检查中返回 404；主分支保护未由 AI 修改。
+- PR 模板要求的人类前置四问尚未回答；身份 PR 保持 draft，等待人类补充与批准。
+
+A02 验收缺口：
+
+- 没有已批准的来源接入，sync-jobs 只能验证持久化、复用、恢复与失败状态；不得用固定成功响应替代真实来源。
+- 校园来源连接、Flutter 登录与连接页在决策后另开 PR；本文不把诊断页当作正式产品设计。
