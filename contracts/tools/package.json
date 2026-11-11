@@ -1,0 +1,19 @@
+{
+  "name": "@jlu-dela/contract-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.22.1 <27"
+  },
+  "scripts": {
+    "lint": "redocly lint --config ../redocly.yaml ../openapi.yaml",
+    "generate": "openapi-generator-cli generate -i ../openapi.yaml -g dart -o ../generated/dart -c generator-config.json",
+    "drift": "node check-generated.ts",
+    "verify": "npm run lint && npm run generate && npm run drift"
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "2.42.1",
+    "@redocly/cli": "2.77.0"
+  }
+}

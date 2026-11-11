@@ -1,0 +1,9 @@
+{
+  "data": {
+    "status": "ready",
+    "schema_version": "1"
+  },
+  "meta": {
+    "request_id": "fixture-ready-request"
+  }
+}

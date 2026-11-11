@@ -24,11 +24,12 @@
 
 ## 本地验证
 
-- [ ] 已执行 `pnpm check`（format:check / lint / build / test 全部通过）
+- [ ] 已执行改动涉及的新工程检查（Rust / OpenAPI / Flutter / Compose），命令和结果见下方
 - [ ] 已执行与改动相关的冒烟或真机测试：
 - [ ] 未执行任何检查，原因：
 
 <!-- 列出实际执行的命令与结果；未执行的检查不要标记为通过。平台相关问题请注明验证过的平台。 -->
+<!-- PR 使用 Foundation required 汇总检查，Rust、OpenAPI、Flutter Windows 与 Compose 必须均成功；失败、取消或跳过均需处理后再人工合并。旧 Electron 检查按需手动运行。 -->
 
 ```text
 <命令与结果>

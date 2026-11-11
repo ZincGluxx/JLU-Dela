@@ -1,0 +1,17 @@
+#
+# AUTO-GENERATED FILE, DO NOT MODIFY!
+#
+
+name: 'jlu_dela_api'
+version: '0.1.0'
+description: 'Generated Dart client for the JLU Dela HTTP API. Do not edit by hand.'
+homepage: 'https://github.com/ZincGluxx/JLU-Dela'
+environment:
+  sdk: '>=2.17.0 <4.0.0'
+dependencies:
+  collection: '>=1.17.0 <2.0.0'
+  http: '>=0.13.0 <2.0.0'
+  intl: any
+  meta: '>=1.1.8 <2.0.0'
+dev_dependencies:
+  test: '>=1.21.6 <1.22.0'

@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "DATABASE_UNAVAILABLE",
+    "message": "Database is unavailable.",
+    "request_id": "fixture-ready-request",
+    "retryable": true,
+    "fields": []
+  }
+}

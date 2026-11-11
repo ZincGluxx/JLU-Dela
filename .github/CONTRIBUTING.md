@@ -33,6 +33,29 @@
 - 文档纠错与补充说明可直接提交 PR。面向用户的变化应同步更新 README，重要改动应同步更新 CHANGELOG。
 - 发现安全漏洞时请勿公开讨论，应按 [SECURITY.md](SECURITY.md) 的方式私下联系作者。
 
+## 重构中的新工程（A01 起）
+
+仓库同时保留旧 Electron 实现与新工程底座。新方向为 Flutter + Dart 客户端、Rust + Axum + Tokio 服务端、SQLx/PostgreSQL、Redis、Caddy 与 Docker Compose；`app/` 的规则只约束旧实现，不适用于新目录。
+
+| 目录                 | 内容                                           | 负责人                       |
+| -------------------- | ---------------------------------------------- | ---------------------------- |
+| `server/`            | Rust 模块化单体、SQLx 迁移、服务端测试         | A；B/C/D/E 各自领域模块      |
+| `clients/flutter/`   | Flutter 客户端、主题、API 客户端与诊断页       | A 公共层；B/C/D/E 各自功能页 |
+| `contracts/`         | 设计优先 OpenAPI 3.0.3、夹具与生成 Dart 客户端 | A 总审                       |
+| `infra/`             | Compose 本地/staging、Caddy、环境模板          | A                            |
+| `docs/foundation.md` | 新工程启动、环境、迁移、验证与交接             | A                            |
+
+新工程的命令：
+
+```sh
+cd server && cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings
+cd clients/flutter && flutter analyze && flutter test
+cd contracts/tools && npm ci && npm run verify
+cd infra && docker compose --env-file .env -f compose.yaml config
+```
+
+新代码通过 PR 进入受保护分支，禁止自动合并。契约、迁移和公共配置改动需要 A 与对应消费者评审；实际命令与结果写入 PR 描述。详细交接见 [docs/foundation.md](../docs/foundation.md)。
+
 ## 开发环境
 
 | 工具            | 版本                               | 何时需要              |
@@ -100,7 +123,7 @@ pnpm test
 
 - 修改 `src/main/remotes/`、`helper/` 或远端路径与上下文镜像时，必须通过 `pnpm test:remote` 在真机上执行回归；该套件在默认测试与 CI 中均会跳过。
 - 冒烟脚本使用独立测试目录与脱敏数据。除显式联网的 `agent-smoke`、`mingit-smoke` 与 `smoke:documents` 外，不应向真实服务发送请求。
-- CI 入口为 `.github/workflows/ci.yml`，在 PR 创建、更新、重新打开以及推送到 `main` 时运行，按变更范围调用 quality、test、helper、desktop-windows 和 desktop-macos workflow，并由 `CI required` 汇总结果。普通文档只检查格式；workflow 改动额外检查 GitHub Actions 配置。CI 分步执行命令，并检查冻结锁文件安装、打包布局与打包后启动；本地 `pnpm check` 通过不代表 CI 一定通过。
+- PR 使用 `.github/workflows/foundation-ci.yml`。`Foundation required` 汇总 Rust、OpenAPI、Flutter Windows 和 Compose，四项均通过后才可人工合并。旧 Electron 的 macOS 检查可手动运行，旧版发布由独立 workflow 验证。
 - 修改 `helper/` 后应执行 `pnpm build:helper --all`，重建 amd64 与 arm64 产物并一并提交；仅重建 amd64 会导致入库的 arm64 产物停留在旧版本。
 
 ## 架构总览

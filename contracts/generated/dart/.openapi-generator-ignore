@@ -1,0 +1,7 @@
+# Keep the generated package small; Flutter consumes the public library only.
+doc/**
+test/**
+.travis.yml
+git_push.sh
+README.md
+.gitignore

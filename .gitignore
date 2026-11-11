@@ -1,4 +1,7 @@
 # Dependencies, local tools and outputs
+.dart_tool/
+server/target/
+contracts/generated/dart/pubspec.lock
 node_modules/
 .tools/
 out/
@@ -17,6 +20,7 @@ output/playwright/
 .env
 .env.*
 !.env.example
+!.env.*.example
 *.mobileconfig
 *.pem
 *.key

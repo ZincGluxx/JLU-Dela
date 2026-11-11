@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "METHOD_NOT_ALLOWED",
+    "message": "Method not allowed.",
+    "request_id": "fixture-method-request",
+    "retryable": false,
+    "fields": []
+  }
+}

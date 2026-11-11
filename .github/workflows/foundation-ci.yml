@@ -1,0 +1,190 @@
+name: Foundation CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16.15-bookworm
+        env:
+          POSTGRES_DB: jlu_dela_test
+          POSTGRES_USER: jlu_dela
+          POSTGRES_PASSWORD: test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jlu_dela -d jlu_dela_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://jlu_dela:test-password@127.0.0.1:5432/jlu_dela_test
+      CARGO_TERM_COLOR: always
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run tests with PostgreSQL integration
+        run: cargo test --all-targets --features integration
+      - name: Build release binaries
+        run: cargo build --locked --release --bins
+
+  contracts:
+    name: Contracts (OpenAPI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: contracts/tools
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.22.1
+          cache: npm
+          cache-dependency-path: contracts/tools/package-lock.json
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install pinned tooling
+        run: npm ci
+      - name: Lint OpenAPI
+        run: npm run lint
+      - name: Generate Dart client
+        run: npm run generate
+      - name: Check generated client drift
+        run: npm run drift
+
+  flutter:
+    name: Flutter (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: clients/flutter
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.8
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+      - name: Analyze
+        run: flutter analyze
+      - name: Run tests
+        run: flutter test
+      - name: Build Windows release
+        run: flutter build windows --release
+
+  infra:
+    name: Infra (Compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GIT_COMMIT: ${{ github.sha }}
+      APP_BUILD_ID: ${{ github.sha }}
+      COMPOSE_LOCAL: docker compose --env-file infra/.env -f infra/compose.yaml
+      COMPOSE_DEV: docker compose --env-file infra/.env -f infra/compose.yaml -f infra/compose.dev.yaml
+      COMPOSE_STAGING: docker compose --env-file infra/.env.staging.example -f infra/compose.yaml -f infra/compose.staging.yaml
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Prepare local environment
+        run: cp infra/.env.example infra/.env
+      - name: Validate Compose files
+        run: |
+          $COMPOSE_LOCAL config > /dev/null
+          $COMPOSE_DEV config > /dev/null
+          $COMPOSE_STAGING config > /dev/null
+      - name: Start stack
+        run: $COMPOSE_LOCAL up -d --build
+      - name: Smoke test through Caddy
+        run: bash infra/smoke.sh http://127.0.0.1:8080
+      - name: Verify deployed build identity
+        run: curl --fail --silent http://127.0.0.1:8080/api/v1/meta | grep -q "\"build_id\":\"$GITHUB_SHA\""
+      - name: Verify credentials are redacted from logs
+        run: |
+          curl --fail --silent -H "Authorization: Bearer ci-secret-token" -H "Cookie: session=ci-secret-cookie" http://127.0.0.1:8080/health/live > /dev/null
+          sleep 1
+          $COMPOSE_LOCAL logs --no-color > /tmp/jlu-dela-compose.log
+          bash infra/assert-no-credentials.sh /tmp/jlu-dela-compose.log ci-secret
+          grep -q "Authorization.*REDACTED" /tmp/jlu-dela-compose.log
+          grep -q "Cookie.*REDACTED" /tmp/jlu-dela-compose.log
+
+          printf 'Authorization: Bearer ci-secret-token\nCookie: session=ci-secret-cookie\n' > /tmp/jlu-dela-leaked.log
+          status=0
+          bash infra/assert-no-credentials.sh /tmp/jlu-dela-leaked.log ci-secret || status=$?
+          if [ "$status" -ne 1 ]; then
+            echo "expected the redaction guard to detect a leak, got exit status $status" >&2
+            exit 1
+          fi
+          echo "redaction guard failure path verified"
+      - name: Verify PostgreSQL and Redis are internal only
+        run: |
+          $COMPOSE_LOCAL config --format json > /tmp/jlu-dela-compose-config.json
+          node -e "const c=require('/tmp/jlu-dela-compose-config.json'); const leaked=Object.entries(c.services).filter(([n,s]) => n !== 'caddy' && Array.isArray(s.ports) && s.ports.length > 0).map(([n]) => n); if (leaked.length) { console.error('host-published services: ' + leaked.join(', ')); process.exit(1); }"
+      - name: Verify graceful API shutdown
+        run: |
+          $COMPOSE_LOCAL stop api
+          $COMPOSE_LOCAL logs --no-color api | grep -q "server stopped"
+      - name: Show logs on failure
+        if: failure()
+        run: $COMPOSE_LOCAL logs --no-color
+      - name: Tear down CI stack
+        if: always()
+        run: $COMPOSE_LOCAL down -v --remove-orphans
+
+  foundation-required:
+    name: Foundation required
+    if: always()
+    needs: [server, contracts, flutter, infra]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check required job results
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node -e '
+            const jobs = Object.entries(JSON.parse(process.env.JOB_RESULTS));
+            for (const [job, { result }] of jobs) console.log(`${job}: ${result}`);
+            if (!jobs.length || jobs.some(([, { result }]) => result !== "success")) process.exit(1);
+          '

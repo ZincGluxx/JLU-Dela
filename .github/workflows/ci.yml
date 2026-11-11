@@ -1,16 +1,13 @@
-name: JLU macOS CI
+name: Legacy Electron macOS CI
 
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: jlu-macos-${{ github.event.pull_request.number || github.ref }}
+  group: jlu-macos-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

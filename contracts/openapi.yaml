@@ -1,0 +1,364 @@
+openapi: 3.0.3
+
+info:
+  title: JLU Dela HTTP API
+  version: 0.1.0
+  description: |
+    Single source of truth for the HTTP endpoints currently implemented by the
+    JLU Dela foundation service (planning item A01).
+
+    Implemented endpoints:
+    - GET /health/live
+    - GET /health/ready
+    - GET /api/v1/meta
+
+    Business endpoints for identity, campuses, courses, assignments, notices,
+    materials, todos and calendar remain planning proposals. They are not part
+    of this contract until they are implemented and added here.
+
+    Protocol conventions:
+    - JSON field names use snake_case.
+    - Resource identifiers are strings, including identifiers owned by campus
+      sources.
+    - Timestamps are UTC RFC 3339 strings with a `Z` suffix. Calendar dates use
+      `YYYY-MM-DD`. The campus display timezone is `Asia/Shanghai`.
+    - A successful single-object response is
+      `{"data": {...}, "meta": {"request_id": "..."}}`.
+    - A successful list response puts the array in `data` and adds
+      `next_cursor` and `has_more` to `meta`. `next_cursor` is an opaque
+      string or null. The default page size is 50 and the maximum is 100.
+    - Clients may send `X-Request-Id`; otherwise the server generates one. The
+      value is echoed in the response header and in `meta.request_id` or
+      `error.request_id`, and it is the same identifier used in logs.
+    - Errors always use
+      `{"error": {"code": "...", "message": "...", "request_id": "...", "retryable": false, "fields": []}}`.
+      `fields` contains `{"path": "...", "code": "..."}` objects for validation
+      errors. Clients must render unknown error codes safely.
+    - A nullable field is always present and may be null. An optional field may
+      be omitted. In PATCH requests, an omitted field keeps its current value;
+      explicit null clears a field only when the schema marks it nullable.
+    - Unknown write fields are rejected with 422. Clients ignore unknown response
+      fields.
+    - 401 means the workbench identity is invalid. 403 means the identity may
+      not perform the operation. Missing and invisible private objects both use
+      404. 409 is a write or idempotency conflict, 422 a validation failure, 429
+      includes `Retry-After`, and 503 means the service is temporarily unable to
+      serve the request.
+  contact:
+    name: JLU Dela contributors
+  license:
+    name: GPL-3.0-or-later
+    url: https://www.gnu.org/licenses/gpl-3.0-or-later.html
+
+security: []
+
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local development. Clients must override this address at build or runtime.
+
+tags:
+  - name: Health
+    description: Process liveness and dependency readiness probes.
+  - name: Meta
+    description: Public build and contract identity.
+
+x-contract-status:
+  implemented:
+    - GET /health/live
+    - GET /health/ready
+    - GET /api/v1/meta
+  design-only:
+    note: Business endpoints are not exposed by the service and must not be treated as available.
+
+paths:
+  /health/live:
+    get:
+      operationId: getHealthLive
+      tags:
+        - Health
+      summary: Report process liveness
+      description: Returns success while the HTTP process can serve requests. This check does not touch PostgreSQL.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      responses:
+        '200':
+          description: The process is alive.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveResponse'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /health/ready:
+    get:
+      operationId: getHealthReady
+      tags:
+        - Health
+      summary: Report database readiness
+      description: Checks that PostgreSQL is reachable and that the service metadata migration has been applied.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      responses:
+        '200':
+          description: PostgreSQL is reachable and the schema is ready.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              example:
+                data:
+                  status: ready
+                  schema_version: '1'
+                meta:
+                  request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+        '503':
+          description: PostgreSQL is unavailable or the schema has not been migrated.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: DATABASE_UNAVAILABLE
+                  message: Database is unavailable.
+                  request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+                  retryable: true
+                  fields: []
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/meta:
+    get:
+      operationId: getMeta
+      tags:
+        - Meta
+      summary: Return public service identity
+      description: Returns the service version, API version and the build identifier supplied by the deployment. It does not expose configuration or credentials.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      responses:
+        '200':
+          description: Public service identity.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetaResponse'
+              example:
+                data:
+                  service: jlu-dela-api
+                  version: 0.1.0
+                  api_version: v1
+                  build_id: 6a3c413
+                meta:
+                  request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+components:
+  parameters:
+    XRequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      description: Optional client request identifier. The server echoes it in the response header and body.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+
+  headers:
+    XRequestId:
+      description: Request identifier used by the response body and server logs.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+
+  responses:
+    ClientError:
+      description: Client error. The response body follows the error envelope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServerError:
+      description: Server error. The response body follows the error envelope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    RequestIdMeta:
+      type: object
+      required:
+        - request_id
+      properties:
+        request_id:
+          type: string
+          description: Identifier shared by the response body and the server log entry.
+
+    LiveStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+
+    LiveResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          $ref: '#/components/schemas/LiveStatus'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+
+    ReadyStatus:
+      type: object
+      required:
+        - status
+        - schema_version
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+        schema_version:
+          type: string
+          description: Version stored in the service_meta table by the migration chain.
+
+    ReadyResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          $ref: '#/components/schemas/ReadyStatus'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+
+    ServiceMeta:
+      type: object
+      required:
+        - service
+        - version
+        - api_version
+        - build_id
+      properties:
+        service:
+          type: string
+          example: jlu-dela-api
+        version:
+          type: string
+          description: Server release version.
+        api_version:
+          type: string
+          example: v1
+        build_id:
+          type: string
+          description: Deployment build or commit identifier.
+
+    MetaResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          $ref: '#/components/schemas/ServiceMeta'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+
+    ErrorField:
+      type: object
+      required:
+        - path
+        - code
+      properties:
+        path:
+          type: string
+          description: JSON path or field name that failed validation.
+        code:
+          type: string
+          description: Stable field-level error code.
+
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - retryable
+        - fields
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable error code. Clients must handle unknown values safely.
+        message:
+          type: string
+          description: Human-readable technical message. Clients may localize by code.
+        request_id:
+          type: string
+        retryable:
+          type: boolean
+          description: Whether a later retry may succeed without user action.
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorField'
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+
+    PaginationMeta:
+      type: object
+      description: Reserved list metadata shape. No list endpoint is implemented in this contract version.
+      x-reserved: true
+      required:
+        - next_cursor
+        - has_more
+      properties:
+        next_cursor:
+          type: string
+          nullable: true
+          description: Opaque cursor bound to the current filters, or null when there are no more items.
+        has_more:
+          type: boolean
+
+    ListMeta:
+      description: Reserved list envelope metadata. No list endpoint is implemented in this contract version.
+      x-reserved: true
+      allOf:
+        - $ref: '#/components/schemas/RequestIdMeta'
+        - $ref: '#/components/schemas/PaginationMeta'

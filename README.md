@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/goya4140/JLU-Dela/releases/tag/v0.1.0-alpha.17"><img alt="开发预览 v0.1.0-alpha.17" src="https://img.shields.io/badge/preview-v0.1.0--alpha.17-8dd8c3?style=flat-square" /></a>
-  <a href="https://github.com/goya4140/JLU-Dela/actions/workflows/ci.yml"><img alt="macOS CI" src="https://github.com/goya4140/JLU-Dela/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
+  <a href="https://github.com/goya4140/JLU-Dela/actions/workflows/foundation-ci.yml"><img alt="Foundation CI" src="https://github.com/goya4140/JLU-Dela/actions/workflows/foundation-ci.yml/badge.svg?branch=main" /></a>
   <a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-aac5f5?style=flat-square" /></a>
 </p>
 
@@ -24,6 +24,8 @@
 ![JLU Dela：把一学期，装进工作台](app/docs/demos/hero.svg)
 
 > **开发预览 · 非吉林大学官方产品。** 提供 macOS 13+ M 系列 DMG 和 Windows 10/11 x64 安装包，均为未签名预览；Mac 包尚未公证，Intel Mac 未验证。[Mac 安装说明](app/docs/install-macos.md) · [Windows 安装说明](app/docs/windows-testing.md)。
+
+> **架构重构中（A01）**：仓库正在从 Electron 单应用迁移到 Flutter + Rust 多端工作台。新工程位于 `server/`、`clients/flutter/`、`contracts/` 与 `infra/`，`app/` 保留为旧实现和行为参考。新底座不是学生正式首页；启动、契约生成与验证命令见 [docs/foundation.md](docs/foundation.md)。现有安装包仍由 `app/` 构建。
 
 ## 从「今天学什么」开始
 
