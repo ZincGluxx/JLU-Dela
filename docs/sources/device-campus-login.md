@@ -176,7 +176,7 @@ action: {
 
 ### 4.5 与现有 `sync-jobs` 的衔接
 
-现状：`POST /api/v1/sync-jobs`、`GET /api/v1/sync-jobs/{id}` 在 `codex/a02-sync-jobs` 分支（`da8bece`）实现；本工作树基线 `5dbb098` 的 `contracts/openapi.yaml` 还没有这两个端点。服务端 worker 通过 `SyncHandler` 执行，`SyncContext` 只有 `user_id/source/resource/scope`，**没有来源会话**；该分支当前没有注册任何 adapter，所以任何来源都会返回 `422 UNSUPPORTED_SOURCE`。
+现状：`POST /api/v1/sync-jobs`、`GET /api/v1/sync-jobs/{id}` 已由 `codex/a02-sync-jobs-integration` 基于最新 `upstream/main` 迁入，`contracts/openapi.yaml` 与 `docs/foundation.md` 已同步。服务端 worker 通过 `SyncHandler` 执行，`SyncContext` 只有 `user_id/source/resource/scope`，**没有来源会话**；当前没有注册任何 adapter，所以任何来源都会返回 `422 UNSUPPORTED_SOURCE`。
 
 提案分两层：
 

@@ -191,6 +191,8 @@ class ApiClient {
           return CalendarItem.fromJson(value);
         case 'CalendarResponse':
           return CalendarResponse.fromJson(value);
+        case 'CreateSyncJobRequest':
+          return CreateSyncJobRequest.fromJson(value);
         case 'CreateTodoRequest':
           return CreateTodoRequest.fromJson(value);
         case 'ErrorDetail':
@@ -233,6 +235,18 @@ class ApiClient {
           return ServiceMeta.fromJson(value);
         case 'SourceStatus':
           return SourceStatus.fromJson(value);
+        case 'SyncJob':
+          return SyncJob.fromJson(value);
+        case 'SyncJobAccepted':
+          return SyncJobAccepted.fromJson(value);
+        case 'SyncJobAcceptedResponse':
+          return SyncJobAcceptedResponse.fromJson(value);
+        case 'SyncJobError':
+          return SyncJobError.fromJson(value);
+        case 'SyncJobResponse':
+          return SyncJobResponse.fromJson(value);
+        case 'SyncJobStatus':
+          return SyncJobStatusTypeTransformer().decode(value);
         case 'Todo':
           return Todo.fromJson(value);
         case 'TodoItem':

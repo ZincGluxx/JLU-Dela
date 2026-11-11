@@ -20,6 +20,7 @@ use crate::{
     error::{AppError, request_id, request_id_from_extensions},
     health, meta,
     state::AppState,
+    sync,
 };
 
 pub const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
@@ -34,6 +35,8 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .route("/api/v1/me", get(auth::me))
         .merge(crate::todos::router())
         .merge(crate::calendar::router())
+        .route("/api/v1/sync-jobs", post(sync::create))
+        .route("/api/v1/sync-jobs/{id}", get(sync::get))
         .fallback(not_found)
         .with_state(state);
 

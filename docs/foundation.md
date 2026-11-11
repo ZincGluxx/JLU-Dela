@@ -2,7 +2,7 @@
 
 状态：本地服务、迁移、契约生成、Flutter Windows 构建与真实诊断页已验证。Compose 启动冒烟在 CI 执行，本机没有 Docker daemon。公共应用壳已按暂定视觉基线交接；设备端校园可见登录仍在验证，真实学校认证需授权用户人工完成。
 
-A02 已实现工作台会话生命周期（刷新、退出、当前用户、令牌轮换与撤销、认证上下文）。登录与激活入口尚未实现：工作台身份方案仍需人工确认，客户端不得假设邀请账号或学校统一认证。校园来源连接与同步任务尚未落地。
+A02 已实现工作台会话生命周期（刷新、退出、当前用户、令牌轮换与撤销、认证上下文）。登录与激活入口尚未实现：工作台身份方案仍需人工确认，客户端不得假设邀请账号或学校统一认证。同步任务公共机制已落地（持久化、活跃任务复用、租约恢复与失败状态）；校园来源连接与真实来源适配尚未实现，未注册来源由创建接口明确拒绝。
 
 本文对应规划 A01。新架构以 Flutter + Rust 为目标；`app/` 保留为旧 Electron 实现与行为参考。`AGENTS.md` 仍只由人类维护。
 
@@ -99,7 +99,8 @@ npm run verify     # lint + generate + drift
 ## 4. 数据库迁移
 
 - 迁移文件：`server/migrations/`，由 SQLx 顺序执行并记录在 `_sqlx_migrations`。
-- `20261110000000_create_service_meta.sql` 创建 `service_meta`；`20261111000000_create_identity.sql` 创建 `users`、`sessions` 并把 `schema_version` 推进到 `2`。`GET /health/ready` 依赖该行。
+- `20261110000000_create_service_meta.sql` 创建 `service_meta`；`20261111000000_create_identity.sql` 创建 `users`、`sessions`；`20261111010000_create_todos.sql` 创建 `todos`、`idempotency_keys`；`20261111020000_create_sync_jobs.sql` 创建 `sync_jobs`。`schema_version` 依次推进到 `4`，`GET /health/ready` 依赖该行。
+- `sync_jobs` 先落库再返回 202；同一用户、来源、资源和规范化 scope 的 queued/running 任务通过部分唯一索引复用。运行中的任务有 120 秒租约，进程中断后租约过期会重新排队，达到三次尝试上限后标记 `SYNC_INTERRUPTED`。
 - 会话只保存访问令牌与刷新令牌的 SHA-256 摘要。访问令牌 15 分钟，刷新令牌 30 天；刷新时两者同时轮换，旧值立即失效；退出按会话撤销。
 - 独立命令：`cargo run --bin migrate`；Compose 使用一次性 `migrate` 服务。
 - API 进程不执行迁移。发布时先跑迁移，再滚动 API；回滚前确认旧版本兼容当前 schema。
@@ -109,7 +110,7 @@ npm run verify     # lint + generate + drift
 
 | 目录                                                                                                                                                                                                                              | Owner   | 边界                                     |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------- |
-| `server/src/{config,db,error,http,health,json,meta,state,response,logging,auth}`、`server/src/{connections,sync}`（A02 计划）、`migrations/`、`infra/`、`.github/workflows/foundation-ci.yml`、`contracts/`、`docs/foundation.md` | A       | 公共契约、身份权限、发布与合并           |
+| `server/src/{config,db,error,http,health,json,meta,state,response,logging,auth}`、`server/src/{connections,sync}`（connections 计划；sync 已实现）、`migrations/`、`infra/`、`.github/workflows/foundation-ci.yml`、`contracts/`、`docs/foundation.md` | A       | 公共契约、身份权限、发布与合并           |
 | `server/src/connectors/{iedu,chaoxing,oa}`、`server/src/{teaching,assignments,notices,materials}`                                                                                                                                 | B/C/D   | 各自校园来源与业务模块                   |
 | `clients/flutter/lib/features/{teaching,assignments,content,planner}`                                                                                                                                                             | B/C/D/E | 各自业务页面，先消费契约夹具             |
 | `clients/flutter/lib/{app,core,features/auth}`、`contracts/openapi.yaml`                                                                                                                                                          | A       | 公共主题、路由入口、API 客户端与契约总审 |
@@ -145,6 +146,8 @@ pub async fn list_example(
 ```
 
 测试或运维需要创建会话时使用 `auth::session::issue_for_user(&pool, user_id)`。该函数只签发会话，不创建用户；用户创建随身份方案确定后接入。
+
+来源同步通过 `SyncRegistry` 注册：`AppState::with_sync(pool, build_id, registry)` 注册来源与受支持资源，`SyncHandler` 返回 `SyncOutcome` 或 `SyncFailure`（稳定错误码与是否可重试）。`SyncContext` 只携带任务数据，handler 需要的连接池等依赖在注册时由 handler 自己持有。只有已验证的来源能力才注册；未注册来源的 `POST /api/v1/sync-jobs` 返回 422 `UNSUPPORTED_SOURCE`，未注册资源返回 422 `UNSUPPORTED_RESOURCE`，都不会创建任务。worker 在 registry 为空时不启动；真实来源注册时需在 `main` 中改用 `AppState::with_sync`，并确认 worker 生命周期与优雅退出。handler 不保存上游原文、URL、Cookie 或学号。
 
 ### Flutter
 
@@ -189,6 +192,8 @@ Flutter DiagnosticsPage
 - `GET /health/live`、`GET /health/ready`、`GET /api/v1/meta`。
 - request_id、统一 JSON 错误、CORS 白名单、请求体限制、请求超时、结构化日志与敏感值过滤。
 - 工作台会话：`users`/`sessions` 迁移、访问与刷新令牌签发及轮换、退出撤销、Bearer 认证上下文、`GET /api/v1/me`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`。双用户隔离、令牌过期、刷新复用拒绝与退出撤销由 8 个真实 PostgreSQL 集成测试覆盖。
+- 待办：`todos`/`idempotency_keys` 迁移、CRUD、幂等创建、`revision` 乐观并发与分页（E01）。`GET /api/v1/calendar` 契约已固定，聚合仍是等待 B/C 来源的骨架。
+- 同步任务公共入口：`sync_jobs` 迁移、`POST /api/v1/sync-jobs`、`GET /api/v1/sync-jobs/{id}`、scope 规范化与活跃任务复用、120 秒租约恢复、失败状态与 `SYNC_INTERRUPTED`。复用、跨用户 404、worker 成功/失败、租约重排与三次上限由 7 个真实 PostgreSQL 集成测试覆盖。当前没有注册任何来源适配器，创建任务返回 422。
 - OpenAPI 3.0.3 契约、Redocly 校验、锁定版本的 Dart 客户端与漂移检查。
 - Flutter Windows 构建、桌面/平板/窄屏布局、真实健康接口诊断、失败重试。
 - 公共应用壳：桌面玻璃侧栏与顶部工具栏、手机玻璃底栏与「更多」入口、`AppDestination -> AppPageBuilder` 页面注册、玻璃/实色同布局切换、未接入页面明确显示尚未开放。窗口缩放、文字缩放（2.0）与 390/820/1280 宽度由 widget 测试覆盖；Windows release 构建通过。Android 未构建、未真机验证。
@@ -199,10 +204,10 @@ Flutter DiagnosticsPage
 尚未实现，不能标记为完成：
 
 - 激活与登录入口、用户创建/邀请流程：工作台身份方案尚未获人工批准，当前只交付与方案无关的会话生命周期。
-- 校园来源连接 challenge/action、来源会话托管与 `sync-jobs`。
+- 校园来源连接 challenge/action 与来源会话托管；`sync-jobs` 机制已存在，但没有来源适配器，不能宣称任何来源已接入。
 - 客户端会话安全存储与登录页面；Flutter 当前有公共应用壳、设置与诊断页，业务页面和登录页尚未接入。
 - Redis 会话/限流/缓存；Compose 中的 Redis 当前未被 API 使用。
-- 课表、作业、通知、资料、待办、日历、笔记、邮箱、AI、社区等业务接口。
+- 课表、作业、通知、资料、日历聚合、笔记、邮箱、AI、社区等业务接口。
 - 对象存储、备份恢复演练、监控告警、生产发布。
 - 自动更新与六端签名/分发。
 
@@ -239,6 +244,7 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 DATABASE_URL='postgres://.../jlu_dela_test' cargo test --all-targets --features integration
 DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test auth --features integration
+DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test sync --features integration
 cargo build --locked --release --bins
 
 # Flutter
@@ -267,13 +273,13 @@ bash smoke.sh
 - **C（学习通/作业）**：先定义课程偏好、作业状态与截止时间契约；接入来源前先补认证/连接公共机制（A02），不要把开发者 Cookie 写入服务。
 - **D（通知/资料）**：先提交通知列表/详情与资料目录契约；附件访问必须做用户可见范围检查，后续再接对象存储。
 - **E（待办/日历）**：先定义 Todo revision/幂等键与日历判别联合；复用 A01 的请求超时、错误结构和 Flutter 错误映射。
-- **A**：A02 会话核心已交付；激活/登录等待身份方案确认，来源连接与同步任务在人工决定执行位置后推进。A03 部署/备份/恢复另开任务，不混入身份 PR。
+- **A**：A02 会话核心与 `sync-jobs` 公共机制已交付；激活/登录等待身份方案确认，来源连接与真实来源适配在人工决定执行位置后推进。A03 部署/备份/恢复另开任务，不混入身份 PR。
 - **B/C/D**：2026-11-11 已提交来源授权的只读证据与契约需求；B01/C01/D01 仍阻塞于来源授权执行位置与人工实测条件，先用夹具推进允许的部分。
 
 ## 12. 分支与 CI
 
 - A01 合并提交：`8d590f4`（`upstream/main`），A01 分支提交 `c17f8ec`。
-- A02 开发分支：`codex/a02-auth-session`，基于 `upstream/main`；身份 PR 合并后再叠加来源连接与同步任务 PR，不混入同一 PR。
+- A02 身份分支 `codex/a02-auth-session` 已由 PR #11 合并；同步机制由 `codex/a02-sync-jobs-integration` 基于 `upstream/main` 单独提 PR，来源连接在决策后另开分支。
 - 开发分支不得直接推送 `main`，禁止自动合并。
 - PR 合并检查使用 `Foundation required`。只有 `Server (Rust)`、`Contracts (OpenAPI)`、`Flutter (Windows)` 和 `Infra (Compose)` 均成功时才通过。旧 Electron macOS 检查按需手动运行。
 - 分支保护、必需检查、CODEOWNERS 与人工审批需要主开发在仓库设置中落实；本 PR 不修改远程保护设置。
@@ -285,7 +291,7 @@ bash smoke.sh
 | 决策             | 现状与证据                                                                                                                                                                           | 影响                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
 | 工作台身份       | `API-Contract.md` 的“受控邀请账号”是提案；仓库没有学校 OAuth/OIDC 证据                                                                                                               | 激活、登录与用户创建未实现；刷新、退出、`/me` 与会话撤销已实现       |
-| 来源授权执行位置 | 旧 Electron 只证明“可见学校窗口 + 用户手工完成 CAS/登录”的客户端会话；没有服务器可达或无人交互登录证据；Flutter 当前没有 webview 依赖                                                | connections/challenge、来源会话托管、sync-jobs 与 B/C/D 来源实现阻塞 |
+| 来源授权执行位置 | 旧 Electron 只证明“可见学校窗口 + 用户手工完成 CAS/登录”的客户端会话；没有服务器可达或无人交互登录证据；Flutter 当前没有 webview 依赖                                                | connections/challenge、来源会话托管与 B/C/D 来源实现阻塞；sync-jobs 公共机制已实现但未注册 adapter |
 | 正式应用壳与视觉 | 诊断页品牌侧栏明确不是正式业务导航；没有批准稿                                                                                                                                       | 登录页、导航与主题基线不落地                                         |
 | 来源实测条件     | 教务：文档自述本人会话可用，缺新用户、自然过期与换账号；学习通：发起人账号 33 门课程，缺第二账号与过期；电子校务：匿名列表与 6 篇正文可读，网络位置未核实，附件必须由学校页面执行 JS | 来源只能标记“未验证/未接入”，不能宣称已连接                          |
 
@@ -298,9 +304,10 @@ bash smoke.sh
 人工设置缺口：
 
 - `GET /repos/goya4140/JLU-Dela/branches/main/protection` 在本次检查中返回 404；主分支保护未由 AI 修改。
-- PR 模板要求的人类前置四问尚未回答；身份 PR 保持 draft，等待人类补充与批准。
+- PR 模板要求的人类前置四问尚未回答；身份 PR 与 sync-jobs 集成 PR 均保持 draft，等待人类补充与批准。
 
 A02 验收缺口：
 
-- 没有已批准的来源接入，sync-jobs 只能验证持久化、复用、恢复与失败状态；不得用固定成功响应替代真实来源。
+- 没有已批准的来源接入，sync-jobs 只能验证持久化、复用、恢复与失败状态；真实来源的 scope 粒度、完整性判定、退避数值与错误映射仍未验证，不得用固定成功响应替代。设备端领取/完成任务（`executor=device`）属于后续契约，需需求确认后另开 PR。
+- `sync-jobs` 的 worker 尚无 handler 超时、panic 捕获与监督；接入真实来源前需补齐，否则挂起或 panic 的 handler 会阻塞单 worker。
 - 校园来源连接、Flutter 登录与连接页在决策后另开 PR；本文不把诊断页当作正式产品设计。

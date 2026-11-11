@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "UNSUPPORTED_SOURCE",
+    "message": "No source adapter is registered for this source.",
+    "request_id": "fixture-sync-source-request",
+    "retryable": false,
+    "fields": []
+  }
+}

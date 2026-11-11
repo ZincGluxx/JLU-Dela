@@ -5,6 +5,7 @@ lib/api/calendar_api.dart
 lib/api/health_api.dart
 lib/api/me_api.dart
 lib/api/meta_api.dart
+lib/api/sync_api.dart
 lib/api/todos_api.dart
 lib/api_client.dart
 lib/api_exception.dart
@@ -18,6 +19,7 @@ lib/model/assignment_item.dart
 lib/model/calendar_data.dart
 lib/model/calendar_item.dart
 lib/model/calendar_response.dart
+lib/model/create_sync_job_request.dart
 lib/model/create_todo_request.dart
 lib/model/error_detail.dart
 lib/model/error_field.dart
@@ -39,6 +41,12 @@ lib/model/revision_conflict_detail.dart
 lib/model/revision_conflict_response.dart
 lib/model/service_meta.dart
 lib/model/source_status.dart
+lib/model/sync_job.dart
+lib/model/sync_job_accepted.dart
+lib/model/sync_job_accepted_response.dart
+lib/model/sync_job_error.dart
+lib/model/sync_job_response.dart
+lib/model/sync_job_status.dart
 lib/model/todo.dart
 lib/model/todo_item.dart
 lib/model/todo_list_response.dart

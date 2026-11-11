@@ -15,6 +15,7 @@ info:
     - POST /api/v1/auth/logout
     - GET /api/v1/me
     - GET /api/v1/todos, POST /api/v1/todos, PATCH and DELETE /api/v1/todos/{id}
+    - POST /api/v1/sync-jobs, GET /api/v1/sync-jobs/{id}
 
     Endpoints described but not yet served:
     - GET /api/v1/calendar (contract fixed, aggregation pending the campus sources)
@@ -22,7 +23,10 @@ info:
     The session endpoints operate on an opaque token pair. Activation and login
     are not part of this contract yet: the workbench identity scheme still needs
     human approval, so no client may assume invitation accounts or school SSO.
-    Campuses, sync jobs, courses, assignments, notices and materials remain
+    Sync jobs persist a source synchronization request. This build registers no
+    source adapter, so creating a job returns 422 UNSUPPORTED_SOURCE until B/C/D
+    register a verified source. A job never reports success before its adapter
+    succeeds. Campuses, courses, assignments, notices and materials remain
     planning proposals and are not available.
 
     Protocol conventions:
@@ -80,6 +84,8 @@ tags:
     description: Personal todos with idempotent creation and optimistic concurrency.
   - name: Calendar
     description: Study calendar aggregation over lessons, assignments and personal todos.
+  - name: Sync
+    description: Persisted source synchronization jobs. Source adapters are owned by B/C/D.
 
 x-contract-status:
   implemented:
@@ -93,9 +99,11 @@ x-contract-status:
     - POST /api/v1/todos
     - PATCH /api/v1/todos/{id}
     - DELETE /api/v1/todos/{id}
+    - POST /api/v1/sync-jobs
+    - GET /api/v1/sync-jobs/{id}
   design-only:
     - GET /api/v1/calendar
-  note: Activation and login, connections, sync jobs, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available.
+  note: Activation and login, connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build.
 
 paths:
   /health/live:
@@ -703,6 +711,86 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationFailed'
         '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/sync-jobs:
+    post:
+      operationId: createSyncJob
+      tags:
+        - Sync
+      summary: Queue a source synchronization
+      description: |
+        Persists a sync job and returns 202 before any source work starts.
+        Repeating the same user, source, resource and canonical scope while a job
+        is queued or running returns that job with `reused: true`; it does not
+        replay work or create a second job. A queued or running job is executed
+        by one worker. An interrupted process is recovered after its lease
+        expires; after three attempts the job fails with `SYNC_INTERRUPTED`.
+        No source adapter is registered in this build, so every source currently
+        returns 422 UNSUPPORTED_SOURCE.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSyncJobRequest'
+      responses:
+        '202':
+          description: The job is persisted. It may be the existing active job.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncJobAcceptedResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '415':
+          $ref: '#/components/responses/ClientError'
+        '422':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/sync-jobs/{id}:
+    get:
+      operationId: getSyncJob
+      tags:
+        - Sync
+      summary: Read a sync job owned by the current user
+      description: |
+        Returns the persisted job. Jobs of other users, unknown ids and invalid
+        ids all return 404 SYNC_JOB_NOT_FOUND. The response never contains source
+        payloads, credentials or upstream error text.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: id
+          in: path
+          required: true
+          description: Opaque sync job id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The sync job.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncJobResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
           $ref: '#/components/responses/ClientError'
         '5XX':
           $ref: '#/components/responses/ServerError'
@@ -1527,5 +1615,138 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/Me'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+    CreateSyncJobRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - source
+        - resource
+        - scope
+      properties:
+        source:
+          type: string
+          pattern: '^[a-z0-9_]{1,64}$'
+          example: jlu_iedu
+        resource:
+          type: string
+          pattern: '^[a-z0-9_]{1,64}$'
+          example: schedule
+        scope:
+          type: object
+          additionalProperties: true
+          description: |
+            Source-defined cache dataset. At most 4096 bytes when serialized.
+            It must identify a snapshot (for example a semester id), not a
+            client query window; do not put from/to paging values here.
+
+    SyncJobStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+
+    SyncJob:
+      type: object
+      required:
+        - id
+        - source
+        - resource
+        - scope
+        - status
+        - attempts
+        - created_at
+        - started_at
+        - finished_at
+        - updated_at
+        - error
+        - complete
+        - snapshot_version
+      properties:
+        id:
+          type: string
+          description: Opaque job id. Clients only compare it for equality.
+        source:
+          type: string
+        resource:
+          type: string
+        scope:
+          type: object
+          additionalProperties: true
+          description: Canonical scope echoed from the request.
+        status:
+          $ref: '#/components/schemas/SyncJobStatus'
+        attempts:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+        error:
+          type: object
+          nullable: true
+          required:
+            - code
+            - retryable
+          properties:
+            code:
+              type: string
+              description: Stable source or worker error code. Never upstream error text.
+            retryable:
+              type: boolean
+        complete:
+          type: boolean
+          nullable: true
+          description: Whether the adapter committed a complete snapshot. Null until the job succeeds.
+        snapshot_version:
+          type: integer
+          format: int64
+          nullable: true
+          description: Opaque version reported by the adapter. Clients only compare it for equality.
+
+    SyncJobAccepted:
+      allOf:
+        - $ref: '#/components/schemas/SyncJob'
+        - type: object
+          required:
+            - reused
+          properties:
+            reused:
+              type: boolean
+              description: True when an active job already existed for this user, source, resource and scope.
+
+    SyncJobResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          $ref: '#/components/schemas/SyncJob'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+
+    SyncJobAcceptedResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          $ref: '#/components/schemas/SyncJobAccepted'
         meta:
           $ref: '#/components/schemas/RequestIdMeta'
