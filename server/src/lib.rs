@@ -1,8 +1,10 @@
+pub mod auth;
 pub mod config;
 pub mod db;
 pub mod error;
 pub mod health;
 pub mod http;
+pub mod json;
 pub mod logging;
 pub mod meta;
 pub mod response;
