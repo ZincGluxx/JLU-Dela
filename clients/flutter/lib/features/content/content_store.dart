@@ -24,7 +24,6 @@ const _noticeDetailResource = 'notice_detail';
 const _materialResource = 'materials';
 const _maxNoticeRefreshPages = 20;
 const _maxMaterialRefreshPages = 20;
-const _noticePageSizeHint = 500;
 
 class ContentAccessException implements Exception {
   const ContentAccessException(this.message);
@@ -435,7 +434,6 @@ class ContentStore {
       where: 'user_id = ?',
       whereArgs: <Object?>[userId],
       orderBy: 'observed_at_utc DESC',
-      limit: _noticePageSizeHint,
     );
     return <_NoticeEntry>[
       for (final row in rows)
