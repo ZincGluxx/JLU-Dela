@@ -347,15 +347,35 @@ void main() {
       );
 
       final exactRange = await harness.store.list(
+        includeUndated: false,
         from: const LocalDate(2026, 11, 5),
         to: const LocalDate(2026, 11, 6),
       );
       expect(exactRange.map((item) => item.title), ['明确时间']);
       final dateRange = await harness.store.list(
+        includeUndated: false,
         from: const LocalDate(2026, 11, 6),
         to: const LocalDate(2026, 11, 7),
       );
       expect(dateRange.map((item) => item.title), ['只有日期']);
+      final includingUndated = await harness.store.list(
+        from: const LocalDate(2026, 11, 5),
+        to: const LocalDate(2026, 11, 6),
+        includeUndated: true,
+      );
+      expect(includingUndated.map((item) => item.title), [
+        '明确时间',
+        '未知时间',
+        '相对时间',
+      ]);
+      expect(
+        await harness.store.list(
+          courseId: 'another-course',
+          from: const LocalDate(2026, 11, 5),
+          to: const LocalDate(2026, 11, 6),
+        ),
+        isEmpty,
+      );
       final dated = await harness.store.list(includeUndated: false);
       expect(dated.map((item) => item.title), ['明确时间', '只有日期']);
       await expectLater(

@@ -140,6 +140,7 @@ class ChaoxingStore implements AssignmentQuery, ChaoxingAccess {
 (
   (due_kind = 'date_only' AND due_date >= ? AND due_date < ?)
   OR (due_kind = 'exact' AND due_at_utc >= ? AND due_at_utc < ?)
+  ${includeUndated ? "OR due_kind IN ('relative','unknown')" : ''}
 )''');
       arguments.addAll([
         from.toIso8601String(),
