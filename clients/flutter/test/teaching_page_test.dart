@@ -4,6 +4,7 @@ import 'package:jlu_dela/app/local_workbench.dart';
 import 'package:jlu_dela/app/theme.dart';
 import 'package:jlu_dela/core/source/campus_login.dart';
 import 'package:jlu_dela/core/source/source.dart';
+import 'package:jlu_dela/core/source/source_portal.dart';
 import 'package:jlu_dela/core/source/source_session.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
 import 'package:jlu_dela/features/teaching/teaching_page.dart';
@@ -34,6 +35,7 @@ T _value<T>(SourceResult<T> result) {
     sessions: sessions,
     http: http ?? teachingHttp(),
     campusLogin: campusLogin ?? FakeCampusLogin(),
+    browser: const UnsupportedSourcePageOpener(),
     now: () => _now,
   );
   addTearDown(data.dispose);

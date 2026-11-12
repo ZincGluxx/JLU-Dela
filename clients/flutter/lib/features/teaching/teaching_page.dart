@@ -161,9 +161,7 @@ class _TeachingPageState extends State<TeachingPage> {
     try {
       var target = _semester;
       if (target == null) {
-        final current = await widget.store.syncCurrentSemester(
-          http: widget.workspace.http,
-        );
+        final current = await widget.store.syncCurrentSemester();
         switch (current) {
           case SourceSuccess<String>():
             await _load();
@@ -185,7 +183,6 @@ class _TeachingPageState extends State<TeachingPage> {
         return;
       }
       final result = await widget.store.refreshSemester(
-        http: widget.workspace.http,
         semesterCode: target.code,
       );
       switch (result) {
@@ -215,7 +212,10 @@ class _TeachingPageState extends State<TeachingPage> {
       _error = null;
     });
     try {
-      final result = await widget.workspace.campusLogin.connect(teachingSource);
+      final result = await widget.workspace.campusLogin.connect(
+        context,
+        teachingSource,
+      );
       if (!mounted) return;
       setState(() {
         _loginMessage = result.connected

@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/core/models/local_date.dart';
+import 'package:jlu_dela/core/source/campus_login.dart';
 import 'package:jlu_dela/core/source/source.dart';
+import 'package:jlu_dela/core/source/source_context.dart';
+import 'package:jlu_dela/core/source/source_portal.dart';
 import 'package:jlu_dela/core/source/source_session.dart';
 import 'package:jlu_dela/core/storage/course_store.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
@@ -383,6 +386,27 @@ void main() {
       );
     },
   );
+
+  test('uses the injected source context when no client is passed', () async {
+    final http = teachingHttp();
+    final injected = TeachingStore(
+      database,
+      'user-a',
+      snapshots,
+      courses,
+      source: SourceContext(
+        sessions: SourceSessionRegistry(),
+        http: http,
+        campusLogin: FakeCampusLogin(),
+        browser: const UnsupportedSourcePageOpener(),
+      ),
+      now: () => _now,
+    );
+    _value(await injected.syncCurrentSemester());
+    _value(await injected.refreshSemester(semesterCode: _semesterCode));
+    expect(await injected.listSemesters(), hasLength(1));
+    expect(http.requests, isNotEmpty);
+  });
 
   test('lessonsBetween only returns overlapping campus dates', () async {
     await syncSemester(teachingHttp());

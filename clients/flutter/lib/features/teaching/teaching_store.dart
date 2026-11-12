@@ -209,32 +209,32 @@ ORDER BY lessons.starts_at_utc
         .toList();
   }
 
-  Future<SourceResult<String>> syncCurrentSemester({
-    required SourceHttpClient http,
-  }) {
+  Future<SourceResult<String>> syncCurrentSemester({SourceHttpClient? http}) {
+    final client = _httpClient(http);
     final executor = SourceExecutor(snapshots: snapshots, now: _now);
     return executor.run<String>(
       source: teachingSource,
       resource: teachingSemesterResource,
-      fetch: () => JluTimetableSource(http: http).currentSemester(),
+      fetch: () => JluTimetableSource(http: client).currentSemester(),
       persist: _persistCurrentSemester,
     );
   }
 
   Future<SourceResult<JluTimetableFetch>> refreshSemester({
-    required SourceHttpClient http,
+    SourceHttpClient? http,
     required String semesterCode,
   }) {
     if (!isJluSemesterCode(semesterCode)) {
       throw JluParseException('教务学期格式无法识别：$semesterCode');
     }
+    final client = _httpClient(http);
     final executor = SourceExecutor(snapshots: snapshots, now: _now);
     return executor.run<JluTimetableFetch>(
       source: teachingSource,
       resource: teachingTimetableResource,
       scopeKey: semesterCode,
       fetch: () =>
-          JluTimetableSource(http: http).fetch(semesterCode: semesterCode),
+          JluTimetableSource(http: client).fetch(semesterCode: semesterCode),
       persist: _persistSemester,
     );
   }
@@ -417,6 +417,14 @@ ON CONFLICT(user_id, semester_id) DO UPDATE SET
       teacher: lesson.teacher,
       semesterId: _semesterId(semesterCode),
     );
+  }
+
+  SourceHttpClient _httpClient(SourceHttpClient? http) {
+    final client = http ?? source?.http;
+    if (client == null) {
+      throw StateError('TeachingStore needs a SourceHttpClient');
+    }
+    return client;
   }
 
   String _semesterId(String code) => 'teaching:$userId:$code';
