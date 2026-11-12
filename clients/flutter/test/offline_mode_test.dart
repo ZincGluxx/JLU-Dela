@@ -69,7 +69,7 @@ void main() {
 
     expect(find.byKey(const Key('offline-banner')), findsOneWidget);
     expect(find.text('离线 · 身份未验证'), findsOneWidget);
-    expect(find.text('功能迁移中，尚未接入本地课表与作业数据'), findsOneWidget);
+    expect(find.byKey(const Key('calendar-empty')), findsOneWidget);
     expect(harness.builtUserIds, ['user-a']);
     expect(find.byKey(const Key('login-page')), findsNothing);
 
