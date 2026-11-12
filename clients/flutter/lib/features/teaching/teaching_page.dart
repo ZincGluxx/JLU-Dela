@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
+import '../../app/teaching_calendar_data.dart';
+import '../../app/widgets/academic_calendar_status.dart';
+import '../../app/widgets/teaching_timeline.dart';
+import '../../core/models/teaching_timeline.dart';
 import '../../core/models/local_date.dart';
 import '../../core/models/school_time.dart';
 import '../../core/models/source.dart';
@@ -10,9 +14,6 @@ import '../../core/storage/local_workspace.dart';
 import 'teaching_store.dart';
 
 const _weekDayLabels = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-const _timelineStartMinute = 8 * 60;
-const _timelineEndMinute = 22 * 60;
-const _minuteHeight = 1.1;
 
 class TeachingPage extends StatefulWidget {
   const TeachingPage({super.key, required this.workspace, required this.store});
@@ -29,6 +30,7 @@ class _TeachingPageState extends State<TeachingPage> {
   TeachingSemester? _semester;
   List<TeachingLessonDetail> _lessons = const [];
   List<String> _warnings = const [];
+  List<TeachingPeriod> _periods = const [];
   SourceSnapshot? _snapshot;
   int _week = 1;
   bool _loading = true;
@@ -41,7 +43,19 @@ class _TeachingPageState extends State<TeachingPage> {
   @override
   void initState() {
     super.initState();
+    widget.workspace.academicCalendar?.addListener(_calendarChanged);
+    widget.workspace.academicCalendar?.load();
     _load();
+  }
+
+  void _calendarChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.workspace.academicCalendar?.removeListener(_calendarChanged);
+    super.dispose();
   }
 
   Future<void> _load({bool keepWeek = false}) async {
@@ -51,6 +65,7 @@ class _TeachingPageState extends State<TeachingPage> {
     });
     try {
       final semesters = await widget.store.listSemesters();
+      final periods = await widget.store.periodTimes();
       var selected = _semester;
       if (selected != null) {
         selected = _findSemester(semesters, selected.code);
@@ -58,6 +73,15 @@ class _TeachingPageState extends State<TeachingPage> {
       selected ??= _defaultSemester(semesters);
       if (!mounted) return;
       setState(() {
+        _periods = [
+          for (final period in periods)
+            TeachingPeriod(
+              period: period.period,
+              campus: period.campus,
+              startMinute: period.startMinute,
+              endMinute: period.endMinute,
+            ),
+        ];
         _semesters = semesters;
         _semester = selected;
         if (!keepWeek) _week = _currentWeek(selected);
@@ -297,7 +321,11 @@ class _TeachingPageState extends State<TeachingPage> {
                       : Icons.login_outlined,
                   size: 18,
                 ),
-                label: Text(_sourceConnected ? '重新登录来源' : '登录教务来源'),
+                label: Text(
+                  MediaQuery.sizeOf(context).width < AppBreakpoints.desktop
+                      ? '登录来源'
+                      : (_sourceConnected ? '重新登录来源' : '登录教务来源'),
+                ),
               ),
             ],
           ),
@@ -325,7 +353,7 @@ class _TeachingPageState extends State<TeachingPage> {
               if (semester?.firstMonday != null) ...[
                 _weekStepper(),
                 Text(
-                  '第 $_week / $_weekCount 周',
+                  '教务课表 · 第 $_week / $_weekCount 周',
                   key: const Key('teaching-week-label'),
                   style: const TextStyle(color: AppTheme.muted),
                 ),
@@ -337,13 +365,20 @@ class _TeachingPageState extends State<TeachingPage> {
                           final week = _currentWeek(semester);
                           if (week != _week) _selectWeek(week);
                         },
-                  child: const Text('本周'),
+                  child: Text(_week == _currentWeek(semester) ? '本周' : '回到本周'),
                 ),
               ],
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
           _buildSourceStatus(),
+          AcademicCalendarStatus(
+            service: widget.workspace.academicCalendar,
+            date:
+                _semester?.firstMonday?.addDays((_week - 1) * 7) ??
+                schoolDateOf(widget.workspace.now()),
+            personalPeriods: _periods,
+          ),
         ],
       ),
     );
@@ -515,163 +550,53 @@ class _TeachingPageState extends State<TeachingPage> {
 
   Widget _buildWeekGrid(TeachingSemester semester) {
     final weekStart = semester.firstMonday!.addDays((_week - 1) * 7);
-    final today = schoolDateOf(widget.workspace.now());
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        0,
-        AppSpacing.md,
-        AppSpacing.md,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const SizedBox(width: 48),
-              for (var day = 0; day < 7; day++)
-                Expanded(
-                  child: _dayHeader(
-                    _weekDayLabels[day],
-                    weekStart.addDays(day),
-                    today,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: TeachingTimelineGrid(
+        days: [for (var day = 0; day < 7; day++) weekStart.addDays(day)],
+        today: schoolDateOf(widget.workspace.now()),
+        periods: effectiveTeachingPeriods(
+          _periods,
+          widget.workspace.academicCalendar,
+        ),
+        lessons: [for (final detail in _lessons) detail.lesson],
+        lessonBuilder: (lesson) {
+          final detail = _lessons.firstWhere(
+            (item) => item.lesson.id == lesson.id,
+          );
+          return Material(
+            color: AppTheme.blueSoft,
+            borderRadius: BorderRadius.circular(AppSpacing.sm),
+            child: InkWell(
+              key: Key('teaching-lesson-grid-${lesson.id}'),
+              onTap: () => _showLessonDetail(detail),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.xs),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        lesson.title,
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      Text(
+                        '${formatSchoolClock(lesson.startsAtUtc)}–'
+                        '${formatSchoolClock(lesson.endsAtUtc)}',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                      if (lesson.location != null)
+                        Text(
+                          lesson.location!,
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                    ],
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          SizedBox(
-            height: (_timelineEndMinute - _timelineStartMinute) * _minuteHeight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(width: 48, child: _hourAxis()),
-                for (var day = 1; day <= 7; day++)
-                  Expanded(child: _dayColumn(day, weekStart)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _dayHeader(String label, LocalDate date, LocalDate today) {
-    final isToday = date == today;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-      child: Column(
-        children: [
-          Text(label, style: const TextStyle(color: AppTheme.muted)),
-          const SizedBox(height: 2),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-            decoration: BoxDecoration(
-              color: isToday ? AppTheme.primary : null,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              '${date.month}月${date.day}日',
-              style: TextStyle(
-                fontSize: 12,
-                color: isToday ? Colors.white : null,
-                fontWeight: isToday ? FontWeight.w600 : null,
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _hourAxis() {
-    final hours = (_timelineEndMinute - _timelineStartMinute) ~/ 60;
-    return Stack(
-      children: [
-        for (var index = 0; index <= hours; index++)
-          Positioned(
-            top: index * 60 * _minuteHeight - 7,
-            right: 4,
-            child: Text(
-              '${8 + index}:00',
-              style: const TextStyle(color: AppTheme.muted, fontSize: 11),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _dayColumn(int weekday, LocalDate weekStart) {
-    final dayLessons = _lessons
-        .where((detail) => detail.weekday == weekday)
-        .toList();
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              border: Border(
-                left: BorderSide(color: AppTheme.border),
-                top: BorderSide(color: AppTheme.border),
-              ),
-            ),
-          ),
-        ),
-        for (final detail in dayLessons) _positionedLesson(detail),
-      ],
-    );
-  }
-
-  Widget _positionedLesson(TeachingLessonDetail detail) {
-    final start = _minuteOfDay(detail.lesson.startsAtUtc);
-    final end = _minuteOfDay(detail.lesson.endsAtUtc);
-    final top = (start - _timelineStartMinute) * _minuteHeight;
-    final height = ((end - start) * _minuteHeight).clamp(28.0, 400.0);
-    final showMeta = height >= 48;
-    final color = _lessonColor(detail.lesson.title);
-    return Positioned(
-      top: top,
-      left: 2,
-      right: 2,
-      height: height,
-      child: Material(
-        color: color,
-        borderRadius: BorderRadius.circular(AppSpacing.sm),
-        child: InkWell(
-          key: Key('teaching-lesson-grid-${detail.lesson.id}'),
-          borderRadius: BorderRadius.circular(AppSpacing.sm),
-          onTap: () => _showLessonDetail(detail),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.xs,
-              vertical: 2,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  detail.lesson.title,
-                  maxLines: showMeta ? 2 : 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (showMeta)
-                  Text(
-                    [
-                      if (detail.teacher != null) detail.teacher,
-                      if (detail.lesson.location != null)
-                        detail.lesson.location,
-                    ].whereType<String>().join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: AppTheme.muted),
-                  ),
-              ],
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -698,7 +623,7 @@ class _TeachingPageState extends State<TeachingPage> {
         _lessons.where((detail) => detail.weekday == weekday).toList()..sort(
           (a, b) => a.lesson.startsAtUtc.compareTo(b.lesson.startsAtUtc),
         );
-    if (dayLessons.isEmpty) return const [];
+
     final date = weekStart.addDays(weekday - 1);
     final isToday = date == today;
     return [
@@ -716,6 +641,8 @@ class _TeachingPageState extends State<TeachingPage> {
           ),
         ),
       ),
+      if (dayLessons.isEmpty)
+        const Text('没有课程', style: TextStyle(color: AppTheme.muted)),
       for (final detail in dayLessons)
         Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.xs),
@@ -732,12 +659,13 @@ class _TeachingPageState extends State<TeachingPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
-                      width: 64,
+                      width: 96,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            formatSchoolClock(detail.lesson.startsAtUtc),
+                            '${formatSchoolClock(detail.lesson.startsAtUtc)}–'
+                            '${formatSchoolClock(detail.lesson.endsAtUtc)}',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           Text(
@@ -826,11 +754,6 @@ class _TeachingPageState extends State<TeachingPage> {
         ],
       ),
     );
-  }
-
-  int _minuteOfDay(DateTime instant) {
-    final school = instant.toUtc().add(schoolUtcOffset);
-    return school.hour * 60 + school.minute;
   }
 
   String _formatDateTime(DateTime instant) {
