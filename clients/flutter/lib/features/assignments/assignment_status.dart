@@ -70,3 +70,15 @@ String? sourceStatusText(String status) {
 
 bool isWorkCompleted(String status) =>
     parseSourceStatus(status).countsAsCompleted;
+
+/// 按规范值还原来源状态；未知规范值返回 null。
+ChaoxingSourceStatus? sourceStatusByCode(String code) {
+  for (final status in ChaoxingSourceStatus.values) {
+    if (status.code == code) return status;
+  }
+  return null;
+}
+
+/// 本地快照里的规范状态是否已完成；不认识的规范值不算完成。
+bool isCompletedSourceStatus(String code) =>
+    sourceStatusByCode(code)?.countsAsCompleted ?? false;

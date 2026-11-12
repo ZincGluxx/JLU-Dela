@@ -25,19 +25,24 @@ final RegExp _yearPrefix = RegExp(r'^20\d{2}[-/.年]');
 final RegExp _whitespace = RegExp(r'\s+');
 
 /// 课程列表页：解析课程卡片，保留来源顺序；同名课程各用来源 ID 区分。
-List<ChaoxingCourse> parseCoursesPage(String html) {
+List<ChaoxingCourse> parseCoursesPage(String html, {Uri? pageUrl}) {
   final document = HtmlParser.parse(html);
   final cards = document.querySelectorAll('.course.learnCourse');
   if (cards.isEmpty) {
     if (_emptyCourseList.hasMatch(document.text)) return const [];
     throw const ChaoxingPageFormatException();
   }
-  return cards.map(_courseFromCard).toList(growable: false);
+  return cards
+      .map((card) => _courseFromCard(card, pageUrl))
+      .toList(growable: false);
 }
 
-ChaoxingCourse _courseFromCard(HtmlNode card) {
+ChaoxingCourse _courseFromCard(HtmlNode card, Uri? pageUrl) {
   final link = card.querySelector('h3 a') ?? card.querySelector('a');
-  final url = Uri.tryParse(link?.attr('href') ?? '');
+  final relative = Uri.tryParse(link?.attr('href') ?? '');
+  final url = relative == null
+      ? null
+      : (pageUrl == null ? relative : pageUrl.resolveUri(relative));
   final courseId = url?.queryParameters['courseid'];
   final classId = url?.queryParameters['clazzid'];
   final nameNode = card.querySelector('.course-name');
@@ -57,7 +62,28 @@ ChaoxingCourse _courseFromCard(HtmlNode card) {
     name: name,
     teacher: card.querySelector('.course-info .color3')?.text.trim() ?? '',
     ended: card.querySelector('.not-open-tip') != null,
+    sourceUri: url,
   );
+}
+
+Uri? parseCourseEntryFrame(String html, {required Uri pageUrl}) {
+  return _frameUri(html, pageUrl, 'iframe#frame_content');
+}
+
+Uri? parseWorksFrame(String html, {required Uri pageUrl}) {
+  return _frameUri(html, pageUrl, 'iframe#frame_content-zy');
+}
+
+Uri? parseMaterialsFrame(String html, {required Uri pageUrl}) {
+  return _frameUri(html, pageUrl, 'iframe#frame_content-zl');
+}
+
+Uri? _frameUri(String html, Uri pageUrl, String selector) {
+  final document = HtmlParser.parse(html);
+  final src = document.querySelector(selector)?.attr('src')?.trim();
+  if (src == null || src.isEmpty) return null;
+  final parsed = Uri.tryParse(src);
+  return parsed == null ? null : pageUrl.resolveUri(parsed);
 }
 
 /// 作业列表页：解析每行作业，并判断是否需要再读详情页补齐截止时间。
@@ -99,7 +125,11 @@ ChaoxingWorkListItem _workFromRow(HtmlNode row, Uri pageUrl) {
   final needsDetail =
       parseChaoxingDeadline(detailTiming ?? '') == null &&
       parseChaoxingDeadline(timing) == null;
-  return ChaoxingWorkListItem(work: work, needsDetail: needsDetail);
+  return ChaoxingWorkListItem(
+    work: work,
+    needsDetail: needsDetail,
+    sourceUri: resolved,
+  );
 }
 
 String? _listDetailTiming(String? titleAttr) {

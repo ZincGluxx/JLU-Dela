@@ -4,11 +4,13 @@
 /// 分组优先级：已忽略 > 已完成 > 逾期 / 7 天内 / 之后 / 未定。
 library;
 
+import 'package:jlu_dela/core/models/assignment.dart';
 import 'package:jlu_dela/features/assignments/assignment_deadline.dart';
 import 'package:jlu_dela/features/assignments/assignment_status.dart';
-import 'package:jlu_dela/features/assignments/chaoxing_models.dart';
 
 const int defaultSoonDays = 7;
+
+enum WorkSection { overdue, soon, later, undated, done, ignored }
 
 const List<WorkSection> workSections = [
   WorkSection.overdue,
@@ -66,13 +68,15 @@ class WorkSummary {
 }
 
 WorkSection workSection(
-  ChaoxingWork work,
+  Assignment assignment,
   DateTime now, {
   int soonDays = defaultSoonDays,
 }) {
-  if (work.mutedAt != null) return WorkSection.ignored;
-  if (isWorkCompleted(work.status)) return WorkSection.done;
-  final due = workDueAtMillis(work);
+  if (assignment.mutedAtUtc != null) return WorkSection.ignored;
+  if (isCompletedSourceStatus(assignment.sourceStatus)) {
+    return WorkSection.done;
+  }
+  final due = assignmentDueAtMillis(assignment);
   if (due == null) return WorkSection.undated;
   final remaining = due - now.millisecondsSinceEpoch;
   if (remaining < 0) return WorkSection.overdue;
@@ -82,7 +86,7 @@ WorkSection workSection(
 }
 
 WorkSummary workSummary(
-  Iterable<ChaoxingWork> works,
+  Iterable<Assignment> assignments,
   DateTime now, {
   int soonDays = defaultSoonDays,
 }) {
@@ -92,9 +96,9 @@ WorkSummary workSummary(
   var overdue = 0;
   var undated = 0;
   var ignored = 0;
-  for (final work in works) {
+  for (final assignment in assignments) {
     total += 1;
-    switch (workSection(work, now, soonDays: soonDays)) {
+    switch (workSection(assignment, now, soonDays: soonDays)) {
       case WorkSection.ignored:
         ignored += 1;
       case WorkSection.done:
@@ -121,14 +125,12 @@ WorkSummary workSummary(
 }
 
 /// 按截止时间由近到远排序，没有截止时间的排最后；同一时间按标题排序。
-int compareWorkDue(ChaoxingWork left, ChaoxingWork right) {
-  final leftDue = workDueAtMillis(left) ?? _undatedSortKey;
-  final rightDue = workDueAtMillis(right) ?? _undatedSortKey;
-  if (leftDue != rightDue) return leftDue.compareTo(rightDue);
+int compareAssignmentDue(Assignment left, Assignment right) {
+  final leftKey = assignmentSortKey(left);
+  final rightKey = assignmentSortKey(right);
+  if (leftKey != rightKey) return leftKey.compareTo(rightKey);
   return left.title.compareTo(right.title);
 }
-
-const int _undatedSortKey = 1 << 62;
 
 enum ReminderStage { soon, urgent, overdue }
 
@@ -153,12 +155,15 @@ class ReminderCheck {
 
 /// 此刻应触发的提醒阶段；不需要提醒时返回 null。
 ///
-/// 只提醒已读到具体时刻、未完成、未忽略的作业；逾期超过 24 小时不再补提醒。
-ReminderCheck? reminderStage(ChaoxingWork work, DateTime now) {
-  if (work.mutedAt != null || isWorkCompleted(work.status)) return null;
-  final deadline = workDeadline(work);
-  final dueAt = workDueAtMillis(work);
-  if (dueAt == null || deadline?.time == null) return null;
+/// 只提醒有明确时刻、未完成、未忽略的作业；逾期超过 24 小时不再补提醒。
+ReminderCheck? reminderStage(Assignment assignment, DateTime now) {
+  if (assignment.mutedAtUtc != null ||
+      isCompletedSourceStatus(assignment.sourceStatus)) {
+    return null;
+  }
+  if (assignment.dueKind != AssignmentDueKind.exact) return null;
+  final dueAt = assignment.dueAtUtc?.millisecondsSinceEpoch;
+  if (dueAt == null) return null;
   final remaining = dueAt - now.millisecondsSinceEpoch;
   if (remaining > Duration.millisecondsPerDay ||
       remaining <= -Duration.millisecondsPerDay) {
@@ -173,7 +178,17 @@ ReminderCheck? reminderStage(ChaoxingWork work, DateTime now) {
 }
 
 /// 提醒去重键：截止时刻变化或进入下一阶段时会重新提醒。
-String reminderKey(ChaoxingWork work, ReminderStage stage) {
-  final deadline = workDeadline(work);
-  return '${deadline?.date ?? ''}T${deadline?.time ?? ''}|${stage.name}';
+String reminderKey(Assignment assignment, ReminderStage stage) {
+  final dueAt = assignment.dueAtUtc;
+  if (dueAt == null) {
+    final date = assignment.dueDate?.toIso8601String() ?? '';
+    return '${date}T|${stage.name}';
+  }
+  final local = dueAt.toUtc().add(const Duration(hours: 8));
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day'
+      'T$hour:$minute|${stage.name}';
 }

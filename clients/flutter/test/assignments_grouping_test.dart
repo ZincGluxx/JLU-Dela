@@ -1,24 +1,38 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jlu_dela/core/models/assignment.dart';
+import 'package:jlu_dela/core/models/local_date.dart';
 import 'package:jlu_dela/features/assignments/assignment_grouping.dart';
-import 'package:jlu_dela/features/assignments/chaoxing_models.dart';
 
-ChaoxingWork _work({
-  String id = 'w',
+Assignment _assignment({
+  String id = 'a',
   String title = '作业',
-  String status = '未交',
-  String timing = '',
-  String? detailTiming,
-  DateTime? readAt,
-  DateTime? mutedAt,
+  String sourceStatus = 'not_submitted',
+  AssignmentDueKind dueKind = AssignmentDueKind.unknown,
+  LocalDate? dueDate,
+  DateTime? dueAtUtc,
+  String? timingText,
+  DateTime? readAtUtc,
+  DateTime? mutedAtUtc,
 }) {
-  return ChaoxingWork(
+  return Assignment(
     id: id,
     title: title,
-    status: status,
-    timing: timing,
-    detailTiming: detailTiming,
-    readAt: readAt,
-    mutedAt: mutedAt,
+    sourceStatus: sourceStatus,
+    dueKind: dueKind,
+    dueDate: dueDate,
+    dueAtUtc: dueAtUtc,
+    timingText: timingText,
+    observedAtUtc: DateTime.utc(2026, 11, 3),
+    readAtUtc: readAtUtc,
+    mutedAtUtc: mutedAtUtc,
+  );
+}
+
+Assignment _exact(String value, {String status = 'not_submitted'}) {
+  return _assignment(
+    sourceStatus: status,
+    dueKind: AssignmentDueKind.exact,
+    dueAtUtc: DateTime.parse('$value+08:00').toUtc(),
   );
 }
 
@@ -28,26 +42,40 @@ void main() {
   group('workSection', () {
     test('separates overdue, soon, later, undated and completed work', () {
       expect(
-        workSection(_work(timing: '截止时间：2026-11-01 23:59'), now),
+        workSection(_exact('2026-11-01T23:59:00'), now),
         WorkSection.overdue,
       );
+      expect(workSection(_exact('2026-11-05T23:59:00'), now), WorkSection.soon);
       expect(
-        workSection(_work(timing: '截止时间：2026-11-05 23:59'), now),
-        WorkSection.soon,
-      );
-      expect(
-        workSection(_work(timing: '截止时间：2026-12-20 23:59'), now),
+        workSection(_exact('2026-12-20T23:59:00'), now),
         WorkSection.later,
       );
-      expect(workSection(_work(timing: '剩余2天'), now), WorkSection.undated);
-      expect(workSection(_work(), now), WorkSection.undated);
       expect(
-        workSection(_work(status: '已提交', timing: '截止时间：2026-11-01 23:59'), now),
+        workSection(
+          _assignment(dueKind: AssignmentDueKind.relative, timingText: '剩余2天'),
+          now,
+        ),
+        WorkSection.undated,
+      );
+      expect(workSection(_assignment(), now), WorkSection.undated);
+      expect(
+        workSection(_exact('2026-11-01T23:59:00', status: 'submitted'), now),
         WorkSection.done,
       );
-      for (final status in <String>['待批阅', 'To be marked', 'reviewd']) {
+      for (final status in <String>[
+        'awaiting_review',
+        'marked',
+        'submitted',
+        'completed',
+      ]) {
         expect(
-          workSection(_work(status: status, timing: '剩余2天'), now),
+          workSection(
+            _assignment(
+              sourceStatus: status,
+              dueKind: AssignmentDueKind.relative,
+            ),
+            now,
+          ),
           WorkSection.done,
           reason: status,
         );
@@ -58,41 +86,49 @@ void main() {
       'uses inclusive boundaries for the due instant and the 7-day window',
       () {
         expect(
-          workSection(_work(timing: '截止时间：2026-11-03 10:00'), now),
+          workSection(_exact('2026-11-03T10:00:00'), now),
           WorkSection.soon,
         );
         expect(
-          workSection(_work(timing: '截止时间：2026-11-03 09:59'), now),
+          workSection(_exact('2026-11-03T09:59:00'), now),
           WorkSection.overdue,
         );
         expect(
-          workSection(_work(timing: '截止时间：2026-11-10 10:00'), now),
+          workSection(_exact('2026-11-10T10:00:00'), now),
           WorkSection.soon,
         );
         expect(
-          workSection(_work(timing: '截止时间：2026-11-10 10:01'), now),
+          workSection(_exact('2026-11-10T10:01:00'), now),
           WorkSection.later,
         );
         expect(
-          workSection(_work(timing: '截止日期：2026-11-03'), now),
+          workSection(
+            _assignment(
+              dueKind: AssignmentDueKind.dateOnly,
+              dueDate: const LocalDate(2026, 11, 3),
+            ),
+            now,
+          ),
           WorkSection.soon,
         );
       },
     );
 
     test('ignored work wins over completed work', () {
-      final muted = _work(
-        status: '已提交',
-        mutedAt: DateTime.utc(2026, 11, 3),
-        timing: '截止时间：2026-11-05 23:59',
+      final muted = _assignment(
+        sourceStatus: 'submitted',
+        dueKind: AssignmentDueKind.exact,
+        dueAtUtc: DateTime.parse('2026-11-05T23:59:00+08:00').toUtc(),
+        mutedAtUtc: DateTime.utc(2026, 11, 3),
       );
       expect(workSection(muted, now), WorkSection.ignored);
     });
 
     test('read marks never move work into the completed section', () {
-      final read = _work(
-        readAt: DateTime.utc(2026, 11, 3),
-        timing: '截止时间：2026-11-05 23:59',
+      final read = _assignment(
+        dueKind: AssignmentDueKind.exact,
+        dueAtUtc: DateTime.parse('2026-11-05T23:59:00+08:00').toUtc(),
+        readAtUtc: DateTime.utc(2026, 11, 3),
       );
       expect(workSection(read, now), WorkSection.soon);
       expect(workSummary([read], now).pending, 1);
@@ -104,15 +140,15 @@ void main() {
   group('workSummary', () {
     test('counts pending work, completed work and ignored work separately', () {
       final items = [
-        _work(id: '1', title: '无时间', timing: '剩余2天'),
-        _work(id: '2', title: '之后', timing: '截止时间：2026-12-20 23:59'),
-        _work(id: '3', title: '逾期', timing: '截止时间：2026-11-01 23:59'),
-        _work(
-          id: '4',
-          title: '已完成',
-          status: '已提交',
-          timing: '截止时间：2026-11-02 23:59',
+        _assignment(
+          id: '1',
+          title: '无时间',
+          dueKind: AssignmentDueKind.relative,
+          timingText: '剩余2天',
         ),
+        _exact('2026-12-20T23:59:00'),
+        _exact('2026-11-01T23:59:00'),
+        _exact('2026-11-02T23:59:00', status: 'submitted'),
       ];
       expect(
         workSummary(items, now),
@@ -129,8 +165,8 @@ void main() {
 
     test('moves ignored work out of the pending counts', () {
       final items = [
-        _work(id: '1', title: '待完成', timing: '截止时间：2026-11-05 23:59'),
-        _work(id: '2', title: '已忽略', mutedAt: DateTime.utc(2026, 11, 3)),
+        _exact('2026-11-05T23:59:00'),
+        _assignment(mutedAtUtc: DateTime.utc(2026, 11, 3)),
       ];
       expect(
         workSummary(items, now),
@@ -146,36 +182,56 @@ void main() {
     });
   });
 
-  group('compareWorkDue', () {
+  group('compareAssignmentDue', () {
     test('sorts by the nearest deadline with undated work last', () {
       final items = [
-        _work(id: '1', title: '无时间', timing: '剩余2天'),
-        _work(id: '2', title: '之后', timing: '截止时间：2026-12-20 23:59'),
-        _work(id: '3', title: '逾期', timing: '截止时间：2026-11-01 23:59'),
-        _work(
+        _assignment(id: '1', title: '无时间', dueKind: AssignmentDueKind.relative),
+        _assignment(
+          id: '2',
+          title: '之后',
+          dueKind: AssignmentDueKind.exact,
+          dueAtUtc: DateTime.parse('2026-12-20T23:59:00+08:00').toUtc(),
+        ),
+        _assignment(
+          id: '3',
+          title: '逾期',
+          dueKind: AssignmentDueKind.exact,
+          dueAtUtc: DateTime.parse('2026-11-01T23:59:00+08:00').toUtc(),
+        ),
+        _assignment(
           id: '4',
           title: '已完成',
-          status: '已提交',
-          timing: '截止时间：2026-11-02 23:59',
+          dueKind: AssignmentDueKind.exact,
+          dueAtUtc: DateTime.parse('2026-11-02T23:59:00+08:00').toUtc(),
         ),
       ];
-      items.sort(compareWorkDue);
+      items.sort(compareAssignmentDue);
       expect(items.map((item) => item.title), ['逾期', '已完成', '之后', '无时间']);
     });
 
     test('breaks deadline ties by title', () {
       final items = [
-        _work(id: '1', title: 'B', timing: '截止时间：2026-11-05 23:59'),
-        _work(id: '2', title: 'A', timing: '截止时间：2026-11-05 23:59'),
+        _assignment(
+          id: '1',
+          title: 'B',
+          dueKind: AssignmentDueKind.exact,
+          dueAtUtc: DateTime.parse('2026-11-05T23:59:00+08:00').toUtc(),
+        ),
+        _assignment(
+          id: '2',
+          title: 'A',
+          dueKind: AssignmentDueKind.exact,
+          dueAtUtc: DateTime.parse('2026-11-05T23:59:00+08:00').toUtc(),
+        ),
       ];
-      items.sort(compareWorkDue);
+      items.sort(compareAssignmentDue);
       expect(items.map((item) => item.title), ['A', 'B']);
     });
   });
 
   group('reminderStage', () {
     final reminderNow = DateTime.parse('2026-11-03T12:00:00+08:00');
-    ChaoxingWork dueTomorrow() => _work(detailTiming: '截止时间：2026-11-04 08:00');
+    Assignment dueTomorrow() => _exact('2026-11-04T08:00:00');
 
     test('moves through soon, urgent and overdue stages', () {
       expect(
@@ -206,28 +262,26 @@ void main() {
     test(
       'only reminds for dated, unfinished, unignored work within 24 hours',
       () {
-        for (final value in <ChaoxingWork>[
-          _work(detailTiming: '截止时间：2026-11-10 08:00'),
-          _work(detailTiming: '截止时间：2026-10-01 08:00'),
-          _work(detailTiming: '截止日期：2026-11-04'),
-          _work(timing: '剩余2天'),
-          _work(status: '已提交', detailTiming: '截止时间：2026-11-04 08:00'),
-          _work(status: 'To be marked', detailTiming: '截止时间：2026-11-04 08:00'),
-          _work(
-            detailTiming: '截止时间：2026-11-04 08:00',
-            mutedAt: DateTime.utc(2026, 11, 3),
+        for (final value in <Assignment>[
+          _exact('2026-11-10T08:00:00'),
+          _exact('2026-10-01T08:00:00'),
+          _assignment(
+            dueKind: AssignmentDueKind.dateOnly,
+            dueDate: const LocalDate(2026, 11, 4),
+          ),
+          _assignment(dueKind: AssignmentDueKind.relative, timingText: '剩余2天'),
+          _exact('2026-11-04T08:00:00', status: 'submitted'),
+          _exact('2026-11-04T08:00:00', status: 'marked'),
+          _assignment(
+            dueKind: AssignmentDueKind.exact,
+            dueAtUtc: DateTime.parse('2026-11-04T08:00:00+08:00').toUtc(),
+            mutedAtUtc: DateTime.utc(2026, 11, 3),
           ),
         ]) {
           expect(reminderStage(value, reminderNow), isNull);
         }
       },
     );
-
-    test('uses the full deadline supplied by the list itself', () {
-      final listed = _work(timing: '截止时间：2026-11-04 08:00');
-      expect(reminderStage(listed, reminderNow)?.stage, ReminderStage.soon);
-      expect(reminderKey(listed, ReminderStage.soon), '2026-11-04T08:00|soon');
-    });
 
     test('keys reminders by deadline and stage', () {
       expect(
@@ -243,7 +297,7 @@ void main() {
         isNot(reminderKey(dueTomorrow(), ReminderStage.urgent)),
       );
       expect(
-        reminderKey(_work(timing: '截止时间：2026-11-04 09:00'), ReminderStage.soon),
+        reminderKey(_exact('2026-11-04T09:00:00'), ReminderStage.soon),
         isNot(reminderKey(dueTomorrow(), ReminderStage.soon)),
       );
     });

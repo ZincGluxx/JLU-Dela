@@ -1,12 +1,8 @@
-/// 学习通来源模型。个人标记（已读/忽略）与学校状态分开保存、分开解释。
+/// 学习通来源模型与解析结果。个人标记（已读/忽略）与学校状态分开保存、分开解释。
 ///
 /// 行为移植自 `app/src/shared/chaoxing.ts` 与 `app/src/shared/chaoxing-calendar.ts`
 /// （GPL-3.0-or-later）。
 library;
-
-enum AssignmentDueKind { exact, dateOnly, relative, unknown }
-
-enum WorkSection { overdue, soon, later, undated, done, ignored }
 
 class DueDeadline {
   const DueDeadline({required this.date, this.time});
@@ -37,6 +33,7 @@ class ChaoxingCourse {
     this.teacher = '',
     this.ended = false,
     this.remark,
+    this.sourceUri,
   });
 
   /// 来源课程标识，`courseid:clazzid`。
@@ -47,6 +44,9 @@ class ChaoxingCourse {
 
   /// 本机备注名；只影响展示与排序，不改写来源课程名。
   final String? remark;
+
+  /// 本次刷新拿到的来源入口，含签名参数，只用于内存中的后续请求，不写入数据库。
+  final Uri? sourceUri;
 
   String get label => (remark?.isNotEmpty ?? false) ? remark! : name;
 }
@@ -89,10 +89,17 @@ class ChaoxingWork {
 }
 
 class ChaoxingWorkListItem {
-  const ChaoxingWorkListItem({required this.work, required this.needsDetail});
+  const ChaoxingWorkListItem({
+    required this.work,
+    required this.needsDetail,
+    this.sourceUri,
+  });
 
   final ChaoxingWork work;
 
   /// 列表没有给出完整年月日截止时间，需要读取详情页补齐。
   final bool needsDetail;
+
+  /// 作业原网页入口，含签名参数，只在内存中用于打开/详情读取。
+  final Uri? sourceUri;
 }
