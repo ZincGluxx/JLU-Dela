@@ -33,6 +33,7 @@ class SessionHttpClient extends http.BaseClient {
     }
 
     final authRequest = _authPaths.contains(request.url.path);
+    final lifecycle = session.sessionRevision;
     final usedToken = session.accessToken;
     final replayRequest = request is http.Request && _canReplay(request)
         ? _copy(request)
@@ -49,15 +50,22 @@ class SessionHttpClient extends http.BaseClient {
     final errorCode = _errorCode(bodyBytes);
     final staleToken = usedToken != session.accessToken;
 
+    if (lifecycle != session.sessionRevision) {
+      return buffered;
+    }
+
     if (errorCode == 'TOKEN_EXPIRED') {
       if (staleToken) {
-        return _replay(replayRequest, buffered);
+        return _replay(replayRequest, buffered, lifecycle);
       }
 
       final result = await session.refreshSession();
+      if (lifecycle != session.sessionRevision) {
+        return buffered;
+      }
       switch (result) {
         case SessionRefreshResult.refreshed:
-          return _replay(replayRequest, buffered);
+          return _replay(replayRequest, buffered, lifecycle);
         case SessionRefreshResult.networkFailure:
           throw http.ClientException(
             'The session refresh failed because the network is unavailable.',
@@ -65,18 +73,22 @@ class SessionHttpClient extends http.BaseClient {
           );
         case SessionRefreshResult.signedOut:
         case SessionRefreshResult.unavailable:
+        case SessionRefreshResult.cancelled:
           return buffered;
       }
     }
 
     if (_invalidTokenCodes.contains(errorCode)) {
       if (staleToken) {
-        return _replay(replayRequest, buffered);
+        return _replay(replayRequest, buffered, lifecycle);
       }
       if (session.isRefreshing) {
         final result = await session.refreshSession();
+        if (lifecycle != session.sessionRevision) {
+          return buffered;
+        }
         if (result == SessionRefreshResult.refreshed) {
-          return _replay(replayRequest, buffered);
+          return _replay(replayRequest, buffered, lifecycle);
         }
         return buffered;
       }
@@ -126,8 +138,11 @@ class SessionHttpClient extends http.BaseClient {
   Future<http.StreamedResponse> _replay(
     http.Request? request,
     http.StreamedResponse fallback,
+    int lifecycle,
   ) {
-    if (request == null || session.accessToken == null) {
+    if (request == null ||
+        session.accessToken == null ||
+        lifecycle != session.sessionRevision) {
       return Future.value(fallback);
     }
     _authorize(request);

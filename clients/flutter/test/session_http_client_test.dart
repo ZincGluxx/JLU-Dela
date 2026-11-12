@@ -568,6 +568,183 @@ void main() {
       }
     },
   );
+  test(
+    'never replays an old session request with a newer session token',
+    () async {
+      for (final sameUser in [false, true]) {
+        for (final code in ['TOKEN_EXPIRED', 'INVALID_TOKEN']) {
+          final slowStarted = Completer<void>();
+          final releaseSlow = Completer<void>();
+          final server = await TestHttpServer.start((request, raw) async {
+            if (request.path == '/api/v1/me') {
+              final isNewSession = request.authorization == 'Bearer access-b';
+              await jsonResponse(
+                raw,
+                meBody(
+                  id: sameUser
+                      ? 'user-a'
+                      : (isNewSession ? 'user-b' : 'user-a'),
+                  displayName: sameUser
+                      ? '测试用户'
+                      : (isNewSession ? '用户乙' : '用户甲'),
+                ),
+              );
+              return;
+            }
+            if (request.path == '/api/v1/auth/logout') {
+              await emptyResponse(raw);
+              return;
+            }
+            if (request.path == '/api/v1/todos' && request.method == 'POST') {
+              if (request.authorization == 'Bearer access-a') {
+                slowStarted.complete();
+                await releaseSlow.future;
+                await jsonResponse(raw, errorBody(code), status: 401);
+              } else {
+                await jsonResponse(raw, <String, Object>{
+                  'data': <String, Object>{},
+                }, status: 201);
+              }
+              return;
+            }
+            await jsonResponse(raw, errorBody('NOT_FOUND'), status: 404);
+          });
+          addTearDown(server.close);
+
+          final store = MemoryRefreshTokenStore();
+          final controller = SessionController(
+            gateway: HttpAuthGateway(baseUri: server.baseUri),
+            refreshTokenStore: store,
+          );
+          addTearDown(controller.dispose);
+          await controller.signIn(testCredentials());
+          final client = SessionHttpClient(
+            baseUri: server.baseUri,
+            session: controller,
+          );
+          addTearDown(client.close);
+
+          final pending = client.post(
+            Uri.parse('${server.baseUri}/api/v1/todos'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Idempotency-Key': 'key-$sameUser-$code',
+            },
+            body: '{"title":"A 的待办"}',
+          );
+          await slowStarted.future;
+
+          await controller.signOut();
+          expect(
+            await controller.signIn(
+              testCredentials(
+                accessToken: 'access-b',
+                refreshToken: 'refresh-b',
+              ),
+            ),
+            SignInOutcome.signedIn,
+            reason: 'sameUser=$sameUser code=$code',
+          );
+
+          releaseSlow.complete();
+          final response = await pending;
+
+          expect(
+            response.statusCode,
+            401,
+            reason: 'sameUser=$sameUser code=$code',
+          );
+          final todoRequests = server.requests
+              .where((request) => request.path == '/api/v1/todos')
+              .toList();
+          expect(
+            todoRequests,
+            hasLength(1),
+            reason: 'sameUser=$sameUser code=$code',
+          );
+          expect(
+            todoRequests.single.authorization,
+            'Bearer access-a',
+            reason: 'sameUser=$sameUser code=$code',
+          );
+          expect(
+            controller.currentUser?.id,
+            sameUser ? 'user-a' : 'user-b',
+            reason: 'sameUser=$sameUser code=$code',
+          );
+          expect(controller.phase, SessionPhase.authenticated);
+          expect(store.token, 'refresh-b');
+        }
+      }
+    },
+  );
+
+  test(
+    'does not replay when the session changes while a refresh is in flight',
+    () async {
+      final refreshStarted = Completer<void>();
+      final releaseRefresh = Completer<void>();
+      final server = await TestHttpServer.start((request, raw) async {
+        if (request.path == '/api/v1/todos') {
+          await jsonResponse(raw, errorBody('TOKEN_EXPIRED'), status: 401);
+          return;
+        }
+        await jsonResponse(raw, errorBody('NOT_FOUND'), status: 404);
+      });
+      addTearDown(server.close);
+
+      final gateway = FakeAuthGateway(
+        onFetchMe: (accessToken) async => accessToken == 'access-b'
+            ? testUser(id: 'user-b', displayName: '用户乙')
+            : testUser(),
+        onRefresh: (_) async {
+          refreshStarted.complete();
+          await releaseRefresh.future;
+          return testTokenPair(
+            accessToken: 'access-stale',
+            refreshToken: 'refresh-stale',
+          );
+        },
+        onRevoke: (_, _) async {},
+      );
+      final store = MemoryRefreshTokenStore();
+      final controller = SessionController(
+        gateway: gateway,
+        refreshTokenStore: store,
+      );
+      addTearDown(controller.dispose);
+      await controller.signIn(testCredentials());
+      final client = SessionHttpClient(
+        baseUri: server.baseUri,
+        session: controller,
+      );
+      addTearDown(client.close);
+
+      final pending = client.get(Uri.parse('${server.baseUri}/api/v1/todos'));
+      await refreshStarted.future;
+      await controller.signOut();
+      expect(
+        await controller.signIn(
+          testCredentials(accessToken: 'access-b', refreshToken: 'refresh-b'),
+        ),
+        SignInOutcome.signedIn,
+      );
+      releaseRefresh.complete();
+
+      final response = await pending;
+
+      expect(response.statusCode, 401);
+      expect(controller.currentUser?.id, 'user-b');
+      expect(controller.phase, SessionPhase.authenticated);
+      expect(store.token, 'refresh-b');
+      expect(
+        server.requests
+            .where((request) => request.path == '/api/v1/todos')
+            .length,
+        1,
+      );
+    },
+  );
 }
 
 Future<void> _waitUntil(bool Function() predicate) async {

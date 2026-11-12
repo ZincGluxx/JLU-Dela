@@ -249,7 +249,7 @@ void main() {
     expect(result.remoteRevoked, isTrue);
 
     releaseRefresh.complete();
-    expect(await refreshFuture, SessionRefreshResult.unavailable);
+    expect(await refreshFuture, SessionRefreshResult.cancelled);
 
     expect(controller.phase, SessionPhase.signedOut);
     expect(controller.accessToken, isNull);
@@ -491,6 +491,194 @@ void main() {
     },
   );
 
+  test(
+    'a delayed sign-in cannot restore identity after the session is invalidated',
+    () async {
+      final meStarted = Completer<void>();
+      final releaseMe = Completer<void>();
+      final gateway = FakeAuthGateway(
+        onFetchMe: (_) async {
+          meStarted.complete();
+          await releaseMe.future;
+          return testUser();
+        },
+      );
+      final store = MemoryRefreshTokenStore();
+      final controller = SessionController(
+        gateway: gateway,
+        refreshTokenStore: store,
+      );
+      addTearDown(controller.dispose);
+
+      final signInFuture = controller.signIn(testCredentials());
+      await meStarted.future;
+      await controller.invalidateSession();
+      releaseMe.complete();
+
+      expect(await signInFuture, SignInOutcome.cancelled);
+      expect(controller.phase, SessionPhase.signedOut);
+      expect(controller.currentUser, isNull);
+      expect(controller.accessToken, isNull);
+      expect(store.token, isNull);
+      expect(store.writeCount, 0);
+    },
+  );
+
+  test(
+    'the latest sign-in wins when two sign-ins return out of order',
+    () async {
+      final gates = <String, Completer<Me>>{
+        'access-a': Completer<Me>(),
+        'access-b': Completer<Me>(),
+      };
+      final gateway = FakeAuthGateway(
+        onFetchMe: (accessToken) => gates[accessToken]!.future,
+      );
+      final store = MemoryRefreshTokenStore();
+      final controller = SessionController(
+        gateway: gateway,
+        refreshTokenStore: store,
+      );
+      addTearDown(controller.dispose);
+
+      final first = controller.signIn(testCredentials());
+      final second = controller.signIn(
+        testCredentials(accessToken: 'access-b', refreshToken: 'refresh-b'),
+      );
+      gates['access-b']!.complete(testUser(id: 'user-b', displayName: '用户乙'));
+      gates['access-a']!.complete(testUser());
+
+      expect(await second, SignInOutcome.signedIn);
+      expect(await first, SignInOutcome.cancelled);
+      expect(controller.currentUser?.id, 'user-b');
+      expect(controller.accessToken, 'access-b');
+      expect(store.token, 'refresh-b');
+    },
+  );
+
+  test(
+    'a sign-out during a delayed token write leaves the session signed out',
+    () async {
+      final store = ControlledRefreshTokenStore();
+      final writeGate = Completer<void>();
+      store.writeGates[0] = writeGate;
+      final controller = SessionController(
+        gateway: FakeAuthGateway(onFetchMe: (_) async => testUser()),
+        refreshTokenStore: store,
+      );
+      addTearDown(controller.dispose);
+
+      final signInFuture = controller.signIn(testCredentials());
+      await _waitUntil(
+        () =>
+            store.operations.any((operation) => operation.startsWith('write:')),
+      );
+      final signOutFuture = controller.signOut();
+      writeGate.complete();
+
+      expect(await signInFuture, SignInOutcome.cancelled);
+      final result = await signOutFuture;
+      expect(result.remoteRevoked, isFalse);
+      expect(controller.phase, SessionPhase.signedOut);
+      expect(controller.currentUser, isNull);
+      expect(store.token, isNull);
+    },
+  );
+
+  test(
+    'a stale sign-in write cannot overwrite the newer session token',
+    () async {
+      final store = ControlledRefreshTokenStore();
+      final writeGate = Completer<void>();
+      store.writeGates[0] = writeGate;
+      final controller = SessionController(
+        gateway: FakeAuthGateway(onFetchMe: (_) async => testUser()),
+        refreshTokenStore: store,
+      );
+      addTearDown(controller.dispose);
+
+      final first = controller.signIn(testCredentials());
+      await _waitUntil(() => store.operations.contains('write:refresh-a'));
+      final second = controller.signIn(
+        testCredentials(accessToken: 'access-b', refreshToken: 'refresh-b'),
+      );
+      writeGate.complete();
+
+      expect(await first, SignInOutcome.cancelled);
+      expect(await second, SignInOutcome.signedIn);
+      expect(controller.accessToken, 'access-b');
+      expect(controller.currentUser?.id, 'user-a');
+      expect(store.token, 'refresh-b');
+      expect(store.operations.last, 'write:refresh-b');
+    },
+  );
+
+  test('a stale clear cannot delete the newer session token', () async {
+    final store = ControlledRefreshTokenStore();
+    final writeGate = Completer<void>();
+    store.writeGates[0] = writeGate;
+    final controller = SessionController(
+      gateway: FakeAuthGateway(onFetchMe: (_) async => testUser()),
+      refreshTokenStore: store,
+    );
+    addTearDown(controller.dispose);
+
+    final first = controller.signIn(testCredentials());
+    await _waitUntil(() => store.operations.contains('write:refresh-a'));
+    final signOutFuture = controller.signOut();
+    final second = controller.signIn(
+      testCredentials(accessToken: 'access-b', refreshToken: 'refresh-b'),
+    );
+    writeGate.complete();
+
+    expect(await first, SignInOutcome.cancelled);
+    await signOutFuture;
+    expect(await second, SignInOutcome.signedIn);
+    expect(controller.phase, SessionPhase.authenticated);
+    expect(controller.accessToken, 'access-b');
+    expect(store.token, 'refresh-b');
+  });
+
+  test(
+    'sessionRevision changes on login and sign-out but not on token rotation',
+    () async {
+      var refreshCount = 0;
+      final gateway = FakeAuthGateway(
+        onFetchMe: (_) async => testUser(),
+        onRevoke: (_, _) async {},
+        onRefresh: (_) async {
+          refreshCount++;
+          return testTokenPair(
+            accessToken: 'access-rotated',
+            refreshToken: 'refresh-rotated',
+          );
+        },
+      );
+      final store = MemoryRefreshTokenStore();
+      final controller = SessionController(
+        gateway: gateway,
+        refreshTokenStore: store,
+      );
+      addTearDown(controller.dispose);
+
+      final signedOutRevision = controller.sessionRevision;
+      expect(
+        await controller.signIn(testCredentials()),
+        SignInOutcome.signedIn,
+      );
+      final signedInRevision = controller.sessionRevision;
+      expect(signedInRevision, isNot(signedOutRevision));
+
+      expect(await controller.refreshSession(), SessionRefreshResult.refreshed);
+      expect(refreshCount, 1);
+      expect(controller.sessionRevision, signedInRevision);
+      expect(controller.accessToken, 'access-rotated');
+
+      await controller.signOut();
+      expect(controller.sessionRevision, isNot(signedInRevision));
+    },
+  );
+
   test('sensitive session objects never reveal tokens in toString', () {
     const credentials = SessionCredentials(
       accessToken: 'secret-access-token',
@@ -519,6 +707,16 @@ void main() {
       expect(source.contains('debugPrint('), isFalse, reason: file.path);
     }
   });
+}
+
+Future<void> _waitUntil(bool Function() predicate) async {
+  for (var attempt = 0; attempt < 200; attempt++) {
+    if (predicate()) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+  fail('condition was not met before the timeout');
 }
 
 class _FlakyAuthGateway implements AuthGateway {

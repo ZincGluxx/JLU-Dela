@@ -159,7 +159,7 @@ pub async fn list_example(
 5. 新接口必须先进入 `contracts/openapi.yaml`，再生成 `jlu_dela_api`；不要在客户端手写重复 DTO。
 6. 统一错误映射在 `lib/core/api/api_failure.dart`；新错误码在展示层给出可读文案。
 7. 当前没有引入路由/状态管理库：`MaterialApp` + `StatefulWidget` 管理当前入口与玻璃开关。页面注册不是路由器，没有深链、多标签或 URL 还原需求；出现第三个独立应用级状态域或 B–E 多页导航时再选型。
-8. 客户端会话公共层在 `lib/core/auth/`：刷新令牌只写入平台安全存储（`flutter_secure_storage` 11.2.0，Windows 经真实凭据管理器验证），访问令牌只在内存；`WorkbenchApi` 是业务 API 的唯一认证入口，`SessionController` 负责启动恢复、并发刷新单飞、退出与切换用户时的私有缓存清理。业务页面经 `lib/app/app.dart` 的统一门禁进入，不自行读写令牌。
+8. 客户端会话公共层在 `lib/core/auth/`：刷新令牌只写入平台安全存储（`flutter_secure_storage` 11.2.0，Windows 经真实凭据管理器验证），访问令牌只在内存；`WorkbenchApi` 是业务 API 的唯一认证入口，`SessionController` 负责启动恢复、并发刷新单飞、退出与切换用户时的私有缓存清理。登录/退出会推进会话生命周期标记，传输层只对同一生命周期的请求做刷新后重放；安全存储写入与清理串行化，旧登录的延迟结果不能覆盖或删除新会话。业务页面经 `lib/app/app.dart` 的统一门禁进入，不自行读写令牌。
 9. 登录与激活入口在 `lib/features/auth/`，通过 `AccountGateway` 调用激活/登录接口；未登录时工作台显示登录页与邀请码激活入口，`ApiFailure.retryAfter` 用于 429 倒计时。设备端校园登录仍在验证，公共层不保存 Cookie，不把来源会话上传服务端，也不开放无认证的私有业务 API。
 
 ## 7. 一次完整请求路径

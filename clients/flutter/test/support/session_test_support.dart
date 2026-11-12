@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:jlu_dela/core/auth/account_gateway.dart';
 import 'package:jlu_dela/core/auth/auth_gateway.dart';
 import 'package:jlu_dela/core/auth/refresh_token_store.dart';
@@ -24,6 +26,45 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
   Future<void> clear() async {
     token = null;
     clearCount++;
+  }
+}
+
+class ControlledRefreshTokenStore implements RefreshTokenStore {
+  ControlledRefreshTokenStore([this.token]);
+
+  String? token;
+  final List<String> operations = [];
+  final Map<int, Completer<void>> writeGates = {};
+  final Map<int, Completer<void>> clearGates = {};
+  int writeCalls = 0;
+  int clearCalls = 0;
+
+  @override
+  Future<String?> read() async {
+    operations.add('read');
+    return token;
+  }
+
+  @override
+  Future<void> write(String value) async {
+    final call = writeCalls++;
+    operations.add('write:$value');
+    final gate = writeGates[call];
+    if (gate != null) {
+      await gate.future;
+    }
+    token = value;
+  }
+
+  @override
+  Future<void> clear() async {
+    final call = clearCalls++;
+    operations.add('clear');
+    final gate = clearGates[call];
+    if (gate != null) {
+      await gate.future;
+    }
+    token = null;
   }
 }
 
