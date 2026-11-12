@@ -425,6 +425,34 @@ void main() {
       expect(() => normalize(invalidTime), throwsJluParse('节次时间'));
     });
 
+    test('exposes normalized period times for persistence', () {
+      final result = normalize(fixture());
+      expect(result.periodTimes, hasLength(3));
+      expect(result.periodTimes.first.period, 1);
+      expect(result.periodTimes.first.startMinute, 550);
+      expect(result.periodTimes.first.endMinute, 595);
+
+      final filtered = parseJluPeriodTimes(<Object?>[
+        <String, Object?>{
+          'DM': '1',
+          'KSSJ': '08:00',
+          'JSSJ': '08:45',
+          'SFSY': '1',
+          'XXXQ': 'A',
+        },
+        <String, Object?>{
+          'DM': '2',
+          'KSSJ': '09:00',
+          'JSSJ': '09:45',
+          'SFSY': '0',
+          'XXXQ': 'A',
+        },
+      ]);
+      expect(filtered, hasLength(1));
+      expect(filtered.single.period, 1);
+      expect(filtered.single.campus, 'A');
+    });
+
     test('keeps an empty timetable distinct from a failed parse', () {
       final input = fixture();
       input['courses'] = <Object?>[];

@@ -61,6 +61,21 @@ class JluLesson {
   final int endMinute;
 }
 
+/// 一条可用的节次时间，[campus] 为空表示未区分校区。
+class JluPeriodTime {
+  const JluPeriodTime({
+    required this.period,
+    required this.campus,
+    required this.startMinute,
+    required this.endMinute,
+  });
+
+  final int period;
+  final String campus;
+  final int startMinute;
+  final int endMinute;
+}
+
 /// 一学期已规范化的课表与校历信息。
 class JluTimetable {
   JluTimetable({
@@ -68,13 +83,16 @@ class JluTimetable {
     required this.totalWeeks,
     required List<JluLesson> lessons,
     required List<String> warnings,
+    List<JluPeriodTime> periodTimes = const <JluPeriodTime>[],
   }) : lessons = List.unmodifiable(lessons),
-       warnings = List.unmodifiable(warnings);
+       warnings = List.unmodifiable(warnings),
+       periodTimes = List.unmodifiable(periodTimes);
 
   final String semesterStart;
   final int? totalWeeks;
   final List<JluLesson> lessons;
   final List<String> warnings;
+  final List<JluPeriodTime> periodTimes;
 }
 
 /// 校验 EMAP 响应信封并取出指定模块的行。
@@ -196,10 +214,6 @@ JluTimetable normalizeJluTimetable({
     courses,
     _fieldMismatch,
   ).map(_CourseRow.fromJson).toList(growable: false);
-  final periodRows = _array(
-    periods,
-    _fieldMismatch,
-  ).map(_PeriodRow.fromJson).toList(growable: false);
   final calendarRows = _array(
     calendar,
     _fieldMismatch,
@@ -214,7 +228,7 @@ JluTimetable normalizeJluTimetable({
   final totalWeeks = calendarRows.isEmpty
       ? null
       : _totalWeeks(calendarRows.first.totalWeeksText);
-  final availablePeriods = _availablePeriods(periodRows);
+  final availablePeriods = parseJluPeriodTimes(periods);
 
   final warnings = <String>[
     if (unscheduledRows.isNotEmpty)
@@ -389,6 +403,7 @@ JluTimetable normalizeJluTimetable({
     totalWeeks: totalWeeks,
     lessons: normalized,
     warnings: warnings.toSet().toList(),
+    periodTimes: availablePeriods,
   );
 }
 
@@ -540,20 +555,6 @@ class _ChangeRow {
   final String originalTeacher;
 }
 
-class _PeriodTime {
-  const _PeriodTime({
-    required this.period,
-    required this.campus,
-    required this.startMinute,
-    required this.endMinute,
-  });
-
-  final int period;
-  final String campus;
-  final int startMinute;
-  final int endMinute;
-}
-
 class _MutableLesson {
   _MutableLesson({
     required this.sourceId,
@@ -626,12 +627,17 @@ int? _totalWeeks(String value) {
   return parsed.toInt();
 }
 
-List<_PeriodTime> _availablePeriods(List<_PeriodRow> rows) {
+/// 解析并校验节次时间表，过滤未启用的节次。
+List<JluPeriodTime> parseJluPeriodTimes(Object? periods) {
   const message = '吉大教务没有有效节次时间，本地课表未更新';
-  final available = <_PeriodTime>[
+  final rows = _array(
+    periods,
+    _fieldMismatch,
+  ).map(_PeriodRow.fromJson).toList(growable: false);
+  final available = <JluPeriodTime>[
     for (final row in rows)
       if (!const ['0', '否', 'false'].contains(row.enabled))
-        _PeriodTime(
+        JluPeriodTime(
           period: row.period,
           campus: row.campus,
           startMinute: _minute(row.startTime),
@@ -659,7 +665,7 @@ int _minute(String value) {
 }
 
 ({int startMinute, int endMinute}) _periodTimes(
-  List<_PeriodTime> periods,
+  List<JluPeriodTime> periods,
   String campus,
   int startPeriod,
   int endPeriod,
