@@ -19,11 +19,17 @@ void main() {
     Map<AppDestination, AppPageBuilder> pages = const {},
     AppDestination initial = AppDestination.calendar,
     bool glassEnabled = true,
+    String pageScopeKey = 'anonymous',
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      _ShellHarness(pages: pages, initial: initial, glassEnabled: glassEnabled),
+      _ShellHarness(
+        pages: pages,
+        initial: initial,
+        glassEnabled: glassEnabled,
+        pageScopeKey: pageScopeKey,
+      ),
     );
     await tester.pumpAndSettle();
   }
@@ -273,6 +279,33 @@ void main() {
     },
   );
 
+  testWidgets('changing the page scope remounts the destination state', (
+    tester,
+  ) async {
+    await pumpShell(
+      tester,
+      pages: {AppDestination.calendar: (context) => const TextField()},
+      pageScopeKey: 'user-a',
+    );
+    await tester.enterText(find.byType(TextField), '用户甲的草稿');
+    expect(find.text('用户甲的草稿'), findsOneWidget);
+
+    await pumpShell(
+      tester,
+      pages: {AppDestination.calendar: (context) => const TextField()},
+      pageScopeKey: 'user-a',
+    );
+    expect(find.text('用户甲的草稿'), findsOneWidget);
+
+    await pumpShell(
+      tester,
+      pages: {AppDestination.calendar: (context) => const TextField()},
+      pageScopeKey: 'user-b',
+    );
+    expect(find.text('用户甲的草稿'), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
   testWidgets('the selected destination is exposed to semantics', (
     tester,
   ) async {
@@ -321,11 +354,13 @@ class _ShellHarness extends StatefulWidget {
     required this.pages,
     required this.initial,
     required this.glassEnabled,
+    required this.pageScopeKey,
   });
 
   final Map<AppDestination, AppPageBuilder> pages;
   final AppDestination initial;
   final bool glassEnabled;
+  final String pageScopeKey;
 
   @override
   State<_ShellHarness> createState() => _ShellHarnessState();
@@ -342,6 +377,7 @@ class _ShellHarnessState extends State<_ShellHarness> {
         destination: _destination,
         pages: widget.pages,
         glassEnabled: widget.glassEnabled,
+        pageScopeKey: widget.pageScopeKey,
         onDestinationSelected: (destination) {
           setState(() => _destination = destination);
         },

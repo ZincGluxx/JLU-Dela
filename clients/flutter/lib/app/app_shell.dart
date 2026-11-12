@@ -29,6 +29,7 @@ class AppShell extends StatefulWidget {
     required this.onDestinationSelected,
     this.glassEnabled = true,
     this.offlineBanner,
+    this.pageScopeKey = 'anonymous',
   });
 
   final AppDestination destination;
@@ -36,6 +37,7 @@ class AppShell extends StatefulWidget {
   final ValueChanged<AppDestination> onDestinationSelected;
   final bool glassEnabled;
   final Widget? offlineBanner;
+  final String pageScopeKey;
 
   static const mobileDestinations = [
     AppDestination.calendar,
@@ -74,7 +76,7 @@ class _AppShellState extends State<AppShell> {
               final page = KeyedSubtree(
                 key: _pageKey,
                 child: KeyedSubtree(
-                  key: ValueKey(widget.destination),
+                  key: ValueKey('${widget.pageScopeKey}-${widget.destination}'),
                   child:
                       widget.pages[widget.destination]?.call(context) ??
                       _UnavailablePage(destination: widget.destination),

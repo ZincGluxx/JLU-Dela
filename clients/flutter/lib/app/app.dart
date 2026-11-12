@@ -221,6 +221,7 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
     return AppShell(
       destination: _destination,
       glassEnabled: _glassEnabled,
+      pageScopeKey: _activeUserId ?? 'anonymous',
       offlineBanner: offline
           ? _OfflineBanner(onRetry: widget.session.retryRestore)
           : null,

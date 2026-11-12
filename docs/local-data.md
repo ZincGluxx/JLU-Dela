@@ -18,8 +18,9 @@
 
 ## 本地数据语义
 
-- 待办支持无截止、仅日期、精确时刻三态，颜色与日历开关为个人属性；写入以 `revision` 做乐观并发，冲突时返回当前行。
-- 课程身份由 `(user_id, source, source_scope, source_id)` 唯一确定，绝不同名合并；来源快照完整时在同一事务内 upsert 并删除该 scope 下未出现的课程，部分读取不得标记为完整。
+- 待办支持无截止、仅日期、精确时刻三态，颜色与日历开关为个人属性；写入以 `revision` 做乐观并发，冲突时返回当前行。三态不一致、跨用户更新在存储层直接拒绝。
+- 待办排序按绝对时刻归一：精确时刻用自己的 UTC 时间，仅日期取 Asia/Shanghai 当天 00:00，无日期排最后；同一时刻按标题与 id 稳定排序，不按截止类型分组。
+- 课程身份由 `(user_id, source, source_scope, source_id)` 唯一确定，绝不同名合并；来源快照完整时在同一事务内 upsert 并删除该 scope 下未出现的课程，部分读取不得标记为完整。课程备注由存储层统一 trim 并限制 1–100 字符。
 - 草稿按 `(scope, key)` 保存表单状态；来源快照分别记录上次成功、上次尝试与错误，失败不清除旧成功时间，也不改业务表。
 - 精确时刻以 UTC 毫秒存储，校园日期以 `YYYY-MM-DD` 存储；展示固定按 Asia/Shanghai（UTC+8，无夏令时）换算。只有日期或相对时间的值不推算为精确时刻。
 
@@ -29,12 +30,16 @@
 - `phase=authenticated` 正常进入工作台，并写入/刷新缓存身份；`unavailable` 且存在当前用户或本地缓存身份时进入本地模式，可读写本地数据，显示“离线 · 身份未验证”横幅与“重新验证”入口，不构造访问令牌。
 - `signedOut` 只显示登录与激活入口，不显示任何业务数据；重新验证返回 401 时回到登录页并保留本地数据。
 - 工作台用户变化时销毁旧 workspace、清空校园来源内存会话并切换到新的 `user_id` 命名空间。缓存身份只做本地数据命名空间，不是服务端授权凭据。
+- `AppShell` 的页面 key 带用户作用域（`pageScopeKey`）；切换账号时同一目的地的页面 State 会重建，不保留上一账号的输入或选中状态；表单草稿应写入本地草稿存储。
 
 ## 来源会话
 
 - 工作台身份与校园来源登录完全分开。教务与电子校务共用 `jluCampus` 来源组，学习通独立；组内 Cookie 在内存中共享，App 退出或切换用户时全部清空。
-- Cookie 只保存在内存 `SourceSessionRegistry`，不写 SQLite、不写安全存储、不上传服务器、不写日志；重启后需要重新登录来源。这是第一批的安全取舍。
-- `SourceHttpClient` 是来源网络唯一出口，只向白名单主机附加 Cookie 并设置超时；未接入时使用不可用实现，不伪造连接。
+- Cookie 以 `SourceCookie` 保存 name/value/domain/path/secure/httpOnly/hostOnly/expiresAt，不支持持久化。`SourceSessionRegistry` 按 host、domain、path、secure 与过期时间过滤：host-only 只匹配本 host，父域 Cookie 可下发给子域，同名 Cookie 取 path 最长者，过期与 http 上的 secure Cookie 不返回。`cookieHeaderFor` 生成请求 Cookie 头，网络实现不得自行拼接。
+- Cookie 只保存在内存，不写 SQLite、不写安全存储、不上传服务器、不写日志；重启后需要重新登录来源。这是第一批的安全取舍。
+- `SourceContext` 打包 sessions/http/campusLogin/browser，由 workspace 构造一次并注入各业务 store；业务模块只通过 `hasSession` / `stateFor` 判断来源状态，刷新与打开原网页不各自持有依赖。
+- `SourceHttpClient` 请求带默认 30 秒超时，响应携带重定向后的 `finalUri`；只向白名单主机附加 Cookie。未接入时使用不可用实现，不伪造连接。
+- 学习通资料接口按学习通契约：`listMaterialChildren(courseOfferingId, parentSourceId?, page)` 返回 `MaterialChildrenPage`（entries、page、可空 totalPages、observedAt）；`accessMaterial` / `openAssignment` 返回 `SourceAccess`（uri、mode、可空 filename、requiresSourceSession、可空 expiresAt）。
 - 来源失败只记录快照并保留旧业务数据；认证失效使用 `SOURCE_AUTH_REQUIRED`，不把工作台账号登出。真实登录、共享组失效与 Cookie 解绑影响仍待人工验证。
 
 ## 模块边界
