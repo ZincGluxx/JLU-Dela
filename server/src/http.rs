@@ -30,6 +30,8 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/api/v1/meta", get(meta::get))
+        .route("/api/v1/auth/activate", post(auth::activate))
+        .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/refresh", post(auth::refresh))
         .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/me", get(auth::me))
@@ -56,7 +58,7 @@ pub fn router(state: AppState, config: &Config) -> Router {
             HeaderName::from_static("idempotency-key"),
             REQUEST_ID_HEADER,
         ])
-        .expose_headers([REQUEST_ID_HEADER])
+        .expose_headers([REQUEST_ID_HEADER, header::RETRY_AFTER])
         .max_age(Duration::from_secs(600));
 
     let middleware = tower::ServiceBuilder::new()

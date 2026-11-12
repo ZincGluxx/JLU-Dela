@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'app/app.dart';
 import 'core/api/diagnostics_service.dart';
+import 'core/auth/account_gateway.dart';
+import 'core/auth/auth_gateway.dart';
+import 'core/auth/workbench_api.dart';
 import 'core/config/app_config.dart';
 
 void main() {
@@ -14,7 +19,19 @@ void main() {
       apiBaseUri: apiBaseUri,
       httpClient: http.Client(),
     );
-    runApp(JluDelaApp(diagnosticsService: service));
+    final workbenchApi = WorkbenchApi(
+      baseUri: apiBaseUri,
+      authGateway: HttpAuthGateway(baseUri: apiBaseUri),
+    );
+    final accountGateway = HttpAccountGateway(baseUri: apiBaseUri);
+    runApp(
+      JluDelaApp(
+        diagnosticsService: service,
+        session: workbenchApi.session,
+        accountGateway: accountGateway,
+      ),
+    );
+    unawaited(workbenchApi.session.restore());
   } on FormatException catch (error) {
     runApp(BootstrapErrorApp(message: error.message));
   }

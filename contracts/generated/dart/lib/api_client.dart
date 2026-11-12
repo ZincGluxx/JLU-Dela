@@ -183,6 +183,8 @@ class ApiClient {
           return valueString == 'true' || valueString == '1';
         case 'DateTime':
           return value is DateTime ? value : DateTime.tryParse(value);
+        case 'ActivateRequest':
+          return ActivateRequest.fromJson(value);
         case 'AssignmentItem':
           return AssignmentItem.fromJson(value);
         case 'CalendarData':
@@ -217,6 +219,8 @@ class ApiClient {
           return LiveResponse.fromJson(value);
         case 'LiveStatus':
           return LiveStatus.fromJson(value);
+        case 'LoginRequest':
+          return LoginRequest.fromJson(value);
         case 'LogoutRequest':
           return LogoutRequest.fromJson(value);
         case 'Me':

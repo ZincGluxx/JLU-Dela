@@ -7,6 +7,9 @@ import 'package:http/testing.dart';
 import 'package:jlu_dela/app/app.dart';
 import 'package:jlu_dela/app/glass_surface.dart';
 import 'package:jlu_dela/core/api/diagnostics_service.dart';
+import 'package:jlu_dela/core/auth/session_controller.dart';
+
+import 'support/session_test_support.dart';
 
 void main() {
   late List<http.Request> requests;
@@ -39,11 +42,26 @@ void main() {
     });
   }
 
+  Future<SessionController> signedOutSession() async {
+    final session = SessionController(
+      gateway: FakeAuthGateway(),
+      refreshTokenStore: MemoryRefreshTokenStore(),
+    );
+    await session.restore();
+    return session;
+  }
+
   Future<void> openDiagnostics(
     WidgetTester tester,
     DiagnosticsService service,
   ) async {
-    await tester.pumpWidget(JluDelaApp(diagnosticsService: service));
+    await tester.pumpWidget(
+      JluDelaApp(
+        diagnosticsService: service,
+        session: await signedOutSession(),
+        accountGateway: FakeAccountGateway(),
+      ),
+    );
     await tester.tap(find.byKey(const Key('destination-settings')));
     await tester.pump();
   }
@@ -179,15 +197,19 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      JluDelaApp(diagnosticsService: serviceFor(successClient())),
+      JluDelaApp(
+        diagnosticsService: serviceFor(successClient()),
+        session: await signedOutSession(),
+        accountGateway: FakeAccountGateway(),
+      ),
     );
-    expect(find.text('此功能尚未开放'), findsOneWidget);
+    expect(find.byKey(const Key('login-page')), findsOneWidget);
     expect(requests, isEmpty);
 
     await tester.tap(find.byKey(const Key('destination-assignments')));
     await tester.pumpAndSettle();
     expect(find.text('作业'), findsWidgets);
-    expect(find.text('此功能尚未开放'), findsOneWidget);
+    expect(find.byKey(const Key('login-page')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('destination-settings')));
     await tester.pumpAndSettle();
