@@ -103,6 +103,24 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               child: SourceConnectionCard(controller: widget.sourceConnections),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
+              child: ListTile(
+                leading: const Icon(Icons.text_fields),
+                title: const Text('HarmonyOS Sans SC'),
+                subtitle: const Text('本应用使用 HarmonyOS Sans 字体 · 华为终端有限公司'),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: () => showLicensePage(
+                  context: context,
+                  applicationName: 'JLU Dela',
+                ),
+              ),
+            ),
           ],
         );
         return Column(
