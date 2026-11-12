@@ -18,9 +18,9 @@ info:
     - GET /api/v1/me
     - GET /api/v1/todos, POST /api/v1/todos, PATCH and DELETE /api/v1/todos/{id}
     - POST /api/v1/sync-jobs, GET /api/v1/sync-jobs/{id}
+    - GET /api/v1/calendar
 
     Endpoints described but not yet served:
-    - GET /api/v1/calendar (contract fixed, aggregation pending the campus sources)
     - GET /api/v1/semesters, GET /api/v1/courses, GET /api/v1/schedule
       (B teaching draft, pending A and consumer review)
 
@@ -115,12 +115,12 @@ x-contract-status:
     - DELETE /api/v1/todos/{id}
     - POST /api/v1/sync-jobs
     - GET /api/v1/sync-jobs/{id}
-  design-only:
     - GET /api/v1/calendar
+  design-only:
     - GET /api/v1/semesters
     - GET /api/v1/courses
     - GET /api/v1/schedule
-  note: Accounts are created only by controlled invitation; there is no self-service registration or school SSO. Connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build.
+  note: Accounts are created only by controlled invitation; there is no self-service registration or school SSO. Connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build. The calendar currently aggregates personal todos; lessons and assignments require registered source adapters.
 
 paths:
   /health/live:
@@ -949,14 +949,14 @@ paths:
         - name: from
           in: query
           required: true
-          description: Inclusive start day in Asia/Shanghai.
+          description: Inclusive start day in Asia/Shanghai, written as YYYY-MM-DD.
           schema:
             type: string
             format: date
         - name: to
           in: query
           required: true
-          description: Exclusive end day in Asia/Shanghai.
+          description: Exclusive end day in Asia/Shanghai, same wire format as `from`.
           schema:
             type: string
             format: date

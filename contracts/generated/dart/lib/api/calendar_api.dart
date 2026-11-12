@@ -25,10 +25,10 @@ class CalendarApi {
   /// Parameters:
   ///
   /// * [DateTime] from (required):
-  ///   Inclusive start day in Asia/Shanghai.
+  ///   Inclusive start day in Asia/Shanghai, written as YYYY-MM-DD.
   ///
   /// * [DateTime] to (required):
-  ///   Exclusive end day in Asia/Shanghai.
+  ///   Exclusive end day in Asia/Shanghai, same wire format as `from`.
   ///
   /// * [String] xRequestId:
   ///   Optional client request identifier. The server echoes it in the response header and body.
@@ -72,10 +72,10 @@ class CalendarApi {
   /// Parameters:
   ///
   /// * [DateTime] from (required):
-  ///   Inclusive start day in Asia/Shanghai.
+  ///   Inclusive start day in Asia/Shanghai, written as YYYY-MM-DD.
   ///
   /// * [DateTime] to (required):
-  ///   Exclusive end day in Asia/Shanghai.
+  ///   Exclusive end day in Asia/Shanghai, same wire format as `from`.
   ///
   /// * [String] xRequestId:
   ///   Optional client request identifier. The server echoes it in the response header and body.
