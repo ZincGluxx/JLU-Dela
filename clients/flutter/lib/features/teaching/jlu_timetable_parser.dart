@@ -601,11 +601,11 @@ String _semesterStart(List<_CalendarRow> calendar) {
   if (calendar.isEmpty) throw const JluParseException(message);
   final raw = calendar.first.startDate;
   final start = raw.length > 10 ? raw.substring(0, 10) : raw;
-  if (!_isCalendarDate(start)) throw const JluParseException(message);
+  if (!isJluCalendarDate(start)) throw const JluParseException(message);
   return start;
 }
 
-bool _isCalendarDate(String value) {
+bool isJluCalendarDate(String value) {
   final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
   if (match == null) return false;
   final year = int.parse(match.group(1)!);
