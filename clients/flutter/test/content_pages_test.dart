@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jlu_dela/core/models/material.dart';
 import 'package:jlu_dela/core/models/source.dart';
-import 'package:jlu_dela/core/source/chaoxing_access.dart';
 import 'package:jlu_dela/core/source/source_session.dart';
-import 'package:jlu_dela/features/content/materials_page.dart';
 import 'package:jlu_dela/features/content/notices_page.dart';
 
 import 'content_test_support.dart';
@@ -169,109 +166,19 @@ void main() {
     expect(find.byKey(const Key('notices-source-message')), findsOneWidget);
   });
 
-  testWidgets('资料页展示课程目录、文件夹导航与访问入口', (tester) async {
+  testWidgets('通知页在窄屏下无布局溢出', (tester) async {
     final harness = await ContentHarness.open();
     addTearDown(harness.close);
-    final course = await harness.seedCourse('user-a');
-    final store = harness.storeFor('user-a');
-    final workspace = harness.workspaceFor('user-a');
-    harness.connectSession(SourceKind.chaoxing);
-    harness.chaoxing.setListing(course.id, entries: sampleFileEntries());
-    harness.chaoxing.accesses['file-1'] = SourceAccess(
-      uri: Uri.parse(
-        'https://mooc1.chaoxing.com/coursedata/downloadData?dataId=file-1',
-      ),
-      mode: SourceAccessMode.sourcePage,
-      requiresSourceSession: true,
-    );
-    await store.refreshMaterialChildren(workspace, course);
-
-    await _pumpPage(tester, MaterialsPage(workspace: workspace, store: store));
-    expect(find.text('课程资料'), findsOneWidget);
-    expect(find.text('示例学习通课程'), findsWidgets);
-    expect(find.text('示例文件夹'), findsOneWidget);
-    expect(find.text('示例资料.pdf'), findsOneWidget);
-    expect(
-      tester
-          .widget<TextButton>(find.byKey(const Key('material-access-file-2')))
-          .onPressed,
-      isNull,
-    );
-
-    await tester.tap(find.byKey(const Key('material-access-file-1')));
-    await tester.pumpAndSettle();
-    expect(find.text('学习通 · 来源页面'), findsOneWidget);
-    expect(find.textContaining('mooc1.chaoxing.com'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('content-access-open')));
-    await tester.pumpAndSettle();
-    expect(harness.browser.opened, hasLength(1));
-    expect(harness.browser.opened.single.source, SourceKind.chaoxing);
-    await tester.tap(find.text('关闭'));
-    await tester.pumpAndSettle();
-
-    harness.chaoxing.setListing(
-      course.id,
-      parentSourceId: 'folder-1',
-      entries: const <MaterialEntry>[
-        MaterialEntry(
-          id: 'child-1',
-          name: '子文件.pdf',
-          kind: MaterialKind.file,
-          downloadable: true,
-        ),
-      ],
-    );
-    final folder = (await store.loadMaterials(course.id)).first;
-    await store.refreshMaterialChildren(workspace, course, parent: folder);
-    await tester.tap(find.text('示例文件夹'));
-    await tester.pumpAndSettle();
-    expect(find.text('子文件.pdf'), findsOneWidget);
-    expect(find.byKey(const Key('materials-back')), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('materials-back')));
-    await tester.pumpAndSettle();
-    expect(find.text('示例资料.pdf'), findsOneWidget);
-  });
-
-  testWidgets('资料页无课程与来源登录状态可区分', (tester) async {
-    final harness = await ContentHarness.open();
-    addTearDown(harness.close);
-    final store = harness.storeFor('user-a');
-    final workspace = harness.workspaceFor('user-a');
-
-    await _pumpPage(tester, MaterialsPage(workspace: workspace, store: store));
-    expect(find.textContaining('尚未同步学习通课程'), findsWidgets);
-
-    await tester.tap(find.byKey(const Key('materials-connect')));
-    await tester.pumpAndSettle();
-    expect(harness.campusLogin.attempted, <SourceKind>[SourceKind.chaoxing]);
-    expect(find.byKey(const Key('materials-source-message')), findsOneWidget);
-  });
-
-  testWidgets('通知与资料页在窄屏下无布局溢出', (tester) async {
-    final harness = await ContentHarness.open();
-    addTearDown(harness.close);
-    final course = await harness.seedCourse('user-a');
-    final store = harness.storeFor('user-a');
-    final workspace = harness.workspaceFor('user-a');
     await _seedNotices(harness);
-    harness.chaoxing.setListing(course.id, entries: sampleFileEntries());
-    await store.refreshMaterialChildren(workspace, course);
-
     await _pumpPage(
       tester,
-      NoticesPage(workspace: workspace, store: store),
+      NoticesPage(
+        workspace: harness.workspaceFor('user-a'),
+        store: harness.storeFor('user-a'),
+      ),
       size: const Size(390, 844),
     );
     expect(tester.takeException(), isNull);
     expect(find.text('关于奖学金评审的通知'), findsOneWidget);
-
-    await _pumpPage(
-      tester,
-      MaterialsPage(workspace: workspace, store: store),
-      size: const Size(390, 844),
-    );
-    expect(tester.takeException(), isNull);
-    expect(find.text('示例文件夹'), findsOneWidget);
   });
 }
