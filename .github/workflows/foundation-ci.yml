@@ -174,7 +174,7 @@ jobs:
 
   foundation-required:
     name: Foundation required
-    if: always()
+    if: ${{ !cancelled() }}
     needs: [server, contracts, flutter, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
