@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/core/models/source.dart';
 import 'package:jlu_dela/core/storage/course_store.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/local_database_test_support.dart';
 
@@ -139,6 +140,57 @@ void main() {
     );
 
     expect(await store.list(), hasLength(2));
+  });
+
+  test('normalizes and validates remarks', () async {
+    final created = await store.upsert(course());
+
+    final trimmed = await store.updatePreferences(
+      created.id,
+      remark: '  高数笔记  ',
+    );
+    expect(trimmed.remark, '高数笔记');
+
+    await expectLater(
+      store.updatePreferences(created.id, remark: '   '),
+      throwsA(isA<ArgumentError>()),
+    );
+    await expectLater(
+      store.updatePreferences(created.id, remark: 'a' * 101),
+      throwsA(isA<ArgumentError>()),
+    );
+    expect((await store.byId(created.id))?.remark, '高数笔记');
+
+    final cleared = await store.updatePreferences(
+      created.id,
+      remark: '任意内容',
+      clearRemark: true,
+    );
+    expect(cleared.remark, isNull);
+  });
+
+  test('a failing complete snapshot rolls back all course writes', () async {
+    await database.database.execute('''
+CREATE TRIGGER reject_boom BEFORE INSERT ON course_offerings
+WHEN NEW.source_id = 'boom'
+BEGIN
+  SELECT RAISE(ABORT, 'boom');
+END
+''');
+
+    await expectLater(
+      store.applySnapshot(
+        source: SourceKind.jluIedu,
+        scope: '2026-fall',
+        complete: true,
+        courses: [
+          course(sourceId: 'good', name: '好课'),
+          course(sourceId: 'boom', name: '坏课'),
+        ],
+      ),
+      throwsA(isA<DatabaseException>()),
+    );
+    expect(await store.list(), isEmpty);
   });
 
   test('lists by source and retention', () async {

@@ -157,6 +157,94 @@ void main() {
     expect((await store.get(created.id))?.title, '合法');
   });
 
+  test(
+    'sorts exact and date-only todo by absolute time, not by kind',
+    () async {
+      final yesterdayExact = await store.create(
+        title: '昨天 18:00',
+        due: TodoDue.exact(DateTime.utc(2026, 11, 11, 10)),
+      );
+      final todayDateOnly = await store.create(
+        title: '今天全天',
+        due: const TodoDue.dateOnly(LocalDate(2026, 11, 12)),
+      );
+      final todayExact = await store.create(
+        title: '今天 18:00',
+        due: TodoDue.exact(DateTime.utc(2026, 11, 12, 10)),
+      );
+      final tomorrowDateOnly = await store.create(
+        title: '明天全天',
+        due: const TodoDue.dateOnly(LocalDate(2026, 11, 13)),
+      );
+      final undated = await store.create(title: '无日期');
+
+      final listed = await store.list();
+
+      expect(listed.map((todo) => todo.id), [
+        yesterdayExact.id,
+        todayDateOnly.id,
+        todayExact.id,
+        tomorrowDateOnly.id,
+        undated.id,
+      ]);
+    },
+  );
+
+  test('sorts todos on the same instant by title and id', () async {
+    final due = TodoDue.exact(DateTime.utc(2026, 11, 12, 10));
+    final second = await store.create(title: 'B 待办', due: due);
+    final first = await store.create(title: 'A 待办', due: due);
+
+    final listed = await store.list();
+
+    expect(listed.map((todo) => todo.id), [first.id, second.id]);
+  });
+
+  test('rejects inconsistent due fields before writing', () async {
+    final created = await store.create(title: '合法');
+    created
+      ..dueKind = TodoDueKind.none
+      ..dueDate = const LocalDate(2026, 11, 13);
+
+    await expectLater(
+      store.update(created),
+      throwsA(isA<TodoValidationException>()),
+    );
+    final stored = await store.get(created.id);
+    expect(stored?.dueKind, TodoDueKind.none);
+    expect(stored?.dueDate, isNull);
+    expect(stored?.revision, created.revision);
+
+    final exactWithoutTime = await store.create(title: '缺时刻');
+    exactWithoutTime.dueKind = TodoDueKind.exact;
+    await expectLater(
+      store.update(exactWithoutTime),
+      throwsA(isA<TodoValidationException>()),
+    );
+  });
+
+  test('cannot move another user todo into this store', () async {
+    final mine = await store.create(title: '甲的任务');
+    final otherStore = TodoStore(database, 'user-b', now: () => clock);
+    addTearDown(otherStore.dispose);
+    mine.title = '被篡改';
+
+    await expectLater(
+      otherStore.update(mine),
+      throwsA(isA<TodoValidationException>()),
+    );
+
+    final rows = await database.database.query(
+      'todos',
+      where: 'id = ?',
+      whereArgs: [mine.id],
+    );
+    expect(rows.single['user_id'], 'user-a');
+    expect(rows.single['title'], '甲的任务');
+    expect((await store.get(mine.id))?.title, '甲的任务');
+    expect(await otherStore.get(mine.id), isNull);
+  });
+
   test('notifies listeners only after a write succeeds', () async {
     var notifications = 0;
     store.addListener(() => notifications++);

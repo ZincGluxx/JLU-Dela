@@ -138,6 +138,27 @@ void main() {
     expect(failed.snapshot.lastSuccessAtUtc, DateTime.utc(2026, 11, 10));
   });
 
+  test('a persist failure propagates without recording success', () async {
+    final executor = SourceExecutor(
+      snapshots: snapshots,
+      now: () => DateTime.utc(2026, 11, 12, 10),
+    );
+
+    await expectLater(
+      executor.run<List<String>>(
+        source: SourceKind.jluIedu,
+        resource: 'courses',
+        fetch: () async => ['课程一'],
+        persist: (value, observedAt) async => throw StateError('本地写入失败'),
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    final snapshot = await snapshots.read(SourceKind.jluIedu, 'courses');
+    expect(snapshot.lastSuccessAtUtc, isNull);
+    expect(snapshot.lastAttemptAtUtc, isNull);
+  });
+
   test('network failures are retryable and timeouts map to their code', () {
     final timeout = sourceFailureOf(
       TimeoutException('late'),

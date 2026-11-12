@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/local_date.dart';
+import '../models/school_time.dart';
 import '../models/todo.dart';
 import 'local_database.dart';
 
@@ -42,9 +43,6 @@ class TodoStore extends ChangeNotifier {
   static const int maxTitleLength = 200;
   static const int maxNotesLength = 20000;
   static const _uuid = Uuid();
-  static const _orderBy =
-      "CASE due_kind WHEN 'exact' THEN 0 WHEN 'date_only' THEN 1 ELSE 2 END, "
-      'due_at_utc, due_date, created_at_utc';
 
   final Database _database;
   final String userId;
@@ -55,9 +53,8 @@ class TodoStore extends ChangeNotifier {
       'todos',
       where: includeCompleted ? 'user_id = ?' : 'user_id = ? AND completed = 0',
       whereArgs: [userId],
-      orderBy: _orderBy,
     );
-    return rows.map(_todoFromRow).toList();
+    return rows.map(_todoFromRow).toList()..sort(_compareTodos);
   }
 
   Future<Todo?> get(String id) async {
@@ -79,6 +76,7 @@ class TodoStore extends ChangeNotifier {
   }) async {
     final normalizedTitle = _validatedTitle(title);
     _validateNotes(notes);
+    _validateDue(due.kind, due.date, due.atUtc);
     final timestamp = _now().toUtc();
     final todo = Todo(
       id: _uuid.v4(),
@@ -102,12 +100,16 @@ class TodoStore extends ChangeNotifier {
   }
 
   Future<Todo> update(Todo todo) async {
+    if (todo.userId != userId) {
+      throw const TodoValidationException('不能更新其他用户的待办');
+    }
     final normalizedTitle = _validatedTitle(todo.title);
     _validateNotes(todo.notes);
+    _validateDue(todo.dueKind, todo.dueDate, todo.dueAtUtc);
     final timestamp = _now().toUtc();
     final updated = Todo(
       id: todo.id,
-      userId: todo.userId,
+      userId: userId,
       title: normalizedTitle,
       notes: todo.notes,
       dueKind: todo.dueKind,
@@ -185,6 +187,47 @@ class TodoStore extends ChangeNotifier {
     if (notes.runes.length > maxNotesLength) {
       throw const TodoValidationException('备注不能超过 20000 个字符');
     }
+  }
+
+  void _validateDue(TodoDueKind kind, LocalDate? date, DateTime? atUtc) {
+    final consistent = switch (kind) {
+      TodoDueKind.none => date == null && atUtc == null,
+      TodoDueKind.dateOnly => date != null && atUtc == null,
+      TodoDueKind.exact => date == null && atUtc != null,
+    };
+    if (!consistent) {
+      throw const TodoValidationException('截止时间与截止类型不一致');
+    }
+  }
+
+  int? _dueSortKey(Todo todo) {
+    return switch (todo.dueKind) {
+      TodoDueKind.exact => todo.dueAtUtc?.millisecondsSinceEpoch,
+      TodoDueKind.dateOnly =>
+        todo.dueDate == null
+            ? null
+            : schoolDayStartUtc(todo.dueDate!).millisecondsSinceEpoch,
+      TodoDueKind.none => null,
+    };
+  }
+
+  int _compareTodos(Todo left, Todo right) {
+    final leftKey = _dueSortKey(left);
+    final rightKey = _dueSortKey(right);
+    if (leftKey != rightKey) {
+      if (leftKey == null) {
+        return 1;
+      }
+      if (rightKey == null) {
+        return -1;
+      }
+      return leftKey.compareTo(rightKey);
+    }
+    final titleOrder = left.title.compareTo(right.title);
+    if (titleOrder != 0) {
+      return titleOrder;
+    }
+    return left.id.compareTo(right.id);
   }
 
   Future<Todo> _currentOrThrow(String id) async {

@@ -83,7 +83,11 @@ class CourseStore {
     if (clearRemark) {
       values['remark'] = null;
     } else if (remark != null) {
-      values['remark'] = remark;
+      final normalizedRemark = remark.trim();
+      if (normalizedRemark.isEmpty || normalizedRemark.runes.length > 100) {
+        throw ArgumentError.value(remark, 'remark', '课程备注需在 trim 后为 1–100 个字符');
+      }
+      values['remark'] = normalizedRemark;
     }
     if (retained != null) {
       values['retained'] = retained ? 1 : 0;
