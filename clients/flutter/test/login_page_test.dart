@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/app/theme.dart';
@@ -217,4 +219,44 @@ void main() {
     expect(find.byKey(const Key('activate-page')), findsOneWidget);
     expect(find.text('激活工作台账号'), findsOneWidget);
   });
+
+  testWidgets(
+    'a disposed page cannot sign in after the login request returns',
+    (tester) async {
+      final loginStarted = Completer<void>();
+      final releaseLogin = Completer<SessionCredentials>();
+      final authGateway = FakeAuthGateway(
+        onFetchMe: (_) async => testUser(displayName: '迟到的登录'),
+      );
+      final session = SessionController(
+        gateway: authGateway,
+        refreshTokenStore: MemoryRefreshTokenStore(),
+      );
+      addTearDown(session.dispose);
+      final accountGateway = FakeAccountGateway(
+        onLogin: (_, _) {
+          loginStarted.complete();
+          return releaseLogin.future;
+        },
+      );
+      await pumpLoginPage(tester, session, accountGateway);
+
+      await tester.enterText(find.byKey(const Key('login-field')), 'e2e.user');
+      await tester.enterText(
+        find.byKey(const Key('login-password-field')),
+        'E2e-Flow-Password-2026',
+      );
+      await tester.tap(find.byKey(const Key('login-submit')));
+      await tester.pump();
+      await loginStarted.future;
+
+      await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+      releaseLogin.complete(testCredentials());
+      await tester.pumpAndSettle();
+
+      expect(session.phase, isNot(SessionPhase.authenticated));
+      expect(session.currentUser, isNull);
+      expect(authGateway.fetchMeCount, 0);
+    },
+  );
 }

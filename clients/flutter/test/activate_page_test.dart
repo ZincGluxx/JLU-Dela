@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/app/theme.dart';
@@ -144,5 +146,51 @@ void main() {
     expect(fieldText(tester, 'activate-confirm-field'), isEmpty);
     expect(accountGateway.lastInviteToken, 'inv_test_token');
     expect(accountGateway.lastPassword, 'E2e-Flow-Password-2026');
+  });
+
+  testWidgets('a disposed page cannot sign in after the activation returns', (
+    tester,
+  ) async {
+    final activationStarted = Completer<void>();
+    final releaseActivation = Completer<SessionCredentials>();
+    final authGateway = FakeAuthGateway(
+      onFetchMe: (_) async => testUser(displayName: '迟到的激活'),
+    );
+    final session = SessionController(
+      gateway: authGateway,
+      refreshTokenStore: MemoryRefreshTokenStore(),
+    );
+    addTearDown(session.dispose);
+    final accountGateway = FakeAccountGateway(
+      onActivate: (_, _) {
+        activationStarted.complete();
+        return releaseActivation.future;
+      },
+    );
+    await pumpActivatePage(tester, session, accountGateway);
+
+    await tester.enterText(
+      find.byKey(const Key('activate-invite-field')),
+      'inv_test_token',
+    );
+    await tester.enterText(
+      find.byKey(const Key('activate-password-field')),
+      'E2e-Flow-Password-2026',
+    );
+    await tester.enterText(
+      find.byKey(const Key('activate-confirm-field')),
+      'E2e-Flow-Password-2026',
+    );
+    await tester.tap(find.byKey(const Key('activate-submit')));
+    await tester.pump();
+    await activationStarted.future;
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    releaseActivation.complete(testCredentials());
+    await tester.pumpAndSettle();
+
+    expect(session.phase, isNot(SessionPhase.authenticated));
+    expect(session.currentUser, isNull);
+    expect(authGateway.fetchMeCount, 0);
   });
 }

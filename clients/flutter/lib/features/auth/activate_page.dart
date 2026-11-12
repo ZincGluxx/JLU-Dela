@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../core/auth/account_gateway.dart';
 import '../../core/auth/session_controller.dart';
+import '../../core/auth/session_models.dart';
 import 'auth_failure_message.dart';
 
 class ActivatePage extends StatefulWidget {
@@ -29,9 +30,11 @@ class _ActivatePageState extends State<ActivatePage> {
 
   bool _submitting = false;
   String? _errorText;
+  int _operation = 0;
 
   @override
   void dispose() {
+    _operation++;
     _inviteController.clear();
     _passwordController.clear();
     _confirmController.clear();
@@ -51,6 +54,7 @@ class _ActivatePageState extends State<ActivatePage> {
       return;
     }
 
+    final operation = ++_operation;
     setState(() {
       _submitting = true;
       _errorText = null;
@@ -64,16 +68,25 @@ class _ActivatePageState extends State<ActivatePage> {
         inviteToken: inviteToken,
         password: password,
       );
-      await widget.session.signIn(credentials);
+      if (!mounted || operation != _operation) {
+        return;
+      }
+      final outcome = await widget.session.signIn(credentials);
+      if (!mounted || operation != _operation) {
+        return;
+      }
+      if (outcome != SignInOutcome.signedIn) {
+        return;
+      }
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || operation != _operation) {
         return;
       }
       _applyFailure(error);
       return;
     }
 
-    if (!mounted) {
+    if (!mounted || operation != _operation) {
       return;
     }
     _inviteController.clear();

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../core/auth/account_gateway.dart';
 import '../../core/auth/session_controller.dart';
+import '../../core/auth/session_models.dart';
 import 'activate_page.dart';
 import 'auth_failure_message.dart';
 
@@ -31,10 +32,12 @@ class _LoginPageState extends State<LoginPage> {
   bool _submitting = false;
   String? _errorText;
   int _retryAfterSeconds = 0;
+  int _operation = 0;
   Timer? _retryTimer;
 
   @override
   void dispose() {
+    _operation++;
     _retryTimer?.cancel();
     _passwordController.clear();
     _loginController.dispose();
@@ -51,6 +54,7 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
+    final operation = ++_operation;
     setState(() {
       _submitting = true;
       _errorText = null;
@@ -64,16 +68,25 @@ class _LoginPageState extends State<LoginPage> {
         login: login,
         password: password,
       );
-      await widget.session.signIn(credentials);
+      if (!mounted || operation != _operation) {
+        return;
+      }
+      final outcome = await widget.session.signIn(credentials);
+      if (!mounted || operation != _operation) {
+        return;
+      }
+      if (outcome != SignInOutcome.signedIn) {
+        return;
+      }
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || operation != _operation) {
         return;
       }
       _applyFailure(error);
       return;
     }
 
-    if (!mounted) {
+    if (!mounted || operation != _operation) {
       return;
     }
     _retryTimer?.cancel();
