@@ -1,26 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../core/api/diagnostics_service.dart';
-import '../features/planner/calendar_service.dart';
-import '../features/planner/planner_page.dart';
+import '../core/auth/account_gateway.dart';
+import '../core/auth/session_controller.dart';
+import '../core/auth/session_models.dart';
+import '../features/auth/login_page.dart';
 import '../features/settings/settings_page.dart';
 import 'app_shell.dart';
+import 'session_gate.dart';
 import 'theme.dart';
 
 class JluDelaApp extends StatelessWidget {
   const JluDelaApp({
     super.key,
     required this.diagnosticsService,
-    this.calendarService,
+    required this.session,
+    required this.accountGateway,
     this.pages = const <AppDestination, AppPageBuilder>{},
   });
 
   final DiagnosticsService diagnosticsService;
-
-  /// 学习日历的数据来源；未注入时日历页显示「尚未开放」。
-  final CalendarService? calendarService;
-
-  /// 外部覆盖页面的入口，同名目的地以外部传入的为准。
+  final SessionController session;
+  final AccountGateway accountGateway;
   final Map<AppDestination, AppPageBuilder> pages;
 
   @override
@@ -31,7 +32,8 @@ class JluDelaApp extends StatelessWidget {
       theme: AppTheme.light(),
       home: _WorkbenchPage(
         diagnosticsService: diagnosticsService,
-        calendarService: calendarService,
+        session: session,
+        accountGateway: accountGateway,
         pages: pages,
       ),
     );
@@ -41,12 +43,14 @@ class JluDelaApp extends StatelessWidget {
 class _WorkbenchPage extends StatefulWidget {
   const _WorkbenchPage({
     required this.diagnosticsService,
-    required this.calendarService,
+    required this.session,
+    required this.accountGateway,
     required this.pages,
   });
 
   final DiagnosticsService diagnosticsService;
-  final CalendarService? calendarService;
+  final SessionController session;
+  final AccountGateway accountGateway;
   final Map<AppDestination, AppPageBuilder> pages;
 
   @override
@@ -59,24 +63,44 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppShell(
-      destination: _destination,
-      glassEnabled: _glassEnabled,
-      pages: {
-        if (widget.calendarService case final calendarService?)
-          AppDestination.calendar: (context) =>
-              PlannerPage(service: calendarService),
-        AppDestination.settings: (context) => SettingsPage(
-          diagnosticsService: widget.diagnosticsService,
+    return ListenableBuilder(
+      listenable: widget.session,
+      builder: (context, child) {
+        final phase = widget.session.phase;
+        final keepContent =
+            phase == SessionPhase.authenticated ||
+            (phase == SessionPhase.unavailable &&
+                widget.session.currentUser != null);
+        return AppShell(
+          destination: _destination,
           glassEnabled: _glassEnabled,
-          onGlassEnabledChanged: (value) {
-            setState(() => _glassEnabled = value);
+          pages: {
+            AppDestination.settings: (context) => SettingsPage(
+              diagnosticsService: widget.diagnosticsService,
+              session: widget.session,
+              glassEnabled: _glassEnabled,
+              onGlassEnabledChanged: (value) {
+                setState(() => _glassEnabled = value);
+              },
+            ),
+            if (keepContent) ...widget.pages,
+            if (!keepContent)
+              for (final destination in AppDestination.values)
+                if (destination != AppDestination.settings)
+                  destination: (context) => phase == SessionPhase.signedOut
+                      ? LoginPage(
+                          session: widget.session,
+                          accountGateway: widget.accountGateway,
+                        )
+                      : SessionGate(
+                          phase: phase,
+                          onRetry: widget.session.retryRestore,
+                        ),
           },
-        ),
-        ...widget.pages,
-      },
-      onDestinationSelected: (destination) {
-        setState(() => _destination = destination);
+          onDestinationSelected: (destination) {
+            setState(() => _destination = destination);
+          },
+        );
       },
     );
   }

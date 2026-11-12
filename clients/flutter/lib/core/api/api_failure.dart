@@ -15,6 +15,7 @@ class ApiFailure implements Exception {
     this.requestId,
     this.statusCode,
     this.retryable = false,
+    this.retryAfter,
   });
 
   final ApiFailureKind kind;
@@ -23,6 +24,7 @@ class ApiFailure implements Exception {
   final String? requestId;
   final int? statusCode;
   final bool retryable;
+  final Duration? retryAfter;
 
   String get displayMessage {
     return switch (kind) {
@@ -78,7 +80,11 @@ ApiFailure mapApiException(ApiException error) {
   );
 }
 
-ApiFailure apiFailureFromErrorBody(int statusCode, String body) {
+ApiFailure apiFailureFromErrorBody(
+  int statusCode,
+  String body, {
+  Duration? retryAfter,
+}) {
   try {
     final decoded = jsonDecode(body);
     final response = ErrorResponse.fromJson(decoded);
@@ -91,6 +97,7 @@ ApiFailure apiFailureFromErrorBody(int statusCode, String body) {
         requestId: detail.requestId,
         statusCode: statusCode,
         retryable: detail.retryable,
+        retryAfter: retryAfter,
       );
     }
   } on FormatException {
@@ -104,5 +111,6 @@ ApiFailure apiFailureFromErrorBody(int statusCode, String body) {
     kind: ApiFailureKind.server,
     statusCode: statusCode,
     technicalMessage: trimmed.isEmpty ? 'HTTP $statusCode' : trimmed,
+    retryAfter: retryAfter,
   );
 }

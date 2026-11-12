@@ -25,7 +25,7 @@ class CalendarApi {
   /// Parameters:
   ///
   /// * [DateTime] from (required):
-  ///   Inclusive start day in Asia/Shanghai, written as a plain calendar day `YYYY-MM-DD`. The generated Dart client serialises `DateTime` query parameters as RFC 3339 instants, which this endpoint rejects with 422 `INVALID_FORMAT`; call the endpoint through `ApiClient.invokeAPI` with a formatted day, or fix the generator template before using `CalendarApi` directly. 
+  ///   Inclusive start day in Asia/Shanghai, written as YYYY-MM-DD.
   ///
   /// * [DateTime] to (required):
   ///   Exclusive end day in Asia/Shanghai, same wire format as `from`.
@@ -43,8 +43,8 @@ class CalendarApi {
     final headerParams = <String, String>{};
     final formParams = <String, String>{};
 
-      queryParams.addAll(_queryParams('', 'from', from));
-      queryParams.addAll(_queryParams('', 'to', to));
+      queryParams.addAll(_queryParams('', 'from', _dateFormatter.format(from)));
+      queryParams.addAll(_queryParams('', 'to', _dateFormatter.format(to)));
 
     if (xRequestId != null) {
       headerParams[r'X-Request-Id'] = parameterToString(xRequestId);
@@ -72,7 +72,7 @@ class CalendarApi {
   /// Parameters:
   ///
   /// * [DateTime] from (required):
-  ///   Inclusive start day in Asia/Shanghai, written as a plain calendar day `YYYY-MM-DD`. The generated Dart client serialises `DateTime` query parameters as RFC 3339 instants, which this endpoint rejects with 422 `INVALID_FORMAT`; call the endpoint through `ApiClient.invokeAPI` with a formatted day, or fix the generator template before using `CalendarApi` directly. 
+  ///   Inclusive start day in Asia/Shanghai, written as YYYY-MM-DD.
   ///
   /// * [DateTime] to (required):
   ///   Exclusive end day in Asia/Shanghai, same wire format as `from`.

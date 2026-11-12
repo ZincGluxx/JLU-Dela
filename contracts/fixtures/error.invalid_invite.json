@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "INVALID_INVITE",
+    "message": "The invitation is invalid, expired or already used.",
+    "request_id": "fixture-activation-request",
+    "retryable": false,
+    "fields": []
+  }
+}

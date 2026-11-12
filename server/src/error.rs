@@ -24,6 +24,9 @@ pub enum AppError {
     InvalidToken,
     TokenExpired,
     SessionRevoked,
+    InvalidInvite,
+    InvalidCredentials,
+    RateLimited { retry_after: u64 },
     Internal,
 }
 
@@ -82,13 +85,14 @@ impl IntoResponse for ApiErrorResponse {
 
 impl AppError {
     pub fn response(self, request_id: &str) -> Response {
-        let (status, code, message, retryable, fields) = match self {
+        let (status, code, message, retryable, fields, retry_after) = match self {
             Self::DatabaseUnavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "DATABASE_UNAVAILABLE",
                 "Database is unavailable.".to_owned(),
                 true,
                 Vec::new(),
+                None,
             ),
             Self::DatabaseSchemaMissing => (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -96,6 +100,7 @@ impl AppError {
                 "Database schema is not ready.".to_owned(),
                 true,
                 Vec::new(),
+                None,
             ),
             Self::NotFound => (
                 StatusCode::NOT_FOUND,
@@ -103,6 +108,7 @@ impl AppError {
                 "Route not found.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::MethodNotAllowed => (
                 StatusCode::METHOD_NOT_ALLOWED,
@@ -110,6 +116,7 @@ impl AppError {
                 "Method not allowed.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::PayloadTooLarge => (
                 StatusCode::PAYLOAD_TOO_LARGE,
@@ -117,6 +124,7 @@ impl AppError {
                 "Request body is too large.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::RequestTimeout => (
                 StatusCode::REQUEST_TIMEOUT,
@@ -124,6 +132,7 @@ impl AppError {
                 "Request timed out.".to_owned(),
                 true,
                 Vec::new(),
+                None,
             ),
             Self::UnsupportedMediaType => (
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -131,6 +140,7 @@ impl AppError {
                 "Content-Type must be application/json.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::InvalidBody => (
                 StatusCode::UNPROCESSABLE_ENTITY,
@@ -138,6 +148,7 @@ impl AppError {
                 "Request body is invalid or contains unknown fields.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::Validation(fields) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
@@ -145,6 +156,7 @@ impl AppError {
                 "Request validation failed.".to_owned(),
                 false,
                 fields,
+                None,
             ),
             Self::UnsupportedSource => (
                 StatusCode::UNPROCESSABLE_ENTITY,
@@ -152,6 +164,7 @@ impl AppError {
                 "No source adapter is registered for this source.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::UnsupportedResource => (
                 StatusCode::UNPROCESSABLE_ENTITY,
@@ -159,6 +172,7 @@ impl AppError {
                 "The source does not support this resource.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::SyncJobNotFound => (
                 StatusCode::NOT_FOUND,
@@ -166,6 +180,7 @@ impl AppError {
                 "Sync job not found.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::AuthRequired => (
                 StatusCode::UNAUTHORIZED,
@@ -173,6 +188,7 @@ impl AppError {
                 "Authentication required.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::InvalidToken => (
                 StatusCode::UNAUTHORIZED,
@@ -180,6 +196,7 @@ impl AppError {
                 "The access token is invalid or no longer current.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::TokenExpired => (
                 StatusCode::UNAUTHORIZED,
@@ -187,6 +204,7 @@ impl AppError {
                 "The access token has expired.".to_owned(),
                 false,
                 Vec::new(),
+                None,
             ),
             Self::SessionRevoked => (
                 StatusCode::UNAUTHORIZED,
@@ -194,6 +212,31 @@ impl AppError {
                 "The session has been revoked.".to_owned(),
                 false,
                 Vec::new(),
+                None,
+            ),
+            Self::InvalidInvite => (
+                StatusCode::UNAUTHORIZED,
+                "INVALID_INVITE",
+                "The invitation is invalid, expired or already used.".to_owned(),
+                false,
+                Vec::new(),
+                None,
+            ),
+            Self::InvalidCredentials => (
+                StatusCode::UNAUTHORIZED,
+                "INVALID_CREDENTIALS",
+                "The login or password is invalid.".to_owned(),
+                false,
+                Vec::new(),
+                None,
+            ),
+            Self::RateLimited { retry_after } => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "RATE_LIMITED",
+                "Too many login attempts. Try again later.".to_owned(),
+                true,
+                Vec::new(),
+                Some(retry_after),
             ),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -201,6 +244,7 @@ impl AppError {
                 "The service could not complete the request.".to_owned(),
                 true,
                 Vec::new(),
+                None,
             ),
         };
 
@@ -218,6 +262,11 @@ impl AppError {
             response
                 .headers_mut()
                 .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+        }
+        if let Some(seconds) = retry_after {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, HeaderValue::from(seconds));
         }
         response
     }
