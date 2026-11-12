@@ -132,7 +132,7 @@ pub async fn activate(
     }
 
     password::ensure_differs_from_login(password_value, &invite.login)?;
-    let password_hash = password::hash(password_value)?;
+    let password_hash = password::hash_async(password_value).await?;
     let user_id = Uuid::new_v4();
 
     sqlx::query(

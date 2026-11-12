@@ -76,3 +76,26 @@ pub fn verify(password: &str, encoded: &str) -> bool {
 pub fn verify_dummy(password: &str) {
     let _ = verify(password, DUMMY_PASSWORD_HASH);
 }
+
+pub async fn hash_async(password: &str) -> Result<String, AppError> {
+    let password = password.to_owned();
+    tokio::task::spawn_blocking(move || hash(&password))
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "password hashing task failed");
+            AppError::Internal
+        })?
+}
+
+pub async fn verify_async(password: &str, encoded: &str) -> bool {
+    let password = password.to_owned();
+    let encoded = encoded.to_owned();
+    tokio::task::spawn_blocking(move || verify(&password, &encoded))
+        .await
+        .unwrap_or(false)
+}
+
+pub async fn verify_dummy_async(password: &str) {
+    let password = password.to_owned();
+    let _ = tokio::task::spawn_blocking(move || verify_dummy(&password)).await;
+}

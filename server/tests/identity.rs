@@ -190,17 +190,34 @@ async fn concurrent_activation_of_one_invitation_succeeds_once() {
     let login = unique_login("concurrent");
     let token_value = create_invitation(&pool, &login, "并发激活").await;
     let app = router(&config, &pool);
-    let request = || {
-        post_json(
-            "/api/v1/auth/activate",
-            json!({ "invite_token": token_value, "password": PASSWORD }),
-        )
-    };
-
+    let first_app = app.clone();
+    let second_app = app.clone();
+    let first_token = token_value.clone();
+    let second_token = token_value.clone();
     let (first, second) = tokio::join!(
-        common::send(app.clone(), request()),
-        common::send(app.clone(), request())
+        tokio::spawn(async move {
+            common::send(
+                first_app,
+                post_json(
+                    "/api/v1/auth/activate",
+                    json!({ "invite_token": first_token, "password": PASSWORD }),
+                ),
+            )
+            .await
+        }),
+        tokio::spawn(async move {
+            common::send(
+                second_app,
+                post_json(
+                    "/api/v1/auth/activate",
+                    json!({ "invite_token": second_token, "password": PASSWORD }),
+                ),
+            )
+            .await
+        })
     );
+    let first = first.expect("first activation task completed");
+    let second = second.expect("second activation task completed");
 
     let mut statuses = [first.0, second.0];
     statuses.sort();

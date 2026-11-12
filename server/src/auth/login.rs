@@ -79,15 +79,17 @@ pub async fn authenticate(
             .map_err(store_error)?;
 
     let Some(user) = user else {
-        password::verify_dummy(password);
+        password::verify_dummy_async(password).await;
         record_failure(pool, &login_hash, now).await?;
         return Err(AppError::InvalidCredentials);
     };
 
     let verified = match user.password_hash.as_deref() {
-        Some(encoded) if user.disabled_at.is_none() => password::verify(password, encoded),
+        Some(encoded) if user.disabled_at.is_none() => {
+            password::verify_async(password, encoded).await
+        }
         _ => {
-            password::verify_dummy(password);
+            password::verify_dummy_async(password).await;
             false
         }
     };
