@@ -117,6 +117,35 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  test(
+    'historical load failure keeps current official teaching periods',
+    () async {
+      final raw = File(
+        'test/fixtures/official_calendar_2026_2027.json',
+      ).readAsStringSync();
+      final service = AcademicCalendarService(
+        apiBaseUri: Uri.parse('https://example.test'),
+        httpClient: MockClient((request) async {
+          if (request.url.queryParameters['academic_year'] == '2025-2026') {
+            throw http.ClientException('historical year unavailable');
+          }
+          return http.Response(
+            raw,
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+        cache: _MemoryCache(),
+      );
+      addTearDown(service.dispose);
+      await service.load();
+      await service.ensureLoaded('2025-2026');
+      expect(service.snapshotForYear('2025-2026').error, isNotNull);
+      expect(effectiveTeachingPeriods([], service), hasLength(12));
+      expect(service.calendarOn(LocalDate(2026, 11, 12)), isNotNull);
+    },
+  );
+
   for (final width in [390.0, 1280.0]) {
     testWidgets('official calendar details and twelve periods $width', (
       tester,

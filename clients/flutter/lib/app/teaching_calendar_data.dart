@@ -8,8 +8,11 @@ List<TeachingPeriod> effectiveTeachingPeriods(
   AcademicCalendarService? service,
 ) {
   if (personal.isNotEmpty) return personal;
+  final official = service
+      ?.snapshotForYear(AcademicCalendarService.currentAcademicYear)
+      .calendar;
   return [
-    for (final period in service?.currentCalendar?.periods ?? [])
+    for (final period in official?.periods ?? [])
       TeachingPeriod(
         period: period.number,
         campus: '',
