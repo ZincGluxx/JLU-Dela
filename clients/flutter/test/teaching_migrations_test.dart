@@ -1,14 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jlu_dela/app/local_migrations.dart';
 import 'package:jlu_dela/core/storage/core_migrations.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
+import 'package:jlu_dela/features/teaching/teaching_migrations.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/local_database_test_support.dart';
 
+const List<LocalMigration> teachingTestMigrations = [
+  ...coreMigrations,
+  ...teachingMigrations,
+];
+
 void main() {
   test('an empty database creates the teaching schema at version 6', () async {
-    final database = await openTestDatabase();
+    final database = await openTestDatabase(migrations: teachingTestMigrations);
     addTearDown(database.close);
 
     expect(database.schemaVersion, 6);
@@ -56,7 +61,10 @@ void main() {
     });
     await first.close();
 
-    final upgraded = await openTempFileDatabase(path);
+    final upgraded = await openTempFileDatabase(
+      path,
+      migrations: teachingTestMigrations,
+    );
     addTearDown(upgraded.close);
 
     expect(upgraded.schemaVersion, 6);
@@ -69,7 +77,7 @@ void main() {
   });
 
   test('teaching rows cascade with their semester and course', () async {
-    final database = await openTestDatabase();
+    final database = await openTestDatabase(migrations: teachingTestMigrations);
     addTearDown(database.close);
     final db = database.database;
     await db.insert('course_offerings', <String, Object?>{
@@ -157,12 +165,15 @@ void main() {
     await expectLater(
       openTempFileDatabase(
         path,
-        migrations: const <LocalMigration>[...appLocalMigrations, failing],
+        migrations: const <LocalMigration>[...teachingTestMigrations, failing],
       ),
       throwsA(isA<DatabaseException>()),
     );
 
-    final reopened = await openTempFileDatabase(path);
+    final reopened = await openTempFileDatabase(
+      path,
+      migrations: teachingTestMigrations,
+    );
     addTearDown(reopened.close);
     expect(reopened.schemaVersion, 6);
     final blocked = await reopened.database.rawQuery(
