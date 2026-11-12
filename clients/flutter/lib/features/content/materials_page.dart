@@ -206,6 +206,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
     });
     try {
       final result = await widget.workspace.campusLogin.connect(
+        context,
         SourceKind.chaoxing,
       );
       if (!mounted) {
@@ -287,6 +288,13 @@ class _MaterialsPageState extends State<MaterialsPage> {
         context,
         access: access,
         sourceLabel: '学习通',
+        connected: _hasChaoxingSession,
+        onLogin: _connectSource,
+        onOpen: (dialogContext) => widget.workspace.browser.openPage(
+          dialogContext,
+          source: SourceKind.chaoxing,
+          uri: access.uri,
+        ),
       );
     } on ContentAccessException catch (error) {
       if (mounted) {

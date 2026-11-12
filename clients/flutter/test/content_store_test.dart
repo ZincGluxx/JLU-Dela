@@ -266,7 +266,7 @@ void main() {
       notice.id,
       'download:test',
     );
-    expect(direct.mode, ContentAccessMode.sourcePage);
+    expect(direct.mode, SourceAccessMode.sourcePage);
     expect(
       direct.uri.toString(),
       'https://oa.jlu.edu.cn/defaultroot/rd/download/attachdownload.jsp'
@@ -311,13 +311,13 @@ void main() {
     );
   });
 
-  test('资料目录按课程与父目录缓存，空结果与部分读取都不删除旧记录', () async {
+  test('资料目录按课程与父目录缓存，分页合并且完整刷新才清理', () async {
     final harness = await ContentHarness.open();
     addTearDown(harness.close);
     final course = await harness.seedCourse('user-a');
     final store = harness.storeFor('user-a');
     final workspace = harness.workspaceFor('user-a');
-    harness.chaoxing.listings['course-1'] = sampleFileEntries();
+    harness.chaoxing.setListing(course.id, entries: sampleFileEntries());
 
     final refreshed = await store.refreshMaterialChildren(workspace, course);
     expect(refreshed, isA<SourceSuccess<MaterialRefreshSummary>>());
@@ -334,42 +334,115 @@ void main() {
     expect(root[1].bytes, 12288);
     expect(root[1].downloadable, isTrue);
     expect(root[2].downloadable, isFalse);
+    expect(harness.chaoxing.listed, <FakeMaterialRequest>[
+      (courseOfferingId: course.id, parentSourceId: null, page: 1),
+    ]);
 
     final folder = root.first;
-    harness.chaoxing.listings['folder-1'] = <MaterialEntry>[
-      const MaterialEntry(
-        id: 'child-1',
-        name: '子文件.pdf',
-        kind: MaterialKind.file,
-        bytes: 2048,
-        downloadable: true,
-      ),
-    ];
+    harness.chaoxing.setListing(
+      course.id,
+      parentSourceId: 'folder-1',
+      entries: const <MaterialEntry>[
+        MaterialEntry(
+          id: 'child-1',
+          name: '子文件一.pdf',
+          kind: MaterialKind.file,
+          bytes: 2048,
+          downloadable: true,
+        ),
+      ],
+    );
     expect(
       await store.refreshMaterialChildren(workspace, course, parent: folder),
       isA<SourceSuccess<MaterialRefreshSummary>>(),
     );
     expect(
       (await store.loadMaterials(course.id, parentId: folder.id)).single.name,
-      '子文件.pdf',
+      '子文件一.pdf',
     );
 
-    harness.chaoxing.listings['folder-1'] = const <MaterialEntry>[];
+    harness.chaoxing.setListing(
+      course.id,
+      parentSourceId: 'folder-1',
+      entries: const <MaterialEntry>[
+        MaterialEntry(
+          id: 'child-2',
+          name: '子文件二.pdf',
+          kind: MaterialKind.file,
+          downloadable: false,
+        ),
+      ],
+      totalPages: 2,
+      page: 1,
+    );
+    harness.chaoxing.setListing(
+      course.id,
+      parentSourceId: 'folder-1',
+      entries: const <MaterialEntry>[
+        MaterialEntry(
+          id: 'child-3',
+          name: '子文件三.pdf',
+          kind: MaterialKind.file,
+          downloadable: true,
+        ),
+      ],
+      totalPages: 2,
+      page: 2,
+    );
     expect(
       await store.refreshMaterialChildren(workspace, course, parent: folder),
       isA<SourceSuccess<MaterialRefreshSummary>>(),
     );
-    final afterEmpty = await store.loadMaterials(
+    final pagedChildren = await store.loadMaterials(
       course.id,
       parentId: folder.id,
     );
-    expect(afterEmpty, hasLength(1));
-    expect(harness.chaoxing.listed, <String>[
-      'course-1',
-      'folder-1',
-      'folder-1',
-    ]);
+    expect(
+      pagedChildren.map((material) => material.sourceRef.sourceId),
+      <String>['child-2', 'child-3'],
+    );
+
+    harness.chaoxing.setListing(
+      course.id,
+      entries: const <MaterialEntry>[
+        MaterialEntry(
+          id: 'file-1',
+          name: '仅剩的资料.pdf',
+          kind: MaterialKind.file,
+          downloadable: true,
+        ),
+      ],
+    );
+    expect(
+      await store.refreshMaterialChildren(workspace, course),
+      isA<SourceSuccess<MaterialRefreshSummary>>(),
+    );
     expect(await store.loadMaterials(course.id), hasLength(5));
+    expect(
+      await store.loadMaterials(course.id, parentId: folder.id),
+      hasLength(2),
+    );
+
+    harness.chaoxing.setListing(
+      course.id,
+      entries: const <MaterialEntry>[
+        MaterialEntry(
+          id: 'file-1',
+          name: '仅剩的资料.pdf',
+          kind: MaterialKind.file,
+          downloadable: true,
+        ),
+      ],
+      totalPages: 1,
+    );
+    expect(
+      await store.refreshMaterialChildren(workspace, course),
+      isA<SourceSuccess<MaterialRefreshSummary>>(),
+    );
+    final locked = await store.loadMaterials(course.id);
+    expect(locked, hasLength(1));
+    expect(locked.single.sourceRef.sourceId, 'file-1');
+    expect(await store.loadMaterials(course.id, parentId: folder.id), isEmpty);
   });
 
   test('资料刷新失败保留旧缓存，来源会话错误可见', () async {
@@ -378,10 +451,10 @@ void main() {
     final course = await harness.seedCourse('user-a');
     final store = harness.storeFor('user-a');
     final workspace = harness.workspaceFor('user-a');
-    harness.chaoxing.listings['course-1'] = sampleFileEntries();
+    harness.chaoxing.setListing(course.id, entries: sampleFileEntries());
     await store.refreshMaterialChildren(workspace, course);
 
-    harness.chaoxing.listings.remove('course-1');
+    harness.chaoxing.removeListing(course.id);
     final failed = await store.refreshMaterialChildren(workspace, course);
     expect(failed, isA<SourceFailed<MaterialRefreshSummary>>());
     final failure = failed as SourceFailed<MaterialRefreshSummary>;
@@ -396,7 +469,7 @@ void main() {
     final course = await harness.seedCourse('user-a');
     final store = harness.storeFor('user-a');
     final workspace = harness.workspaceFor('user-a');
-    harness.chaoxing.listings['course-1'] = sampleFileEntries();
+    harness.chaoxing.setListing(course.id, entries: sampleFileEntries());
     await store.refreshMaterialChildren(workspace, course);
     final materials = await store.loadMaterials(course.id);
     final folder = materials[0];
@@ -408,23 +481,31 @@ void main() {
       uri: Uri.parse(
         'https://mooc1.chaoxing.com/coursedata/downloadData?dataId=file-1',
       ),
+      mode: SourceAccessMode.sourcePage,
+      requiresSourceSession: true,
+      filename: '示例资料.pdf',
     );
     harness.chaoxing.accesses['file-signed'] = SourceAccess(
       uri: Uri.parse('https://mooc1.chaoxing.com/coursedata/signedData'),
+      mode: SourceAccessMode.signedUrl,
+      requiresSourceSession: false,
       expiresAtUtc: DateTime.utc(2026, 11, 8, 5),
     );
     harness.chaoxing.accesses['file-evil'] = SourceAccess(
       uri: Uri.parse('https://evil.example/download'),
+      mode: SourceAccessMode.sourcePage,
+      requiresSourceSession: true,
     );
 
     final access = await store.accessMaterial(workspace, file.id);
-    expect(access.mode, ContentAccessMode.sourcePage);
+    expect(access.mode, SourceAccessMode.sourcePage);
     expect(access.filename, '示例资料.pdf');
     expect(access.requiresSourceSession, isTrue);
     expect(access.uri.host, 'mooc1.chaoxing.com');
+    expect(harness.chaoxing.accessed, <String>['file-1']);
 
     final signedAccess = await store.accessMaterial(workspace, signed.id);
-    expect(signedAccess.mode, ContentAccessMode.signedUrl);
+    expect(signedAccess.mode, SourceAccessMode.signedUrl);
     expect(signedAccess.requiresSourceSession, isFalse);
     expect(signedAccess.expiresAtUtc, DateTime.utc(2026, 11, 8, 5));
 
@@ -465,7 +546,7 @@ void main() {
         ),
       );
     };
-    harness.chaoxing.listings['course-1'] = sampleFileEntries();
+    harness.chaoxing.setListing(courseA.id, entries: sampleFileEntries());
 
     await storeA.refreshNotices(workspaceA);
     final noticeA = (await storeA.listNotices()).single;

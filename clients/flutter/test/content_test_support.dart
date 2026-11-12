@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:jlu_dela/app/local_migrations.dart';
 import 'package:jlu_dela/core/models/assignment.dart';
@@ -9,12 +10,14 @@ import 'package:jlu_dela/core/models/source.dart';
 import 'package:jlu_dela/core/source/campus_login.dart';
 import 'package:jlu_dela/core/source/chaoxing_access.dart';
 import 'package:jlu_dela/core/source/source.dart';
+import 'package:jlu_dela/core/source/source_context.dart';
+import 'package:jlu_dela/core/source/source_portal.dart';
 import 'package:jlu_dela/core/source/source_session.dart';
 import 'package:jlu_dela/core/storage/course_store.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
 import 'package:jlu_dela/core/storage/local_draft_store.dart';
-import 'package:jlu_dela/core/storage/queries.dart';
 import 'package:jlu_dela/core/storage/local_workspace.dart';
+import 'package:jlu_dela/core/storage/queries.dart';
 import 'package:jlu_dela/core/storage/source_snapshot_store.dart';
 import 'package:jlu_dela/core/storage/todo_store.dart';
 import 'package:jlu_dela/features/content/content_store.dart';
@@ -38,17 +41,79 @@ class FakeSourceHttpClient implements SourceHttpClient {
   }
 }
 
+typedef FakeMaterialRequest = ({
+  String courseOfferingId,
+  String? parentSourceId,
+  int page,
+});
+
 class FakeChaoxingAccess implements ChaoxingAccess {
   final Map<String, List<MaterialEntry>> listings =
       <String, List<MaterialEntry>>{};
+  final Map<String, int?> pageCounts = <String, int?>{};
+  final List<FakeMaterialRequest> listed = <FakeMaterialRequest>[];
   final Map<String, SourceAccess> accesses = <String, SourceAccess>{};
-  final List<String> listed = <String>[];
   final List<String> accessed = <String>[];
 
+  String _key(String courseOfferingId, String? parentSourceId, int page) {
+    return '$courseOfferingId:${parentSourceId ?? ''}:$page';
+  }
+
+  void setListing(
+    String courseOfferingId, {
+    String? parentSourceId,
+    required List<MaterialEntry> entries,
+    int? totalPages,
+    int page = 1,
+  }) {
+    final key = _key(courseOfferingId, parentSourceId, page);
+    listings[key] = entries;
+    pageCounts[key] = totalPages;
+  }
+
+  void removeListing(String courseOfferingId, {String? parentSourceId}) {
+    final key = _key(courseOfferingId, parentSourceId, 1);
+    listings.remove(key);
+    pageCounts.remove(key);
+  }
+
   @override
-  Future<List<MaterialEntry>> listMaterialChildren(String materialId) async {
-    listed.add(materialId);
-    final value = listings[materialId];
+  Future<MaterialChildrenPage> listMaterialChildren({
+    required String courseOfferingId,
+    String? parentSourceId,
+    int page = 1,
+  }) async {
+    listed.add((
+      courseOfferingId: courseOfferingId,
+      parentSourceId: parentSourceId,
+      page: page,
+    ));
+    final key = _key(courseOfferingId, parentSourceId, page);
+    final entries = listings[key];
+    if (entries == null) {
+      throw const SourceException(
+        SourceFailure(
+          code: SourceErrorCodes.sourceAuthRequired,
+          message: '学习通需要重新登录',
+          source: SourceKind.chaoxing,
+        ),
+      );
+    }
+    return MaterialChildrenPage(
+      entries: entries,
+      page: page,
+      totalPages: pageCounts[key],
+      observedAt: DateTime.utc(2026, 11, 8, 4),
+    );
+  }
+
+  @override
+  Future<SourceAccess> accessMaterial({
+    required String courseOfferingId,
+    required String sourceId,
+  }) async {
+    accessed.add(sourceId);
+    final value = accesses[sourceId];
     if (value == null) {
       throw const SourceException(
         SourceFailure(
@@ -62,23 +127,7 @@ class FakeChaoxingAccess implements ChaoxingAccess {
   }
 
   @override
-  Future<SourceAccess> accessMaterial(String materialId) async {
-    accessed.add(materialId);
-    final value = accesses[materialId];
-    if (value == null) {
-      throw const SourceException(
-        SourceFailure(
-          code: SourceErrorCodes.sourceAuthRequired,
-          message: '学习通需要重新登录',
-          source: SourceKind.chaoxing,
-        ),
-      );
-    }
-    return value;
-  }
-
-  @override
-  Future<SourceAccess> openAssignment(String assignmentId) async {
+  Future<SourceAccess> openAssignment({required String assignmentId}) async {
     throw UnimplementedError();
   }
 }
@@ -91,9 +140,29 @@ class FakeCampusLogin implements CampusLogin {
   final List<SourceKind> attempted = <SourceKind>[];
 
   @override
-  Future<CampusLoginResult> connect(SourceKind source) async {
+  Future<CampusLoginResult> connect(
+    BuildContext context,
+    SourceKind source,
+  ) async {
     attempted.add(source);
     return CampusLoginResult(connected: connected, message: message);
+  }
+}
+
+class FakeSourcePageOpener implements SourcePageOpener {
+  final List<({SourceKind source, Uri uri})> opened =
+      <({SourceKind source, Uri uri})>[];
+  Object? error;
+
+  @override
+  Future<void> openPage(
+    BuildContext context, {
+    required SourceKind source,
+    required Uri uri,
+  }) async {
+    opened.add((source: source, uri: uri));
+    final failure = error;
+    if (failure != null) throw failure;
   }
 }
 
@@ -123,6 +192,7 @@ class ContentHarness {
     required this.chaoxing,
     required this.sessions,
     required this.campusLogin,
+    required this.browser,
     required this.now,
   });
 
@@ -139,6 +209,7 @@ class ContentHarness {
       chaoxing: FakeChaoxingAccess(),
       sessions: sessions ?? SourceSessionRegistry(),
       campusLogin: FakeCampusLogin(),
+      browser: FakeSourcePageOpener(),
       now: now ?? () => DateTime.utc(2026, 11, 8, 4),
     );
   }
@@ -148,13 +219,29 @@ class ContentHarness {
   final FakeChaoxingAccess chaoxing;
   final SourceSessionRegistry sessions;
   final FakeCampusLogin campusLogin;
+  final FakeSourcePageOpener browser;
   final DateTime Function() now;
+
+  void connectSession(SourceKind source) {
+    sessions.save(sourceAuthGroup(source), <SourceCookie>[
+      SourceCookie(
+        name: 'session',
+        value: 'sample',
+        domain: source == SourceKind.chaoxing ? 'chaoxing.com' : 'jlu.edu.cn',
+        secure: true,
+        httpOnly: true,
+      ),
+    ]);
+  }
 
   Future<void> close() => database.close();
 
-  ContentStore storeFor(String userId) => ContentStore(database, userId);
+  ContentStore storeFor(String userId) {
+    return ContentStore(database, userId, source: _sourceContext());
+  }
 
   LocalWorkspace workspaceFor(String userId) {
+    final source = _sourceContext();
     final snapshots = SourceSnapshotStore(database, userId);
     return LocalWorkspace(
       userId: userId,
@@ -170,6 +257,17 @@ class ContentHarness {
       sessions: sessions,
       http: http,
       campusLogin: campusLogin,
+      browser: browser,
+      source: source,
+    );
+  }
+
+  SourceContext _sourceContext() {
+    return SourceContext(
+      sessions: sessions,
+      http: http,
+      campusLogin: campusLogin,
+      browser: browser,
     );
   }
 
@@ -249,24 +347,6 @@ String noticeDetailPage({
   return '<html><body><div class="content_t">$title</div>'
       '<div class="content_time">$metadata</div>'
       '<div class="content_font">$body</div>$attachments</body></html>';
-}
-
-String materialRow({
-  required String id,
-  String type = 'pdf',
-  required String name,
-  String size = '',
-  bool downloadable = false,
-  String extra = '',
-}) {
-  return '<ul class="dataBody_td" id="$id" type="$type" dataname="$name" '
-      '${downloadable ? 'isdown="1"' : ''} $extra>'
-      '${size.isEmpty ? '' : '<li class="dataBody_size_stu">$size</li>'}</ul>';
-}
-
-String folderRow({required String id, required String name}) {
-  return '<ul class="dataBody_td" id="$id" type="afolder" '
-      'dataname="$name"></ul>';
 }
 
 List<MaterialEntry> sampleFileEntries() {

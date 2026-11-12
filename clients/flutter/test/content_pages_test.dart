@@ -101,6 +101,7 @@ void main() {
     };
     final store = harness.storeFor('user-a');
     final workspace = harness.workspaceFor('user-a');
+    harness.connectSession(SourceKind.jluOa);
 
     await _pumpPage(tester, NoticesPage(workspace: workspace, store: store));
     await tester.tap(find.byKey(const Key('notice-1001')));
@@ -118,6 +119,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('电子校务 · 来源页面'), findsOneWidget);
     expect(find.textContaining('attachdownload.jsp'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('content-access-open')));
+    await tester.pumpAndSettle();
+    expect(harness.browser.opened, hasLength(1));
+    expect(harness.browser.opened.single.source, SourceKind.jluOa);
+    expect(
+      harness.browser.opened.single.uri.toString(),
+      contains('attachdownload.jsp'),
+    );
 
     await tester.tap(find.text('关闭'));
     await tester.pumpAndSettle();
@@ -165,11 +175,14 @@ void main() {
     final course = await harness.seedCourse('user-a');
     final store = harness.storeFor('user-a');
     final workspace = harness.workspaceFor('user-a');
-    harness.chaoxing.listings['course-1'] = sampleFileEntries();
+    harness.connectSession(SourceKind.chaoxing);
+    harness.chaoxing.setListing(course.id, entries: sampleFileEntries());
     harness.chaoxing.accesses['file-1'] = SourceAccess(
       uri: Uri.parse(
         'https://mooc1.chaoxing.com/coursedata/downloadData?dataId=file-1',
       ),
+      mode: SourceAccessMode.sourcePage,
+      requiresSourceSession: true,
     );
     await store.refreshMaterialChildren(workspace, course);
 
@@ -189,17 +202,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('学习通 · 来源页面'), findsOneWidget);
     expect(find.textContaining('mooc1.chaoxing.com'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('content-access-open')));
+    await tester.pumpAndSettle();
+    expect(harness.browser.opened, hasLength(1));
+    expect(harness.browser.opened.single.source, SourceKind.chaoxing);
     await tester.tap(find.text('关闭'));
     await tester.pumpAndSettle();
 
-    harness.chaoxing.listings['folder-1'] = <MaterialEntry>[
-      const MaterialEntry(
-        id: 'child-1',
-        name: '子文件.pdf',
-        kind: MaterialKind.file,
-        downloadable: true,
-      ),
-    ];
+    harness.chaoxing.setListing(
+      course.id,
+      parentSourceId: 'folder-1',
+      entries: const <MaterialEntry>[
+        MaterialEntry(
+          id: 'child-1',
+          name: '子文件.pdf',
+          kind: MaterialKind.file,
+          downloadable: true,
+        ),
+      ],
+    );
     final folder = (await store.loadMaterials(course.id)).first;
     await store.refreshMaterialChildren(workspace, course, parent: folder);
     await tester.tap(find.text('示例文件夹'));
@@ -234,7 +255,7 @@ void main() {
     final store = harness.storeFor('user-a');
     final workspace = harness.workspaceFor('user-a');
     await _seedNotices(harness);
-    harness.chaoxing.listings['course-1'] = sampleFileEntries();
+    harness.chaoxing.setListing(course.id, entries: sampleFileEntries());
     await store.refreshMaterialChildren(workspace, course);
 
     await _pumpPage(

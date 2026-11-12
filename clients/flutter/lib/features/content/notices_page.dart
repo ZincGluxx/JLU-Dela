@@ -157,6 +157,7 @@ class _NoticesPageState extends State<NoticesPage> {
     });
     try {
       final result = await widget.workspace.campusLogin.connect(
+        context,
         SourceKind.jluOa,
       );
       if (!mounted) {
@@ -239,6 +240,13 @@ class _NoticesPageState extends State<NoticesPage> {
         context,
         access: access,
         sourceLabel: '电子校务',
+        connected: _hasCampusSession,
+        onLogin: _connectSource,
+        onOpen: (dialogContext) => widget.workspace.browser.openPage(
+          dialogContext,
+          source: SourceKind.jluOa,
+          uri: access.uri,
+        ),
       );
     } on ContentAccessException catch (error) {
       if (mounted) {

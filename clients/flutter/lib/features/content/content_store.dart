@@ -23,25 +23,8 @@ const _noticeResource = 'notices';
 const _noticeDetailResource = 'notice_detail';
 const _materialResource = 'materials';
 const _maxNoticeRefreshPages = 20;
+const _maxMaterialRefreshPages = 20;
 const _noticePageSizeHint = 500;
-
-enum ContentAccessMode { signedUrl, sourcePage }
-
-class ContentFileAccess {
-  const ContentFileAccess({
-    required this.mode,
-    required this.uri,
-    required this.filename,
-    required this.requiresSourceSession,
-    this.expiresAtUtc,
-  });
-
-  final ContentAccessMode mode;
-  final Uri uri;
-  final String filename;
-  final bool requiresSourceSession;
-  final DateTime? expiresAtUtc;
-}
 
 class ContentAccessException implements Exception {
   const ContentAccessException(this.message);
@@ -297,7 +280,7 @@ class ContentStore {
     );
   }
 
-  Future<ContentFileAccess> accessNoticeAttachment(
+  Future<SourceAccess> accessNoticeAttachment(
     LocalWorkspace workspace,
     String noticeId,
     String attachmentId,
@@ -339,8 +322,8 @@ class ContentStore {
     } else {
       throw const ContentAccessException('附件缺少来源入口');
     }
-    return ContentFileAccess(
-      mode: ContentAccessMode.sourcePage,
+    return SourceAccess(
+      mode: SourceAccessMode.sourcePage,
       uri: uri,
       filename: attachment['name'] as String,
       requiresSourceSession: true,
@@ -386,29 +369,29 @@ class ContentStore {
       snapshots: workspace.sources,
       now: workspace.now,
     );
-    final result = await executor.run<List<MaterialEntry>>(
+    final result = await executor.run<_MaterialFetch>(
       source: SourceKind.chaoxing,
       resource: _materialResource,
       scopeKey: _materialScopeKey(course.id, parent?.id),
-      fetch: () => _listMaterialEntries(workspace, course, parent),
-      persist: (entries, observedAt) =>
-          _persistMaterials(course, parent, entries, observedAt),
+      fetch: () => _fetchMaterialPages(workspace, course, parent),
+      persist: (fetch, observedAt) =>
+          _persistMaterials(course, parent, fetch, observedAt),
     );
-    if (result is SourceFailed<List<MaterialEntry>>) {
+    if (result is SourceFailed<_MaterialFetch>) {
       return SourceFailed<MaterialRefreshSummary>(
         failure: result.failure,
         snapshot: result.snapshot,
       );
     }
-    final success = result as SourceSuccess<List<MaterialEntry>>;
+    final success = result as SourceSuccess<_MaterialFetch>;
     return SourceSuccess<MaterialRefreshSummary>(
-      value: MaterialRefreshSummary(storedCount: success.value.length),
+      value: MaterialRefreshSummary(storedCount: success.value.entries.length),
       observedAt: success.observedAt,
       snapshot: success.snapshot,
     );
   }
 
-  Future<ContentFileAccess> accessMaterial(
+  Future<SourceAccess> accessMaterial(
     LocalWorkspace workspace,
     String materialId,
   ) async {
@@ -432,20 +415,16 @@ class ContentStore {
     if (course == null || course.sourceRef.source != SourceKind.chaoxing) {
       throw const ContentAccessException('资料所属课程不在当前用户的学习通课程中');
     }
-    final access = await _accessMaterialSource(workspace, course, material);
-    final mode = access.expiresAtUtc == null
-        ? ContentAccessMode.sourcePage
-        : ContentAccessMode.signedUrl;
-    if (mode == ContentAccessMode.sourcePage) {
-      _ensureChaoxingUri(access.uri);
-    } else {
-      _ensureChaoxingUri(access.uri);
-    }
-    return ContentFileAccess(
-      mode: mode,
+    final access = await workspace.chaoxing.accessMaterial(
+      courseOfferingId: course.id,
+      sourceId: material.sourceRef.sourceId,
+    );
+    _ensureChaoxingUri(access.uri);
+    return SourceAccess(
+      mode: access.mode,
       uri: access.uri,
-      filename: material.name,
-      requiresSourceSession: mode == ContentAccessMode.sourcePage,
+      filename: access.filename ?? material.name,
+      requiresSourceSession: access.requiresSourceSession,
       expiresAtUtc: access.expiresAtUtc,
     );
   }
@@ -614,7 +593,11 @@ class ContentStore {
     final response = await workspace.http.send(
       SourceRequest(uri: Uri.parse(url)),
     );
-    if (response.statusCode == 401 || response.statusCode == 403) {
+    final finalUri = response.finalUri;
+    final leftSource = finalUri != null && finalUri.host != 'oa.jlu.edu.cn';
+    if (leftSource ||
+        response.statusCode == 401 ||
+        response.statusCode == 403) {
       throw const SourceException(
         SourceFailure(
           code: SourceErrorCodes.sourceAuthRequired,
@@ -815,36 +798,52 @@ ON CONFLICT(user_id, source_scope) DO UPDATE SET
     }
   }
 
-  Future<List<MaterialEntry>> _listMaterialEntries(
+  Future<_MaterialFetch> _fetchMaterialPages(
     LocalWorkspace workspace,
     CourseOffering course,
     Material? parent,
-  ) {
+  ) async {
     final parentSourceId = parent?.sourceRef.sourceId;
-    return workspace.chaoxing.listMaterialChildren(
-      parentSourceId ?? course.sourceRef.sourceId,
+    final first = await workspace.chaoxing.listMaterialChildren(
+      courseOfferingId: course.id,
+      parentSourceId: parentSourceId,
+      page: 1,
     );
-  }
-
-  Future<SourceAccess> _accessMaterialSource(
-    LocalWorkspace workspace,
-    CourseOffering course,
-    Material material,
-  ) {
-    return workspace.chaoxing.accessMaterial(material.sourceRef.sourceId);
+    final totalPages = first.totalPages;
+    final lastPage = totalPages == null
+        ? 1
+        : math.min(totalPages, _maxMaterialRefreshPages);
+    final entries = <MaterialEntry>[...first.entries];
+    for (var page = 2; page <= lastPage; page++) {
+      final next = await workspace.chaoxing.listMaterialChildren(
+        courseOfferingId: course.id,
+        parentSourceId: parentSourceId,
+        page: page,
+      );
+      entries.addAll(next.entries);
+    }
+    return _MaterialFetch(
+      entries: entries,
+      fetchedPages: lastPage,
+      totalPages: totalPages,
+      complete: totalPages != null && lastPage >= totalPages,
+    );
   }
 
   Future<void> _persistMaterials(
     CourseOffering course,
     Material? parent,
-    List<MaterialEntry> entries,
+    _MaterialFetch fetch,
     DateTime observedAt,
   ) async {
     final timestamp = observedAt.toUtc().millisecondsSinceEpoch;
     final parentKey = parent?.id ?? '';
+    final unique = <String, MaterialEntry>{
+      for (final entry in fetch.entries) entry.id: entry,
+    };
     await _db.transaction((transaction) async {
-      for (var index = 0; index < entries.length; index++) {
-        final entry = entries[index];
+      var position = 0;
+      for (final entry in unique.values) {
         final existing = await transaction.query(
           'materials',
           columns: <String>['id'],
@@ -859,7 +858,7 @@ ON CONFLICT(user_id, source_scope) DO UPDATE SET
           'kind': entry.kind == MaterialKind.folder ? 'folder' : 'file',
           'bytes': entry.kind == MaterialKind.folder ? null : entry.bytes,
           'downloadable': entry.downloadable ? 1 : 0,
-          'position': index,
+          'position': position++,
           'observed_at_utc': timestamp,
         };
         if (existing.isEmpty) {
@@ -882,6 +881,9 @@ ON CONFLICT(user_id, source_scope) DO UPDATE SET
           );
         }
       }
+      if (fetch.complete) {
+        await _deleteUnseenMaterials(transaction, course, parentKey, unique);
+      }
       await transaction.rawInsert(
         '''
 INSERT INTO material_scopes(
@@ -896,15 +898,45 @@ ON CONFLICT(user_id, course_offering_id, parent_key) DO UPDATE SET
     });
   }
 
+  Future<void> _deleteUnseenMaterials(
+    DatabaseExecutor executor,
+    CourseOffering course,
+    String parentKey,
+    Map<String, MaterialEntry> seen,
+  ) async {
+    final rows = await executor.query(
+      'materials',
+      columns: <String>['id', 'source_id'],
+      where: 'user_id = ? AND course_offering_id = ? AND parent_key = ?',
+      whereArgs: <Object?>[userId, course.id, parentKey],
+    );
+    final missing = <String>[
+      for (final row in rows)
+        if (!seen.containsKey(row['source_id'] as String)) row['id'] as String,
+    ];
+    for (final chunk in _chunks(missing, 400)) {
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      await executor.delete(
+        'materials',
+        where: 'user_id = ? AND id IN ($placeholders)',
+        whereArgs: <Object?>[userId, ...chunk],
+      );
+    }
+  }
+
   static String _materialScopeKey(String courseOfferingId, String? parentId) {
     return '$courseOfferingId:${parentId ?? ''}';
   }
 }
 
 void _ensureChaoxingUri(Uri uri) {
-  if (uri.scheme != 'https' ||
-      (uri.host != 'chaoxing.com' && !uri.host.endsWith('.chaoxing.com')) ||
-      uri.userInfo.isNotEmpty) {
+  final host = uri.host;
+  final trustedHost =
+      host == 'chaoxing.com' ||
+      host.endsWith('.chaoxing.com') ||
+      host == 'cldisk.com' ||
+      host.endsWith('.cldisk.com');
+  if (uri.scheme != 'https' || !trustedHost || uri.userInfo.isNotEmpty) {
     throw const ContentAccessException('来源返回了不受支持的文件地址');
   }
 }
@@ -939,6 +971,20 @@ class _NoticeFetch {
   });
 
   final List<OaNoticeSummary> items;
+  final int fetchedPages;
+  final int? totalPages;
+  final bool complete;
+}
+
+class _MaterialFetch {
+  const _MaterialFetch({
+    required this.entries,
+    required this.fetchedPages,
+    required this.totalPages,
+    required this.complete,
+  });
+
+  final List<MaterialEntry> entries;
   final int fetchedPages;
   final int? totalPages;
   final bool complete;
