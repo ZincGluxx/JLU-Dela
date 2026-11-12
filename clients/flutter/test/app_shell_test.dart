@@ -131,6 +131,7 @@ void main() {
         JluDelaApp(
           diagnosticsService: service,
           session: session,
+          accountGateway: FakeAccountGateway(),
           pages: {
             AppDestination.calendar: (context) =>
                 const Center(child: Text('业务模块日历页')),

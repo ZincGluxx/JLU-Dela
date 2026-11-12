@@ -23,6 +23,7 @@ void main() {
   Future<void> pumpApp(
     WidgetTester tester,
     SessionController session, {
+    FakeAccountGateway? accountGateway,
     Map<AppDestination, AppPageBuilder> pages = const {},
   }) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
@@ -31,6 +32,7 @@ void main() {
       JluDelaApp(
         diagnosticsService: fakeDiagnostics(),
         session: session,
+        accountGateway: accountGateway ?? FakeAccountGateway(),
         pages: pages,
       ),
     );
@@ -60,7 +62,7 @@ void main() {
     expect(find.text('业务模块日历页'), findsNothing);
   });
 
-  testWidgets('shows the login placeholder while signed out', (tester) async {
+  testWidgets('shows the login page while signed out', (tester) async {
     final session = SessionController(
       gateway: FakeAuthGateway(),
       refreshTokenStore: MemoryRefreshTokenStore(),
@@ -77,14 +79,56 @@ void main() {
       },
     );
 
-    expect(find.byKey(const Key('session-gate-signed-out')), findsOneWidget);
-    expect(find.text('工作台登录尚未开放'), findsOneWidget);
+    expect(find.byKey(const Key('login-page')), findsOneWidget);
+    expect(find.text('登录工作台'), findsOneWidget);
     expect(find.text('业务模块日历页'), findsNothing);
 
     await tester.tap(find.byKey(const Key('destination-settings')));
     await tester.pumpAndSettle();
 
     expect(find.text('启动诊断'), findsOneWidget);
+  });
+
+  testWidgets('signs in from the login page and opens business pages', (
+    tester,
+  ) async {
+    final store = MemoryRefreshTokenStore();
+    final session = SessionController(
+      gateway: FakeAuthGateway(
+        onFetchMe: (_) async => testUser(displayName: '闭环用户'),
+      ),
+      refreshTokenStore: store,
+    );
+    addTearDown(session.dispose);
+    await session.restore();
+    final accountGateway = FakeAccountGateway(
+      onLogin: (_, _) async => testCredentials(),
+    );
+
+    await pumpApp(
+      tester,
+      session,
+      accountGateway: accountGateway,
+      pages: {
+        AppDestination.calendar: (context) =>
+            const Center(child: Text('业务模块日历页')),
+      },
+    );
+
+    await tester.enterText(find.byKey(const Key('login-field')), 'e2e.user');
+    await tester.enterText(
+      find.byKey(const Key('login-password-field')),
+      'E2e-Flow-Password-2026',
+    );
+    await tester.tap(find.byKey(const Key('login-submit')));
+    await tester.pumpAndSettle();
+
+    expect(session.phase, SessionPhase.authenticated);
+    expect(session.currentUser?.displayName, '闭环用户');
+    expect(find.text('业务模块日历页'), findsOneWidget);
+    expect(find.byKey(const Key('login-page')), findsNothing);
+    expect(accountGateway.lastLogin, 'e2e.user');
+    expect(store.token, 'refresh-a');
   });
 
   testWidgets('offers a retry when the session cannot be restored', (

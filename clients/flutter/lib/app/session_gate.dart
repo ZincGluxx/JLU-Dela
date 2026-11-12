@@ -21,21 +21,8 @@ class SessionGate extends StatelessWidget {
           Text('正在恢复会话…'),
         ],
       ),
-      SessionPhase.signedOut => Column(
-        key: const Key('session-gate-signed-out'),
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.lock_outline, size: 40, color: AppTheme.primary),
-          const SizedBox(height: AppSpacing.lg),
-          Text('工作台登录尚未开放', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.sm),
-          const Text(
-            '工作台身份方案确认后开放登录入口；设置与启动诊断仍可使用。',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.muted),
-          ),
-        ],
-      ),
+      SessionPhase.signedOut ||
+      SessionPhase.authenticated => const SizedBox.shrink(),
       SessionPhase.unavailable => Column(
         key: const Key('session-gate-unavailable'),
         mainAxisSize: MainAxisSize.min,
@@ -62,7 +49,6 @@ class SessionGate extends StatelessWidget {
           ),
         ],
       ),
-      SessionPhase.authenticated => const SizedBox.shrink(),
     };
 
     return Center(

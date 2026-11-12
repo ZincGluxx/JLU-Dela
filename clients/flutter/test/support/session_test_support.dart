@@ -1,3 +1,4 @@
+import 'package:jlu_dela/core/auth/account_gateway.dart';
 import 'package:jlu_dela/core/auth/auth_gateway.dart';
 import 'package:jlu_dela/core/auth/refresh_token_store.dart';
 import 'package:jlu_dela/core/auth/session_models.dart';
@@ -68,6 +69,50 @@ class FakeAuthGateway implements AuthGateway {
       throw UnimplementedError('Unexpected revoke call.');
     }
     return handler(accessToken, refreshToken);
+  }
+}
+
+class FakeAccountGateway implements AccountGateway {
+  FakeAccountGateway({this.onActivate, this.onLogin});
+
+  Future<SessionCredentials> Function(String inviteToken, String password)?
+  onActivate;
+  Future<SessionCredentials> Function(String login, String password)? onLogin;
+
+  int activateCount = 0;
+  int loginCount = 0;
+  String? lastInviteToken;
+  String? lastLogin;
+  String? lastPassword;
+
+  @override
+  Future<SessionCredentials> activate({
+    required String inviteToken,
+    required String password,
+  }) {
+    activateCount++;
+    lastInviteToken = inviteToken;
+    lastPassword = password;
+    final handler = onActivate;
+    if (handler == null) {
+      throw UnimplementedError('Unexpected activate call.');
+    }
+    return handler(inviteToken, password);
+  }
+
+  @override
+  Future<SessionCredentials> login({
+    required String login,
+    required String password,
+  }) {
+    loginCount++;
+    lastLogin = login;
+    lastPassword = password;
+    final handler = onLogin;
+    if (handler == null) {
+      throw UnimplementedError('Unexpected login call.');
+    }
+    return handler(login, password);
   }
 }
 
