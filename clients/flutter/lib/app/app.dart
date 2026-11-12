@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../core/api/diagnostics_service.dart';
+import '../core/auth/session_controller.dart';
+import '../core/auth/session_models.dart';
 import '../features/settings/settings_page.dart';
 import 'app_shell.dart';
+import 'session_gate.dart';
 import 'theme.dart';
 
 class JluDelaApp extends StatelessWidget {
   const JluDelaApp({
     super.key,
     required this.diagnosticsService,
+    required this.session,
     this.pages = const <AppDestination, AppPageBuilder>{},
   });
 
   final DiagnosticsService diagnosticsService;
+  final SessionController session;
   final Map<AppDestination, AppPageBuilder> pages;
 
   @override
@@ -23,6 +28,7 @@ class JluDelaApp extends StatelessWidget {
       theme: AppTheme.light(),
       home: _WorkbenchPage(
         diagnosticsService: diagnosticsService,
+        session: session,
         pages: pages,
       ),
     );
@@ -30,9 +36,14 @@ class JluDelaApp extends StatelessWidget {
 }
 
 class _WorkbenchPage extends StatefulWidget {
-  const _WorkbenchPage({required this.diagnosticsService, required this.pages});
+  const _WorkbenchPage({
+    required this.diagnosticsService,
+    required this.session,
+    required this.pages,
+  });
 
   final DiagnosticsService diagnosticsService;
+  final SessionController session;
   final Map<AppDestination, AppPageBuilder> pages;
 
   @override
@@ -45,21 +56,39 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppShell(
-      destination: _destination,
-      glassEnabled: _glassEnabled,
-      pages: {
-        AppDestination.settings: (context) => SettingsPage(
-          diagnosticsService: widget.diagnosticsService,
+    return ListenableBuilder(
+      listenable: widget.session,
+      builder: (context, child) {
+        final phase = widget.session.phase;
+        final keepContent =
+            phase == SessionPhase.authenticated ||
+            (phase == SessionPhase.unavailable &&
+                widget.session.currentUser != null);
+        return AppShell(
+          destination: _destination,
           glassEnabled: _glassEnabled,
-          onGlassEnabledChanged: (value) {
-            setState(() => _glassEnabled = value);
+          pages: {
+            AppDestination.settings: (context) => SettingsPage(
+              diagnosticsService: widget.diagnosticsService,
+              session: widget.session,
+              glassEnabled: _glassEnabled,
+              onGlassEnabledChanged: (value) {
+                setState(() => _glassEnabled = value);
+              },
+            ),
+            if (keepContent) ...widget.pages,
+            if (!keepContent)
+              for (final destination in AppDestination.values)
+                if (destination != AppDestination.settings)
+                  destination: (context) => SessionGate(
+                    phase: phase,
+                    onRetry: widget.session.retryRestore,
+                  ),
           },
-        ),
-        ...widget.pages,
-      },
-      onDestinationSelected: (destination) {
-        setState(() => _destination = destination);
+          onDestinationSelected: (destination) {
+            setState(() => _destination = destination);
+          },
+        );
       },
     );
   }

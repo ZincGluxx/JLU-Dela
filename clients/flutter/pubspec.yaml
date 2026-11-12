@@ -30,6 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_secure_storage: ^11.2.0
   http: ^1.6.0
   package_info_plus: ^10.2.2
   jlu_dela_api:
@@ -39,6 +40,8 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to

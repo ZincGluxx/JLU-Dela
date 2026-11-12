@@ -8,6 +8,9 @@ import 'package:jlu_dela/app/app.dart';
 import 'package:jlu_dela/app/app_shell.dart';
 import 'package:jlu_dela/app/theme.dart';
 import 'package:jlu_dela/core/api/diagnostics_service.dart';
+import 'package:jlu_dela/core/auth/session_controller.dart';
+
+import 'support/session_test_support.dart';
 
 void main() {
   Future<void> pumpShell(
@@ -118,10 +121,16 @@ void main() {
         httpClient: MockClient((request) async => http.Response('', 404)),
         clientVersionLoader: () async => '0.1.0',
       );
+      final session = SessionController(
+        gateway: FakeAuthGateway(onFetchMe: (_) async => testUser()),
+        refreshTokenStore: MemoryRefreshTokenStore(),
+      );
+      await session.signIn(testCredentials());
 
       await tester.pumpWidget(
         JluDelaApp(
           diagnosticsService: service,
+          session: session,
           pages: {
             AppDestination.calendar: (context) =>
                 const Center(child: Text('业务模块日历页')),
