@@ -58,6 +58,9 @@ String parameterToString(dynamic value) {
   if (value is SyncJobStatus) {
     return SyncJobStatusTypeTransformer().encode(value).toString();
   }
+  if (value is TeachingSource) {
+    return TeachingSourceTypeTransformer().encode(value).toString();
+  }
   return value.toString();
 }
 

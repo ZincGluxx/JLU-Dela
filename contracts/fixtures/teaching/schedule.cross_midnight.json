@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "id": "ed646929-6693-58c5-b76b-5b4ce28c3781",
+      "course_offering_id": "98b85250-16d6-57df-b378-d07b9b58b29d",
+      "title": "Synthetic course",
+      "starts_at": "2026-11-12T15:30:00.000Z",
+      "ends_at": "2026-11-12T16:30:00.000Z",
+      "location": null,
+      "period_start": null,
+      "period_end": null
+    }
+  ],
+  "meta": {
+    "request_id": "synthetic-teaching-request",
+    "next_cursor": null,
+    "has_more": false,
+    "snapshot": {
+      "status": "current",
+      "last_success_at": "2026-11-12T02:00:00.000Z",
+      "last_attempt_at": "2026-11-12T01:58:00.000Z",
+      "observed_at": "2026-11-12T01:59:00.000Z",
+      "last_error_code": null,
+      "coverage": {
+        "semester_id": "62f03adb-1400-5352-bc30-0b6e223e4af2",
+        "from": "2026-11-09",
+        "to": "2026-11-16"
+      }
+    }
+  }
+}

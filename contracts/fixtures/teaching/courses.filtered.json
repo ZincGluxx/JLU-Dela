@@ -1,0 +1,39 @@
+{
+  "data": [
+    {
+      "id": "98b85250-16d6-57df-b378-d07b9b58b29d",
+      "semester_id": "62f03adb-1400-5352-bc30-0b6e223e4af2",
+      "name": "Synthetic course",
+      "teacher": null,
+      "source_refs": [
+        {
+          "source": "jlu_iedu",
+          "source_id": "synthetic-98b85250",
+          "source_scope": "synthetic-2026-term"
+        }
+      ],
+      "remark": null,
+      "retained": true
+    }
+  ],
+  "meta": {
+    "request_id": "synthetic-teaching-request",
+    "next_cursor": null,
+    "has_more": false,
+    "source_snapshots": [
+      {
+        "source": "jlu_iedu",
+        "snapshot": {
+          "status": "current",
+          "last_success_at": "2026-11-12T02:00:00.000Z",
+          "last_attempt_at": "2026-11-12T01:58:00.000Z",
+          "observed_at": "2026-11-12T01:59:00.000Z",
+          "last_error_code": null,
+          "coverage": {
+            "semester_id": "62f03adb-1400-5352-bc30-0b6e223e4af2"
+          }
+        }
+      }
+    ]
+  }
+}

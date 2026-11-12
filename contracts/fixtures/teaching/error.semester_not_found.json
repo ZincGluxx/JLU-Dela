@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Semester is not visible.",
+    "request_id": "synthetic-teaching-request",
+    "retryable": false,
+    "fields": []
+  }
+}

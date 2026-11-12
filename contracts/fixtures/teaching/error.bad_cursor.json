@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "BAD_CURSOR",
+    "message": "Cursor does not match the query.",
+    "request_id": "synthetic-teaching-request",
+    "retryable": false,
+    "fields": []
+  }
+}

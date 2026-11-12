@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Workbench authentication is required.",
+    "request_id": "synthetic-teaching-request",
+    "retryable": false,
+    "fields": []
+  }
+}

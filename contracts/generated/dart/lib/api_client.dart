@@ -193,6 +193,12 @@ class ApiClient {
           return CalendarItem.fromJson(value);
         case 'CalendarResponse':
           return CalendarResponse.fromJson(value);
+        case 'CourseListMeta':
+          return CourseListMeta.fromJson(value);
+        case 'CourseListResponse':
+          return CourseListResponse.fromJson(value);
+        case 'CourseOffering':
+          return CourseOffering.fromJson(value);
         case 'CreateSyncJobRequest':
           return CreateSyncJobRequest.fromJson(value);
         case 'CreateTodoRequest':
@@ -203,6 +209,8 @@ class ApiClient {
           return ErrorField.fromJson(value);
         case 'ErrorResponse':
           return ErrorResponse.fromJson(value);
+        case 'Lesson':
+          return Lesson.fromJson(value);
         case 'LessonItem':
           return LessonItem.fromJson(value);
         case 'ListMeta':
@@ -235,8 +243,24 @@ class ApiClient {
           return RevisionConflictDetail.fromJson(value);
         case 'RevisionConflictResponse':
           return RevisionConflictResponse.fromJson(value);
+        case 'ScheduleListMeta':
+          return ScheduleListMeta.fromJson(value);
+        case 'ScheduleListResponse':
+          return ScheduleListResponse.fromJson(value);
+        case 'Semester':
+          return Semester.fromJson(value);
+        case 'SemesterListMeta':
+          return SemesterListMeta.fromJson(value);
+        case 'SemesterListResponse':
+          return SemesterListResponse.fromJson(value);
         case 'ServiceMeta':
           return ServiceMeta.fromJson(value);
+        case 'SnapshotMeta':
+          return SnapshotMeta.fromJson(value);
+        case 'SourceRef':
+          return SourceRef.fromJson(value);
+        case 'SourceSnapshot':
+          return SourceSnapshot.fromJson(value);
         case 'SourceStatus':
           return SourceStatus.fromJson(value);
         case 'SyncJob':
@@ -251,6 +275,8 @@ class ApiClient {
           return SyncJobResponse.fromJson(value);
         case 'SyncJobStatus':
           return SyncJobStatusTypeTransformer().decode(value);
+        case 'TeachingSource':
+          return TeachingSourceTypeTransformer().decode(value);
         case 'Todo':
           return Todo.fromJson(value);
         case 'TodoItem':
