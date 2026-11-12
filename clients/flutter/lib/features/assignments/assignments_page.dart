@@ -32,6 +32,7 @@ class AssignmentsPage extends StatefulWidget {
 
 class _AssignmentsPageState extends State<AssignmentsPage> {
   final TextEditingController _query = TextEditingController();
+  final TextEditingController _remark = TextEditingController();
   List<CourseOffering> _courses = const [];
   List<Assignment> _assignments = const [];
   SourceSnapshot? _coursesSnapshot;
@@ -59,6 +60,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   void dispose() {
     _clock?.cancel();
     _query.dispose();
+    _remark.dispose();
     super.dispose();
   }
 
@@ -178,6 +180,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
     });
     try {
       final result = await widget.workspace.campusLogin.connect(
+        context,
         SourceKind.chaoxing,
       );
       if (!mounted) return;
@@ -204,14 +207,14 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   }
 
   Future<void> _editRemark(CourseOffering course) async {
-    final controller = TextEditingController(text: course.remark ?? '');
+    _remark.text = course.remark ?? '';
     final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('课程备注名'),
         content: TextField(
           key: const Key('course-remark-field'),
-          controller: controller,
+          controller: _remark,
           autofocus: true,
           maxLength: ChaoxingStore.maxRemarkLength,
           decoration: const InputDecoration(hintText: '留空恢复学习通课程名'),
@@ -222,13 +225,12 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
+            onPressed: () => Navigator.of(context).pop(_remark.text),
             child: const Text('保存'),
           ),
         ],
       ),
     );
-    controller.dispose();
     if (value == null || !mounted) return;
     try {
       await widget.store.setCourseRemark(course.id, value);
@@ -249,53 +251,65 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
 
   Future<void> _openAssignment(Assignment assignment) async {
     setState(() => _error = null);
+    Uri? sourceUri;
     try {
-      final access = await widget.store.openAssignment(assignment.id);
+      final access = await widget.store.openAssignment(
+        assignmentId: assignment.id,
+      );
+      sourceUri = access.uri;
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('学习通原网页'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '已校验该作业属于当前学习通课程。当前版本没有内置来源浏览器，'
-                '请在学习通登录会话中打开下面的地址。',
-              ),
-              const SizedBox(height: AppSpacing.md),
-              SelectableText(
-                access.uri.toString(),
-                key: const Key('assignment-source-url'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await Clipboard.setData(
-                  ClipboardData(text: access.uri.toString()),
-                );
-                if (context.mounted) Navigator.of(context).pop();
-                if (mounted) _showMessage('已复制学习通作业入口');
-              },
-              child: const Text('复制链接'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
-        ),
+      await widget.workspace.browser.openPage(
+        context,
+        source: SourceKind.chaoxing,
+        uri: access.uri,
       );
     } on Object catch (error) {
       if (!mounted) return;
-      final message = error is SourceException
-          ? error.failure.message
-          : '$error';
+      final failure = error is SourceException ? error.failure : null;
+      final message = failure?.message ?? '$error';
+      if (sourceUri != null &&
+          failure?.code == SourceErrorCodes.sourceUnavailable) {
+        await _showSourceUri(sourceUri, message);
+        return;
+      }
       setState(() => _error = '无法打开原网页：$message');
     }
+  }
+
+  /// 来源浏览器尚未接入时，至少给出已校验的地址并允许复制。
+  Future<void> _showSourceUri(Uri uri, String note) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('学习通原网页'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(note),
+            const SizedBox(height: AppSpacing.md),
+            SelectableText(
+              uri.toString(),
+              key: const Key('assignment-source-url'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: uri.toString()));
+              if (context.mounted) Navigator.of(context).pop();
+              if (mounted) _showMessage('已复制学习通作业入口');
+            },
+            child: const Text('复制链接'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showMessage(String message) {
