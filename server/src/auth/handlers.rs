@@ -10,6 +10,7 @@ use tower_http::request_id::RequestId;
 use crate::{
     auth::{
         extractor::AuthenticatedUser,
+        invite, login as login_service, password,
         session::{self, IssuedSession},
         token,
     },
@@ -36,6 +37,20 @@ pub struct TokenData {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ActivateRequest {
+    pub invite_token: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoginRequest {
+    pub login: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RefreshRequest {
     pub refresh_token: String,
 }
@@ -58,6 +73,30 @@ pub async fn me(
         },
         request_id(&request_id_value),
     ))
+}
+
+pub async fn activate(
+    State(state): State<AppState>,
+    Extension(request_id_value): Extension<RequestId>,
+    ApiJson(body): ApiJson<ActivateRequest>,
+) -> Response {
+    let request_id = request_id(&request_id_value);
+    match activate_account(&state, body).await {
+        Ok(issued) => Json(ApiResponse::new(TokenData::from(issued), request_id)).into_response(),
+        Err(error) => error.response(&request_id),
+    }
+}
+
+pub async fn login(
+    State(state): State<AppState>,
+    Extension(request_id_value): Extension<RequestId>,
+    ApiJson(body): ApiJson<LoginRequest>,
+) -> Response {
+    let request_id = request_id(&request_id_value);
+    match login_account(&state, body).await {
+        Ok(issued) => Json(ApiResponse::new(TokenData::from(issued), request_id)).into_response(),
+        Err(error) => error.response(&request_id),
+    }
 }
 
 pub async fn refresh(
@@ -93,6 +132,22 @@ pub async fn logout(
     }
 }
 
+async fn activate_account(
+    state: &AppState,
+    body: ActivateRequest,
+) -> Result<IssuedSession, AppError> {
+    validate_invite_token(&body.invite_token)?;
+    password::validate_new(&body.password)?;
+    invite::activate(&state.pool, &body.invite_token, &body.password).await
+}
+
+async fn login_account(state: &AppState, body: LoginRequest) -> Result<IssuedSession, AppError> {
+    let login = login_service::normalize(&body.login);
+    login_service::validate(&login)?;
+    password::validate_attempt(&body.password)?;
+    login_service::authenticate(&state.pool, &login, &body.password).await
+}
+
 async fn rotate(state: &AppState, refresh_token: &str) -> Result<IssuedSession, AppError> {
     validate_refresh_token(refresh_token)?;
     session::rotate(&state.pool, refresh_token).await
@@ -116,6 +171,22 @@ impl From<IssuedSession> for TokenData {
             expires_in: token::ACCESS_TTL.as_secs(),
         }
     }
+}
+
+fn validate_invite_token(value: &str) -> Result<(), AppError> {
+    if value.trim().is_empty() {
+        return Err(AppError::Validation(vec![FieldError::new(
+            "invite_token",
+            "required",
+        )]));
+    }
+    if value.len() > 512 {
+        return Err(AppError::Validation(vec![FieldError::new(
+            "invite_token",
+            "too_long",
+        )]));
+    }
+    Ok(())
 }
 
 fn validate_refresh_token(value: &str) -> Result<(), AppError> {

@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use sqlx::{Executor, PgPool, Postgres};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -35,7 +35,10 @@ struct AuthRow {
     disabled_at: Option<OffsetDateTime>,
 }
 
-pub async fn issue_for_user(pool: &PgPool, user_id: Uuid) -> Result<IssuedSession, AppError> {
+pub async fn issue_for_user<'e, E>(executor: E, user_id: Uuid) -> Result<IssuedSession, AppError>
+where
+    E: Executor<'e, Database = Postgres>,
+{
     let now = OffsetDateTime::now_utc();
     let tokens = TokenPair::issue();
     let session_id = Uuid::new_v4();
@@ -55,7 +58,7 @@ pub async fn issue_for_user(pool: &PgPool, user_id: Uuid) -> Result<IssuedSessio
     .bind(access_expires_at)
     .bind(refresh_expires_at)
     .bind(now)
-    .execute(pool)
+    .execute(executor)
     .await
     .map_err(store_error)?;
 
