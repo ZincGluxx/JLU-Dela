@@ -28,7 +28,7 @@ async fn migrations_and_readiness_work_against_postgres() {
             .fetch_one(&pool)
             .await
             .expect("service metadata exists");
-    assert_eq!(schema_version, "5");
+    assert_eq!(schema_version, "6");
 
     let app = common::router(&config);
     let request = Request::builder()
@@ -40,6 +40,6 @@ async fn migrations_and_readiness_work_against_postgres() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["status"], "ready");
-    assert_eq!(body["data"]["schema_version"], "5");
+    assert_eq!(body["data"]["schema_version"], "6");
     pool.close().await;
 }

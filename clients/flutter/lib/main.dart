@@ -1,12 +1,16 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import 'app/app.dart';
 import 'app/device_campus_login.dart';
 import 'app/local_migrations.dart';
 import 'app/local_workbench.dart';
+import 'core/academic/academic_calendar_cache.dart';
+import 'core/academic/academic_calendar_service.dart';
 import 'core/api/diagnostics_service.dart';
 import 'core/auth/account_gateway.dart';
 import 'core/auth/auth_gateway.dart';
@@ -20,6 +24,11 @@ import 'core/storage/local_identity_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks([
+      'HarmonyOS Sans SC',
+    ], await rootBundle.loadString('assets/fonts/LICENSE_Fonts.txt'));
+  });
 
   final LocalDatabase database;
   try {
@@ -48,6 +57,11 @@ Future<void> main() async {
 
   try {
     final apiBaseUri = AppConfig.resolveApiBaseUri();
+    final academicCalendar = AcademicCalendarService(
+      apiBaseUri: apiBaseUri,
+      httpClient: http.Client(),
+      cache: await FileAcademicCalendarCache.applicationSupport(),
+    );
     final service = DiagnosticsService(
       apiBaseUri: apiBaseUri,
       httpClient: http.Client(),
@@ -77,9 +91,11 @@ Future<void> main() async {
           http: sourceHttp,
           campusLogin: campusLogin,
           browser: browser,
+          academicCalendar: academicCalendar,
         ),
       ),
     );
+    unawaited(academicCalendar.load());
     unawaited(workbenchApi.session.restore());
   } on FormatException catch (error) {
     runApp(BootstrapErrorApp(message: error.message));

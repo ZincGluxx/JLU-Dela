@@ -19,6 +19,7 @@ info:
     - GET /api/v1/todos, POST /api/v1/todos, PATCH and DELETE /api/v1/todos/{id}
     - POST /api/v1/sync-jobs, GET /api/v1/sync-jobs/{id}
     - GET /api/v1/calendar
+    - GET /api/v1/academic-calendar
 
     Endpoints described but not yet served:
     - GET /api/v1/semesters, GET /api/v1/courses, GET /api/v1/schedule
@@ -116,6 +117,7 @@ x-contract-status:
     - POST /api/v1/sync-jobs
     - GET /api/v1/sync-jobs/{id}
     - GET /api/v1/calendar
+    - GET /api/v1/academic-calendar
   design-only:
     - GET /api/v1/semesters
     - GET /api/v1/courses
@@ -916,6 +918,49 @@ paths:
           $ref: '#/components/responses/ClientError'
         '5XX':
           $ref: '#/components/responses/ServerError'
+  /api/v1/academic-calendar:
+    get:
+      operationId: getAcademicCalendar
+      tags:
+        - Calendar
+      security: []
+      summary: Read the stored official academic calendar
+      description: |
+        Public read-only endpoint. Returns the PostgreSQL document without deriving
+        dates or contacting the campus site. All date ranges include both endpoints.
+        Term start/end dates describe university-wide teaching, not freshman orientation.
+        Holidays mark dates only; makeup classes and adjusted days off are not included.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: academic_year
+          in: query
+          required: false
+          description: Stored academic year. Any unavailable value returns 404.
+          schema:
+            type: string
+            default: 2026-2027
+          example: 2026-2027
+      responses:
+        '200':
+          description: Stored official calendar and class periods with separate source provenance.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcademicCalendarResponse'
+        '404':
+          description: ACADEMIC_CALENDAR_NOT_FOUND; no calendar is stored for that academic year.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
   /api/v1/calendar:
     get:
       operationId: getCalendar
@@ -1999,6 +2044,143 @@ components:
       properties:
         error:
           $ref: '#/components/schemas/RevisionConflictDetail'
+
+    AcademicCalendarResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/AcademicCalendar'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+
+    AcademicCalendar:
+      type: object
+      required: [academic_year, version, time_zone, source, includes_makeup_day_rules, notes, terms, periods_source, periods, events]
+      properties:
+        academic_year:
+          type: string
+          example: 2026-2027
+        version:
+          type: string
+          example: 2026-03-05.v1
+        time_zone:
+          type: string
+          enum: [Asia/Shanghai]
+        source:
+          $ref: '#/components/schemas/AcademicCalendarSource'
+        includes_makeup_day_rules:
+          type: boolean
+          enum: [false]
+          description: This dataset does not supply adjusted working days or makeup-class rules.
+        notes:
+          type: array
+          items:
+            type: string
+        terms:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicCalendarTerm'
+        periods_source:
+          $ref: '#/components/schemas/AcademicPeriodsSource'
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicPeriod'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcademicCalendarEvent'
+
+    AcademicCalendarSource:
+      type: object
+      required: [url, image_url, published_at]
+      properties:
+        url:
+          type: string
+          format: uri
+        image_url:
+          type: string
+          format: uri
+        published_at:
+          type: string
+          format: date
+
+    AcademicPeriodsSource:
+      type: object
+      required: [url, published_at, effective_from_term]
+      properties:
+        url:
+          type: string
+          format: uri
+        published_at:
+          type: string
+          format: date
+          nullable: true
+          description: Null because the official period page has no verified publication date.
+        effective_from_term:
+          type: string
+          example: 2023-2024-2
+
+    AcademicCalendarTerm:
+      type: object
+      required: [id, name, start_date, end_date, teaching_weeks]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        start_date:
+          type: string
+          format: date
+          description: Inclusive university-wide teaching start.
+        end_date:
+          type: string
+          format: date
+          description: Inclusive university-wide teaching end.
+        teaching_weeks:
+          type: integer
+          minimum: 1
+
+    AcademicPeriod:
+      type: object
+      required: [number, start_time, end_time]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          maximum: 12
+        start_time:
+          type: string
+          pattern: '^[0-2][0-9]:[0-5][0-9]$'
+          example: '08:00'
+        end_time:
+          type: string
+          pattern: '^[0-2][0-9]:[0-5][0-9]$'
+          example: '08:45'
+
+    AcademicCalendarEvent:
+      type: object
+      required: [id, title, type, start_date, end_date, term_id]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum: [teaching, exam, winter_break, summer_break, orientation, freshman_teaching_start, holiday]
+        start_date:
+          type: string
+          format: date
+          description: Inclusive start date in Asia/Shanghai.
+        end_date:
+          type: string
+          format: date
+          description: Inclusive end date in Asia/Shanghai.
+        term_id:
+          type: string
+          nullable: true
 
     CalendarResponse:
       type: object

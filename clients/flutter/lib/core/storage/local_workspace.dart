@@ -1,3 +1,4 @@
+import '../academic/academic_calendar_service.dart';
 import '../source/campus_login.dart';
 import '../source/chaoxing_access.dart';
 import '../source/source_context.dart';
@@ -27,6 +28,7 @@ class LocalWorkspace {
     required this.campusLogin,
     required this.browser,
     required this.source,
+    this.academicCalendar,
   });
 
   final String userId;
@@ -44,6 +46,7 @@ class LocalWorkspace {
   final CampusLogin campusLogin;
   final SourcePageOpener browser;
   final SourceContext source;
+  final AcademicCalendarService? academicCalendar;
 
   void dispose() {
     todos.dispose();

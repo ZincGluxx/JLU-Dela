@@ -1,3 +1,4 @@
+pub mod academic_calendar;
 pub mod auth;
 pub mod calendar;
 pub mod config;

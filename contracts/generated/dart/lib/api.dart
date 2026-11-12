@@ -38,6 +38,13 @@ part 'api/sync_api.dart';
 part 'api/teaching_api.dart';
 part 'api/todos_api.dart';
 
+part 'model/academic_calendar.dart';
+part 'model/academic_calendar_event.dart';
+part 'model/academic_calendar_response.dart';
+part 'model/academic_calendar_source.dart';
+part 'model/academic_calendar_term.dart';
+part 'model/academic_period.dart';
+part 'model/academic_periods_source.dart';
 part 'model/activate_request.dart';
 part 'model/assignment_item.dart';
 part 'model/calendar_data.dart';

@@ -1,3 +1,4 @@
+import '../core/academic/academic_calendar_service.dart';
 import '../core/source/campus_login.dart';
 import '../core/source/source_context.dart';
 import '../core/source/source_portal.dart';
@@ -38,6 +39,7 @@ WorkbenchData buildWorkbenchData({
   required CampusLogin campusLogin,
   required SourcePageOpener browser,
   DateTime Function() now = DateTime.now,
+  AcademicCalendarService? academicCalendar,
 }) {
   final source = SourceContext(
     sessions: sessions,
@@ -78,6 +80,7 @@ WorkbenchData buildWorkbenchData({
     campusLogin: campusLogin,
     browser: browser,
     source: source,
+    academicCalendar: academicCalendar,
   );
   return WorkbenchData(
     workspace: workspace,
