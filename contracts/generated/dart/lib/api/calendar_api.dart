@@ -43,8 +43,8 @@ class CalendarApi {
     final headerParams = <String, String>{};
     final formParams = <String, String>{};
 
-      queryParams.addAll(_queryParams('', 'from', from));
-      queryParams.addAll(_queryParams('', 'to', to));
+      queryParams.addAll(_queryParams('', 'from', _dateFormatter.format(from)));
+      queryParams.addAll(_queryParams('', 'to', _dateFormatter.format(to)));
 
     if (xRequestId != null) {
       headerParams[r'X-Request-Id'] = parameterToString(xRequestId);
