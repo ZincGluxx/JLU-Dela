@@ -1,5 +1,7 @@
 enum SessionPhase { restoring, authenticated, signedOut, unavailable }
 
+enum SignInOutcome { signedIn, cancelled }
+
 class SessionCredentials {
   const SessionCredentials({
     required this.accessToken,
@@ -18,7 +20,13 @@ class SessionCredentials {
   }
 }
 
-enum SessionRefreshResult { refreshed, signedOut, unavailable, networkFailure }
+enum SessionRefreshResult {
+  refreshed,
+  signedOut,
+  unavailable,
+  networkFailure,
+  cancelled,
+}
 
 class SignOutResult {
   const SignOutResult({required this.remoteRevoked, this.message});

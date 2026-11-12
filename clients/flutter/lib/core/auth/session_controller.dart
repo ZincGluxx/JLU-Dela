@@ -31,8 +31,11 @@ class SessionController extends ChangeNotifier {
   Me? _currentUser;
   String? _accessToken;
   int _identityRevision = 0;
-  int _generation = 0;
+  int _sessionRevision = 0;
+  int _signInSerial = 0;
+  Future<void> _storeQueue = Future<void>.value();
   Future<SessionRefreshResult>? _refreshInFlight;
+  int _refreshInFlightRevision = -1;
   Future<void>? _restoreInFlight;
   bool _disposed = false;
 
@@ -44,7 +47,10 @@ class SessionController extends ChangeNotifier {
 
   int get identityRevision => _identityRevision;
 
-  bool get isRefreshing => _refreshInFlight != null;
+  int get sessionRevision => _sessionRevision;
+
+  bool get isRefreshing =>
+      _refreshInFlight != null && _refreshInFlightRevision == _sessionRevision;
 
   void registerPrivateCache(void Function() clear) {
     _privateCacheClearers.add(clear);
@@ -63,24 +69,40 @@ class SessionController extends ChangeNotifier {
     return restore();
   }
 
-  Future<void> signIn(SessionCredentials credentials) async {
+  Future<SignInOutcome> signIn(SessionCredentials credentials) async {
+    final operation = ++_signInSerial;
+    final revisionAtStart = _sessionRevision;
     final user = await _gateway.fetchMe(credentials.accessToken);
-    _generation++;
-    await _refreshTokenStore.write(credentials.refreshToken);
-    _accessToken = credentials.accessToken;
-    _adoptUser(user);
+
+    final committed = await _serializeStore(() async {
+      if (!_isOperationCurrent(operation, revisionAtStart)) {
+        return false;
+      }
+      await _refreshTokenStore.write(credentials.refreshToken);
+      if (!_isOperationCurrent(operation, revisionAtStart)) {
+        await _clearStoredTokenIfEquals(credentials.refreshToken);
+        return false;
+      }
+
+      _sessionRevision++;
+      _accessToken = credentials.accessToken;
+      _adoptUser(user);
+      return true;
+    });
+
+    return committed ? SignInOutcome.signedIn : SignInOutcome.cancelled;
   }
 
   Future<SignOutResult> signOut() async {
     final accessToken = _accessToken;
+    final revisionAfterBegin = _beginSignedOut();
     String? refreshToken;
     try {
-      refreshToken = await _refreshTokenStore.read();
+      refreshToken = await _readStoredToken();
     } on Exception {
       refreshToken = null;
     }
-
-    await _enterSignedOut();
+    await _clearStoredToken(revisionAfterBegin);
 
     if (refreshToken == null || refreshToken.isEmpty) {
       return const SignOutResult(
@@ -141,22 +163,27 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<SessionRefreshResult> refreshSession() {
+    final revision = _sessionRevision;
     final inFlight = _refreshInFlight;
-    if (inFlight != null) {
+    if (inFlight != null && _refreshInFlightRevision == revision) {
       return inFlight;
     }
 
     late final Future<SessionRefreshResult> future;
-    future = _refresh().whenComplete(() {
+    future = _refresh(revision).whenComplete(() {
       if (identical(_refreshInFlight, future)) {
         _refreshInFlight = null;
       }
     });
     _refreshInFlight = future;
+    _refreshInFlightRevision = revision;
     return future;
   }
 
-  Future<void> invalidateSession() => _enterSignedOut();
+  Future<void> invalidateSession() async {
+    final revision = _beginSignedOut();
+    await _clearStoredToken(revision);
+  }
 
   Future<void> _restore() async {
     if (_phase != SessionPhase.restoring) {
@@ -164,9 +191,10 @@ class SessionController extends ChangeNotifier {
       _notify();
     }
 
-    final generation = _generation;
+    final revision = _sessionRevision;
     final result = await refreshSession();
-    if (generation != _generation || result != SessionRefreshResult.refreshed) {
+    if (revision != _sessionRevision ||
+        result != SessionRefreshResult.refreshed) {
       return;
     }
 
@@ -178,12 +206,12 @@ class SessionController extends ChangeNotifier {
 
     try {
       final user = await _gateway.fetchMe(accessToken);
-      if (generation != _generation) {
+      if (revision != _sessionRevision) {
         return;
       }
       _adoptUser(user);
     } on ApiException catch (error) {
-      if (generation != _generation) {
+      if (revision != _sessionRevision) {
         return;
       }
       if (error.code == 401) {
@@ -192,58 +220,62 @@ class SessionController extends ChangeNotifier {
         _setUnavailable();
       }
     } on Exception {
-      if (generation != _generation) {
+      if (revision != _sessionRevision) {
         return;
       }
       _setUnavailable();
     }
   }
 
-  Future<SessionRefreshResult> _refresh() async {
-    final generation = _generation;
+  Future<SessionRefreshResult> _refresh(int revision) async {
     String? refreshToken;
     try {
-      refreshToken = await _refreshTokenStore.read();
+      refreshToken = await _readStoredToken();
     } on Exception {
-      if (generation != _generation) {
-        return SessionRefreshResult.unavailable;
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
       }
       _setUnavailable();
       return SessionRefreshResult.unavailable;
     }
 
     if (refreshToken == null || refreshToken.isEmpty) {
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
+      }
       await _enterSignedOut();
       return SessionRefreshResult.signedOut;
     }
 
     try {
       final pair = await _gateway.refresh(refreshToken);
-      if (generation != _generation) {
-        return SessionRefreshResult.unavailable;
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
       }
 
-      await _refreshTokenStore.write(pair.refreshToken);
-      if (generation != _generation) {
-        try {
-          if (await _refreshTokenStore.read() == pair.refreshToken) {
-            await _refreshTokenStore.clear();
-          }
-        } on Exception {
-          // The session was already signed out; do not keep the stale token.
+      final applied = await _serializeStore(() async {
+        if (revision != _sessionRevision) {
+          return false;
         }
-        return SessionRefreshResult.unavailable;
-      }
+        await _refreshTokenStore.write(pair.refreshToken);
+        if (revision != _sessionRevision) {
+          await _clearStoredTokenIfEquals(pair.refreshToken);
+          return false;
+        }
 
-      _accessToken = pair.accessToken;
-      if (_currentUser != null && _phase != SessionPhase.authenticated) {
-        _phase = SessionPhase.authenticated;
-      }
-      _notify();
-      return SessionRefreshResult.refreshed;
+        _accessToken = pair.accessToken;
+        if (_currentUser != null && _phase != SessionPhase.authenticated) {
+          _phase = SessionPhase.authenticated;
+        }
+        _notify();
+        return true;
+      });
+      return applied
+          ? SessionRefreshResult.refreshed
+          : SessionRefreshResult.cancelled;
     } on ApiException catch (error) {
-      if (generation != _generation) {
-        return SessionRefreshResult.unavailable;
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
       }
       if (error.code == 401) {
         await _enterSignedOut();
@@ -258,26 +290,26 @@ class SessionController extends ChangeNotifier {
       _setUnavailable();
       return SessionRefreshResult.unavailable;
     } on http.ClientException {
-      if (generation != _generation) {
-        return SessionRefreshResult.unavailable;
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
       }
       _setUnavailable();
       return SessionRefreshResult.networkFailure;
     } on SocketException {
-      if (generation != _generation) {
-        return SessionRefreshResult.unavailable;
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
       }
       _setUnavailable();
       return SessionRefreshResult.networkFailure;
     } on TimeoutException {
-      if (generation != _generation) {
-        return SessionRefreshResult.unavailable;
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
       }
       _setUnavailable();
       return SessionRefreshResult.networkFailure;
     } on Exception {
-      if (generation != _generation) {
-        return SessionRefreshResult.unavailable;
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
       }
       _setUnavailable();
       return SessionRefreshResult.unavailable;
@@ -285,7 +317,13 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> _enterSignedOut() async {
-    _generation++;
+    final revision = _beginSignedOut();
+    await _clearStoredToken(revision);
+  }
+
+  int _beginSignedOut() {
+    _sessionRevision++;
+    _signInSerial++;
     final hadIdentity = _currentUser != null;
     _currentUser = null;
     _accessToken = null;
@@ -295,13 +333,21 @@ class SessionController extends ChangeNotifier {
       _identityRevision++;
     }
     _notify();
+    return _sessionRevision;
+  }
 
-    try {
-      await _refreshTokenStore.clear();
-    } on Exception {
-      // The remote session is revoked separately; a local storage failure must
-      // not keep the user signed in.
-    }
+  Future<void> _clearStoredToken(int expectedRevision) {
+    return _serializeStore(() async {
+      if (_sessionRevision != expectedRevision) {
+        return;
+      }
+      try {
+        await _refreshTokenStore.clear();
+      } on Exception {
+        // The remote session is revoked separately; a local storage failure
+        // must not keep the user signed in.
+      }
+    });
   }
 
   void _adoptUser(Me user) {
@@ -324,6 +370,35 @@ class SessionController extends ChangeNotifier {
     for (final clear in List.of(_privateCacheClearers)) {
       clear();
     }
+  }
+
+  bool _isOperationCurrent(int operation, int revisionAtStart) {
+    return !_disposed &&
+        operation == _signInSerial &&
+        revisionAtStart == _sessionRevision;
+  }
+
+  Future<String?> _readStoredToken() {
+    return _serializeStore(() => _refreshTokenStore.read());
+  }
+
+  Future<void> _clearStoredTokenIfEquals(String token) async {
+    try {
+      if (await _refreshTokenStore.read() == token) {
+        await _refreshTokenStore.clear();
+      }
+    } on Exception {
+      // The session is already invalid; a storage failure must not revive it.
+    }
+  }
+
+  Future<T> _serializeStore<T>(Future<T> Function() action) {
+    final result = _storeQueue.then((_) => action());
+    _storeQueue = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
   }
 
   String? _apiErrorCode(ApiException error) {
@@ -353,6 +428,8 @@ class SessionController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _sessionRevision++;
+    _signInSerial++;
     _privateCacheClearers.clear();
     super.dispose();
   }
