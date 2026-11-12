@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/app/local_workbench.dart';
 import 'package:jlu_dela/core/models/source.dart';
 import 'package:jlu_dela/core/source/campus_login.dart';
+import 'package:jlu_dela/core/source/source_portal.dart';
 import 'package:jlu_dela/core/source/source_session.dart';
 import 'package:jlu_dela/core/storage/course_store.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
@@ -29,6 +30,7 @@ void main() {
       sessions: sessions,
       http: http,
       campusLogin: const UnsupportedCampusLogin(),
+      browser: const UnsupportedSourcePageOpener(),
       now: () => DateTime.utc(2026, 11, 12, 4),
     );
   }
@@ -98,29 +100,180 @@ void main() {
     expect((await identities.lastUsed())?.userId, 'user-b');
   });
 
-  test('source cookies stay in memory and share campus auth group', () {
-    sessions.save(SourceAuthGroup.jluCampus, {'JSESSIONID': 'memory-only'});
+  group('source cookie jar', () {
+    test('parent-domain cookies apply to subdomains', () {
+      sessions.save(SourceAuthGroup.jluCampus, [
+        const SourceCookie(
+          name: 'JSESSIONID',
+          value: 'campus',
+          domain: '.jlu.edu.cn',
+        ),
+      ]);
 
-    expect(sessions.hasSession(SourceKind.jluIedu), isTrue);
-    expect(sessions.hasSession(SourceKind.jluOa), isTrue);
-    expect(sessions.hasSession(SourceKind.chaoxing), isFalse);
-    expect(
-      sessions.stateFor(SourceKind.jluIedu),
-      SourceConnectionState.connected,
-    );
-    expect(
-      sessions.stateFor(SourceKind.chaoxing),
-      SourceConnectionState.disconnected,
-    );
+      expect(
+        sessions.cookieHeaderFor(
+          SourceKind.jluIedu,
+          Uri.parse('https://iedu.jlu.edu.cn/jwapp'),
+        ),
+        {'JSESSIONID': 'campus'},
+      );
+      expect(
+        sessions.cookieHeaderFor(
+          SourceKind.jluOa,
+          Uri.parse('https://oa.jlu.edu.cn/'),
+        ),
+        {'JSESSIONID': 'campus'},
+      );
+      expect(
+        sessions.cookieHeaderFor(
+          SourceKind.chaoxing,
+          Uri.parse('https://i.chaoxing.com/'),
+        ),
+        isEmpty,
+      );
+      expect(sessions.hasSession(SourceKind.chaoxing), isFalse);
+    });
 
-    sessions.save(SourceAuthGroup.chaoxing, {'c': '1'});
-    expect(sessions.cookiesFor(SourceKind.chaoxing), {'c': '1'});
+    test('host-only cookies never leak to sibling hosts', () {
+      sessions.save(SourceAuthGroup.jluCampus, [
+        const SourceCookie(
+          name: 'SESSION',
+          value: 'iedu',
+          domain: 'iedu.jlu.edu.cn',
+          hostOnly: true,
+        ),
+      ]);
 
-    sessions.clearGroup(SourceAuthGroup.jluCampus);
-    expect(sessions.hasSession(SourceKind.jluIedu), isFalse);
-    expect(sessions.hasSession(SourceKind.chaoxing), isTrue);
+      expect(
+        sessions.cookieHeaderFor(
+          SourceKind.jluIedu,
+          Uri.parse('https://iedu.jlu.edu.cn/'),
+        ),
+        {'SESSION': 'iedu'},
+      );
+      expect(
+        sessions.cookieHeaderFor(
+          SourceKind.jluOa,
+          Uri.parse('https://oa.jlu.edu.cn/'),
+        ),
+        isEmpty,
+      );
+    });
 
-    sessions.clearAll();
-    expect(sessions.hasSession(SourceKind.chaoxing), isFalse);
+    test('the longest matching path wins for duplicate names', () {
+      sessions.save(SourceAuthGroup.jluCampus, [
+        const SourceCookie(
+          name: 'SESSION',
+          value: 'root',
+          domain: 'iedu.jlu.edu.cn',
+          path: '/',
+        ),
+        const SourceCookie(
+          name: 'SESSION',
+          value: 'jwapp',
+          domain: 'iedu.jlu.edu.cn',
+          path: '/jwapp',
+        ),
+      ]);
+
+      expect(
+        sessions.cookieHeaderFor(
+          SourceKind.jluIedu,
+          Uri.parse('https://iedu.jlu.edu.cn/jwapp/sys/index.do'),
+        ),
+        {'SESSION': 'jwapp'},
+      );
+      expect(
+        sessions.cookieHeaderFor(
+          SourceKind.jluIedu,
+          Uri.parse('https://iedu.jlu.edu.cn/other'),
+        ),
+        {'SESSION': 'root'},
+      );
+      expect(
+        sessions.cookieHeaderFor(
+          SourceKind.jluIedu,
+          Uri.parse('https://iedu.jlu.edu.cn/jwapplication'),
+        ),
+        {'SESSION': 'root'},
+      );
+    });
+
+    test('expired and secure cookies are filtered', () {
+      final now = DateTime.utc(2026, 11, 12);
+      final registry = SourceSessionRegistry(now: () => now);
+      registry.save(SourceAuthGroup.jluCampus, [
+        SourceCookie(
+          name: 'expired',
+          value: '1',
+          domain: 'jlu.edu.cn',
+          path: '/',
+          expiresAtUtc: now,
+        ),
+        const SourceCookie(
+          name: 'secure',
+          value: '1',
+          domain: 'jlu.edu.cn',
+          path: '/',
+          secure: true,
+        ),
+      ]);
+
+      expect(
+        registry.cookiesForUri(
+          SourceKind.jluIedu,
+          Uri.parse('http://iedu.jlu.edu.cn/'),
+        ),
+        isEmpty,
+      );
+      expect(
+        registry.cookieHeaderFor(
+          SourceKind.jluIedu,
+          Uri.parse('https://iedu.jlu.edu.cn/'),
+        ),
+        {'secure': '1'},
+      );
+    });
+
+    test('expired cookies do not count as a session', () {
+      final now = DateTime.utc(2026, 11, 12);
+      final registry = SourceSessionRegistry(now: () => now);
+      registry.save(SourceAuthGroup.chaoxing, [
+        SourceCookie(
+          name: 'c',
+          value: '1',
+          domain: 'chaoxing.com',
+          path: '/',
+          expiresAtUtc: now.subtract(const Duration(seconds: 1)),
+        ),
+      ]);
+
+      expect(registry.hasSession(SourceKind.chaoxing), isFalse);
+      expect(
+        registry.stateFor(SourceKind.chaoxing),
+        SourceConnectionState.disconnected,
+      );
+    });
+
+    test('clearing a group keeps the other group', () {
+      sessions.save(SourceAuthGroup.jluCampus, [
+        const SourceCookie(name: 'campus', value: '1', domain: '.jlu.edu.cn'),
+      ]);
+      sessions.save(SourceAuthGroup.chaoxing, [
+        const SourceCookie(
+          name: 'chaoxing',
+          value: '1',
+          domain: '.chaoxing.com',
+        ),
+      ]);
+
+      sessions.clearGroup(SourceAuthGroup.jluCampus);
+
+      expect(sessions.hasSession(SourceKind.jluIedu), isFalse);
+      expect(sessions.hasSession(SourceKind.chaoxing), isTrue);
+
+      sessions.clearAll();
+      expect(sessions.hasSession(SourceKind.chaoxing), isFalse);
+    });
   });
 }

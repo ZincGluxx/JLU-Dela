@@ -14,6 +14,7 @@ import 'package:jlu_dela/core/auth/session_controller.dart';
 import 'package:jlu_dela/core/auth/session_models.dart';
 import 'package:jlu_dela/core/config/app_config.dart';
 import 'package:jlu_dela/core/source/campus_login.dart';
+import 'package:jlu_dela/core/source/source_portal.dart';
 import 'package:jlu_dela/core/source/source_session.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
 import 'package:jlu_dela/core/storage/local_identity_store.dart';
@@ -243,6 +244,7 @@ class _LocalApp {
         sessions: _sessions,
         http: _http,
         campusLogin: const UnsupportedCampusLogin(),
+        browser: const UnsupportedSourcePageOpener(),
       ),
     );
   }

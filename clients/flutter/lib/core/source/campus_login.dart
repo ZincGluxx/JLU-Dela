@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 import '../models/source.dart';
 
 class CampusLoginResult {
@@ -8,14 +10,17 @@ class CampusLoginResult {
 }
 
 abstract interface class CampusLogin {
-  Future<CampusLoginResult> connect(SourceKind source);
+  Future<CampusLoginResult> connect(BuildContext context, SourceKind source);
 }
 
 class UnsupportedCampusLogin implements CampusLogin {
   const UnsupportedCampusLogin();
 
   @override
-  Future<CampusLoginResult> connect(SourceKind source) async {
+  Future<CampusLoginResult> connect(
+    BuildContext context,
+    SourceKind source,
+  ) async {
     return const CampusLoginResult(connected: false, message: '设备端校园登录尚未接入');
   }
 }
@@ -28,7 +33,10 @@ class FakeCampusLogin implements CampusLogin {
   final List<SourceKind> attempted = [];
 
   @override
-  Future<CampusLoginResult> connect(SourceKind source) async {
+  Future<CampusLoginResult> connect(
+    BuildContext context,
+    SourceKind source,
+  ) async {
     attempted.add(source);
     return CampusLoginResult(connected: connected, message: message);
   }

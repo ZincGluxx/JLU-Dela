@@ -27,6 +27,7 @@ void main() {
     WidgetTester tester,
     SessionController session, {
     CachedIdentity? cachedIdentity,
+    bool settle = true,
   }) async {
     final harness = await LocalAppHarness.create();
     await tester.binding.setSurfaceSize(const Size(1280, 900));
@@ -39,7 +40,11 @@ void main() {
         cachedIdentity: cachedIdentity,
       ),
     );
-    await tester.pumpAndSettle();
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pump();
+    }
     return harness;
   }
 
@@ -141,6 +146,8 @@ void main() {
     expect(find.byKey(const Key('login-page')), findsOneWidget);
     expect(find.byKey(const Key('offline-banner')), findsNothing);
     expect(harness.builtUserIds, isEmpty);
+    expect(session.currentUser, isNull);
+    expect(session.accessToken, isNull);
     expect(find.text('功能迁移中，尚未接入本地课表与作业数据'), findsNothing);
   });
 
@@ -158,7 +165,13 @@ void main() {
     final harness = await pumpApp(tester, session);
     expect(harness.builtUserIds, ['user-a']);
 
-    harness.sessions.save(SourceAuthGroup.chaoxing, {'cookie': 'memory-only'});
+    harness.sessions.save(SourceAuthGroup.chaoxing, [
+      const SourceCookie(
+        name: 'cookie',
+        value: 'memory-only',
+        domain: '.chaoxing.com',
+      ),
+    ]);
     gateway.onFetchMe = (_) async => testUser(id: 'user-b', displayName: '用户乙');
     await session.signIn(testCredentials());
     await tester.pumpAndSettle();
@@ -197,6 +210,32 @@ void main() {
     final rows = await harness.database.database.query('todos');
     expect(rows, hasLength(1));
     expect(rows.single['title'], '保留的数据');
+  });
+
+  testWidgets('restoring without a cached identity never builds a workspace', (
+    tester,
+  ) async {
+    final session = SessionController(
+      gateway: FakeAuthGateway(
+        onRefresh: (_) async => throw http.ClientException('offline'),
+      ),
+      refreshTokenStore: MemoryRefreshTokenStore('refresh-a'),
+    );
+    addTearDown(session.dispose);
+    expect(session.phase, SessionPhase.restoring);
+
+    final harness = await pumpApp(tester, session, settle: false);
+
+    expect(harness.builtUserIds, isEmpty);
+    expect(find.byKey(const Key('session-gate-restoring')), findsOneWidget);
+
+    await session.restore();
+    await tester.pumpAndSettle();
+
+    expect(session.phase, SessionPhase.unavailable);
+    expect(harness.builtUserIds, isEmpty);
+    expect(find.byKey(const Key('session-gate-unavailable')), findsOneWidget);
+    expect(find.byKey(const Key('offline-banner')), findsNothing);
   });
 
   testWidgets('without a cached identity an unavailable session shows a gate', (

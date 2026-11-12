@@ -12,6 +12,7 @@ import 'core/auth/account_gateway.dart';
 import 'core/auth/auth_gateway.dart';
 import 'core/auth/workbench_api.dart';
 import 'core/config/app_config.dart';
+import 'core/source/source_portal.dart';
 import 'core/source/source_session.dart';
 import 'core/storage/local_database.dart';
 import 'core/storage/local_identity_store.dart';
@@ -60,6 +61,7 @@ Future<void> main() async {
     final sessions = SourceSessionRegistry();
     final httpClient = UnavailableSourceHttpClient(sessions: sessions);
     final campusLogin = DeviceCampusLogin(sessions: sessions);
+    const browser = UnsupportedSourcePageOpener();
     runApp(
       JluDelaApp(
         diagnosticsService: service,
@@ -73,6 +75,7 @@ Future<void> main() async {
           sessions: sessions,
           http: httpClient,
           campusLogin: campusLogin,
+          browser: browser,
         ),
       ),
     );

@@ -20,19 +20,51 @@ class MaterialEntry {
   final bool downloadable;
 }
 
+class MaterialChildrenPage {
+  const MaterialChildrenPage({
+    required this.entries,
+    required this.page,
+    required this.observedAt,
+    this.totalPages,
+  });
+
+  final List<MaterialEntry> entries;
+  final int page;
+  final int? totalPages;
+  final DateTime observedAt;
+}
+
+enum SourceAccessMode { signedUrl, sourcePage }
+
 class SourceAccess {
-  const SourceAccess({required this.uri, this.expiresAtUtc});
+  const SourceAccess({
+    required this.uri,
+    required this.mode,
+    required this.requiresSourceSession,
+    this.filename,
+    this.expiresAtUtc,
+  });
 
   final Uri uri;
+  final SourceAccessMode mode;
+  final String? filename;
+  final bool requiresSourceSession;
   final DateTime? expiresAtUtc;
 }
 
 abstract interface class ChaoxingAccess {
-  Future<List<MaterialEntry>> listMaterialChildren(String materialId);
+  Future<MaterialChildrenPage> listMaterialChildren({
+    required String courseOfferingId,
+    String? parentSourceId,
+    int page = 1,
+  });
 
-  Future<SourceAccess> accessMaterial(String materialId);
+  Future<SourceAccess> accessMaterial({
+    required String courseOfferingId,
+    required String sourceId,
+  });
 
-  Future<SourceAccess> openAssignment(String assignmentId);
+  Future<SourceAccess> openAssignment({required String assignmentId});
 }
 
 class UnavailableChaoxingAccess implements ChaoxingAccess {
@@ -47,17 +79,24 @@ class UnavailableChaoxingAccess implements ChaoxingAccess {
   );
 
   @override
-  Future<List<MaterialEntry>> listMaterialChildren(String materialId) async {
+  Future<MaterialChildrenPage> listMaterialChildren({
+    required String courseOfferingId,
+    String? parentSourceId,
+    int page = 1,
+  }) async {
     throw _failure;
   }
 
   @override
-  Future<SourceAccess> accessMaterial(String materialId) async {
+  Future<SourceAccess> accessMaterial({
+    required String courseOfferingId,
+    required String sourceId,
+  }) async {
     throw _failure;
   }
 
   @override
-  Future<SourceAccess> openAssignment(String assignmentId) async {
+  Future<SourceAccess> openAssignment({required String assignmentId}) async {
     throw _failure;
   }
 }

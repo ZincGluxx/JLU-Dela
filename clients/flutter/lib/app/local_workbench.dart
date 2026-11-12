@@ -1,4 +1,6 @@
 import '../core/source/campus_login.dart';
+import '../core/source/source_context.dart';
+import '../core/source/source_portal.dart';
 import '../core/source/source_session.dart';
 import '../core/storage/course_store.dart';
 import '../core/storage/local_database.dart';
@@ -34,13 +36,32 @@ WorkbenchData buildWorkbenchData({
   required SourceSessionRegistry sessions,
   required SourceHttpClient http,
   required CampusLogin campusLogin,
+  required SourcePageOpener browser,
   DateTime Function() now = DateTime.now,
 }) {
+  final source = SourceContext(
+    sessions: sessions,
+    http: http,
+    campusLogin: campusLogin,
+    browser: browser,
+  );
   final snapshots = SourceSnapshotStore(database, userId);
   final courses = CourseStore(database, userId, now: now);
-  final teachingStore = TeachingStore(database, userId, snapshots, courses);
-  final chaoxingStore = ChaoxingStore(database, userId, snapshots, courses);
-  final contentStore = ContentStore(database, userId);
+  final teachingStore = TeachingStore(
+    database,
+    userId,
+    snapshots,
+    courses,
+    source: source,
+  );
+  final chaoxingStore = ChaoxingStore(
+    database,
+    userId,
+    snapshots,
+    courses,
+    source: source,
+  );
+  final contentStore = ContentStore(database, userId, source: source);
   final workspace = LocalWorkspace(
     userId: userId,
     database: database,
@@ -55,6 +76,8 @@ WorkbenchData buildWorkbenchData({
     sessions: sessions,
     http: http,
     campusLogin: campusLogin,
+    browser: browser,
+    source: source,
   );
   return WorkbenchData(
     workspace: workspace,

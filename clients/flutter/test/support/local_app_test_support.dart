@@ -7,6 +7,7 @@ import 'package:jlu_dela/core/api/diagnostics_service.dart';
 import 'package:jlu_dela/core/auth/account_gateway.dart';
 import 'package:jlu_dela/core/auth/session_controller.dart';
 import 'package:jlu_dela/core/source/campus_login.dart';
+import 'package:jlu_dela/core/source/source_portal.dart';
 import 'package:jlu_dela/core/source/source_session.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
 import 'package:jlu_dela/core/storage/local_identity_store.dart';
@@ -46,6 +47,7 @@ class LocalAppHarness {
   final LocalDatabase database;
   final LocalIdentityStore identityStore;
   final CampusLogin campusLogin = const UnsupportedCampusLogin();
+  final SourcePageOpener browser = const UnsupportedSourcePageOpener();
   final List<String> builtUserIds = [];
   final List<TrackingWorkbenchData> workbenches = [];
   late final SourceSessionRegistry sessions;
@@ -59,6 +61,7 @@ class LocalAppHarness {
       sessions: sessions,
       http: http,
       campusLogin: campusLogin,
+      browser: browser,
     );
     final tracked = TrackingWorkbenchData(
       workspace: data.workspace,

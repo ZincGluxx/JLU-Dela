@@ -1,5 +1,7 @@
 import '../source/campus_login.dart';
 import '../source/chaoxing_access.dart';
+import '../source/source_context.dart';
+import '../source/source_portal.dart';
 import '../source/source_session.dart';
 import 'course_store.dart';
 import 'local_database.dart';
@@ -23,6 +25,8 @@ class LocalWorkspace {
     required this.sessions,
     required this.http,
     required this.campusLogin,
+    required this.browser,
+    required this.source,
   });
 
   final String userId;
@@ -38,6 +42,8 @@ class LocalWorkspace {
   final SourceSessionRegistry sessions;
   final SourceHttpClient http;
   final CampusLogin campusLogin;
+  final SourcePageOpener browser;
+  final SourceContext source;
 
   void dispose() {
     todos.dispose();
