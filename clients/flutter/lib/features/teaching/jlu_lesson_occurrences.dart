@@ -5,18 +5,28 @@ class JluLessonOccurrence {
   const JluLessonOccurrence({
     required this.id,
     required this.lessonSourceId,
+    required this.title,
     required this.weekNumber,
     required this.weekday,
+    required this.periodStart,
+    required this.periodEnd,
     required this.startsAtUtc,
     required this.endsAtUtc,
+    this.location,
+    this.note,
   });
 
   final String id;
   final String lessonSourceId;
+  final String title;
   final int weekNumber;
   final int weekday;
+  final int periodStart;
+  final int periodEnd;
   final DateTime startsAtUtc;
   final DateTime endsAtUtc;
+  final String? location;
+  final String? note;
 }
 
 /// 把相对教学周课表展开为具体日期课次。
@@ -39,10 +49,15 @@ List<JluLessonOccurrence> expandJluLessonOccurrences(JluTimetable timetable) {
       final occurrence = JluLessonOccurrence(
         id: _occurrenceId(timetable.semesterStart, lesson, week),
         lessonSourceId: lesson.sourceId,
+        title: lesson.courseName,
         weekNumber: week,
         weekday: lesson.weekday,
+        periodStart: lesson.startPeriod,
+        periodEnd: lesson.endPeriod,
         startsAtUtc: day.add(Duration(minutes: lesson.startMinute)),
         endsAtUtc: day.add(Duration(minutes: lesson.endMinute)),
+        location: lesson.classroom,
+        note: lesson.note,
       );
       byId.putIfAbsent(occurrence.id, () => occurrence);
     }

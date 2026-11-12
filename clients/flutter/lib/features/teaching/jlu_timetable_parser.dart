@@ -146,11 +146,14 @@ String parseCurrentJluSemester(Object? rows) {
   if (list.isEmpty) throw const JluParseException(message);
   final row = _object(list.first, message);
   final semester = _text(row['DM'], message);
-  if (!RegExp(r'^\d{4}-\d{4}-[123]$').hasMatch(semester)) {
+  if (!isJluSemesterCode(semester)) {
     throw const JluParseException(message);
   }
   return semester;
 }
+
+bool isJluSemesterCode(String value) =>
+    RegExp(r'^\d{4}-\d{4}-[123]$').hasMatch(value);
 
 /// 旧版教务 `SKZC` 位掩码：第 n 位为 `1` 表示第 n 周上课。
 List<int> jluWeekNumbers(String value) {
