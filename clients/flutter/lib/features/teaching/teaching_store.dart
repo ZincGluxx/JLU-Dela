@@ -374,7 +374,7 @@ ON CONFLICT(user_id, semester_id) DO UPDATE SET
         final courseSourceId = courseSourceByLesson[occurrence.lessonSourceId]!;
         final offeringId = offeringIds[courseSourceId]!;
         await transaction.insert('teaching_lessons', <String, Object?>{
-          'id': occurrence.id,
+          'id': '$semesterId:${occurrence.id}',
           'user_id': userId,
           'semester_id': semesterId,
           'course_offering_id': offeringId,

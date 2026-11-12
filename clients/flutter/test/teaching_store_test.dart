@@ -168,6 +168,41 @@ void main() {
       isNull,
     );
     expect(await otherCourses.list(source: teachingSource), isEmpty);
+    _value(await otherStore.syncCurrentSemester(http: teachingHttp()));
+    _value(
+      await otherStore.refreshSemester(
+        http: teachingHttp(),
+        semesterCode: _semesterCode,
+      ),
+    );
+    final firstLessons = await store.lessonsBetween(
+      const LocalDate(2026, 9, 14),
+      const LocalDate(2026, 9, 21),
+    );
+    final otherLessons = await otherStore.lessonsBetween(
+      const LocalDate(2026, 9, 14),
+      const LocalDate(2026, 9, 21),
+    );
+    expect(firstLessons, hasLength(1));
+    expect(otherLessons, hasLength(1));
+    expect(otherLessons.single.id, isNot(firstLessons.single.id));
+    expect(
+      otherLessons.single.courseOfferingId,
+      isNot(firstLessons.single.courseOfferingId),
+    );
+    _value(
+      await store.refreshSemester(
+        http: teachingHttp(),
+        semesterCode: _semesterCode,
+      ),
+    );
+    expect(
+      (await store.lessonsBetween(
+        const LocalDate(2026, 9, 14),
+        const LocalDate(2026, 9, 21),
+      )).single.id,
+      firstLessons.single.id,
+    );
   });
 
   test('failure keeps the cached timetable and records the error', () async {
