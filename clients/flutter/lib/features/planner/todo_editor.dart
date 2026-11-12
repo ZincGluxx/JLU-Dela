@@ -572,6 +572,7 @@ class _TodoEditorState extends State<TodoEditor> {
   }
 
   Future<void> _clearDraft() async {
+    await _draftWrite;
     try {
       await widget.workspace.drafts.clear(todoDraftScope, _draftKey);
     } on Object {

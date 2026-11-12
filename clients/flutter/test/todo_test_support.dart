@@ -26,6 +26,7 @@ LocalWorkspace buildTodoWorkspace({
   String userId = 'user-a',
   DateTime Function()? now,
   TodoStore? todos,
+  LocalDraftStore? drafts,
 }) {
   final clock = now ?? fixedTodoNow;
   final snapshots = SourceSnapshotStore(database, userId);
@@ -47,7 +48,7 @@ LocalWorkspace buildTodoWorkspace({
     database: database,
     now: clock,
     todos: todos ?? TodoStore(database, userId, now: clock),
-    drafts: LocalDraftStore(database, userId),
+    drafts: drafts ?? LocalDraftStore(database, userId),
     courses: courses,
     sources: snapshots,
     lessons: teaching,

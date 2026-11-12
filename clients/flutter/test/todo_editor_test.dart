@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/core/models/local_date.dart';
 import 'package:jlu_dela/core/models/todo.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
+import 'package:jlu_dela/core/storage/local_draft_store.dart';
 import 'package:jlu_dela/core/storage/local_workspace.dart';
 
 import 'support/local_database_test_support.dart';
@@ -73,6 +76,28 @@ void main() {
     expect(draft, isNull);
   });
 
+  testWidgets('cancel clears drafts after pending writes finish', (
+    tester,
+  ) async {
+    final drafts = _DelayedDraftStore(database, 'user-a');
+    final delayedWorkspace = buildTodoWorkspace(
+      database: database,
+      drafts: drafts,
+    );
+    addTearDown(delayedWorkspace.dispose);
+    await pumpTodoPage(tester, delayedWorkspace);
+    await openCreateEditor(tester);
+    await tester.enterText(find.byKey(const Key('todo-title-field')), '草稿标题');
+    await tester.enterText(find.byKey(const Key('todo-notes-field')), '草稿备注');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('todo-cancel')));
+    await tester.pump();
+    drafts.gate.complete();
+    await tester.runAsync(() => drafts.finished.future);
+    await tester.pumpAndSettle();
+    expect(await tester.runAsync(() => drafts.read('todo', 'new')), isNull);
+    expect(find.byKey(const Key('todo-title-field')), findsNothing);
+  });
   testWidgets('creates a date-only todo without inventing a precise moment', (
     tester,
   ) async {
@@ -403,4 +428,23 @@ Future<void> updateTodoExternally(
       ..notes = current.notes;
     await workspace.todos.update(current);
   });
+}
+
+class _DelayedDraftStore extends LocalDraftStore {
+  _DelayedDraftStore(super.database, super.userId);
+
+  final gate = Completer<void>();
+  final finished = Completer<void>();
+  int writes = 0;
+
+  @override
+  Future<void> write(
+    String scope,
+    String key,
+    Map<String, dynamic> payload,
+  ) async {
+    await gate.future;
+    await super.write(scope, key, payload);
+    if (++writes == 2) finished.complete();
+  }
 }
