@@ -93,18 +93,67 @@ class LocalDatabase {
       );
     }
 
+    final appliedVersions = await database.transaction((transaction) async {
+      final ledger = await transaction.rawQuery(
+        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'local_migrations'",
+      );
+      if (ledger.isEmpty) {
+        await transaction.execute(
+          'CREATE TABLE local_migrations(version INTEGER PRIMARY KEY)',
+        );
+        for (final migration in ordered) {
+          if (migration.version > currentVersion) {
+            continue;
+          }
+          var exists = true;
+          for (final statement in migration.statements) {
+            final object = RegExp(
+              r'^\s*CREATE\s+(?:UNIQUE\s+)?(TABLE|INDEX)\s+([A-Za-z_]\w*)',
+              caseSensitive: false,
+            ).firstMatch(statement);
+            if (object == null) {
+              throw StateError(
+                'Cannot identify legacy migration ${migration.version}',
+              );
+            }
+            final rows = await transaction.rawQuery(
+              'SELECT name FROM sqlite_schema WHERE type = ? AND name = ?',
+              [object[1]!.toLowerCase(), object[2]!],
+            );
+            exists = exists && rows.isNotEmpty;
+          }
+          if (exists) {
+            await transaction.insert('local_migrations', {
+              'version': migration.version,
+            });
+          }
+        }
+      }
+      final rows = await transaction.query('local_migrations');
+      return rows.map((row) => row['version'] as int).toSet();
+    });
+
     var version = currentVersion;
     for (final migration in ordered) {
-      if (migration.version <= version) {
+      if (appliedVersions.contains(migration.version)) {
         continue;
       }
       await database.transaction((transaction) async {
         for (final statement in migration.statements) {
           await transaction.execute(statement);
         }
-        await transaction.execute('PRAGMA user_version = ${migration.version}');
+        await transaction.insert('local_migrations', {
+          'version': migration.version,
+        });
+        if (migration.version > version) {
+          await transaction.execute(
+            'PRAGMA user_version = ${migration.version}',
+          );
+        }
       });
-      version = migration.version;
+      if (migration.version > version) {
+        version = migration.version;
+      }
     }
     return version;
   }
