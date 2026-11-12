@@ -12,7 +12,8 @@ import 'core/auth/account_gateway.dart';
 import 'core/auth/auth_gateway.dart';
 import 'core/auth/workbench_api.dart';
 import 'core/config/app_config.dart';
-import 'core/source/source_portal.dart';
+import 'core/source/cookie_source_http_client.dart';
+import 'core/source/source_page_opener_impl.dart';
 import 'core/source/source_session.dart';
 import 'core/storage/local_database.dart';
 import 'core/storage/local_identity_store.dart';
@@ -59,9 +60,9 @@ Future<void> main() async {
     final identityStore = LocalIdentityStore(database);
     final cachedIdentity = await identityStore.lastUsed();
     final sessions = SourceSessionRegistry();
-    final httpClient = UnavailableSourceHttpClient(sessions: sessions);
-    final campusLogin = DeviceCampusLogin(sessions: sessions);
-    const browser = UnsupportedSourcePageOpener();
+    final sourceHttp = CookieSourceHttpClient(sessions: sessions);
+    final campusLogin = DeviceCampusLogin(sessions: sessions, http: sourceHttp);
+    final browser = InAppWebViewSourcePageOpener(sessions: sessions);
     runApp(
       JluDelaApp(
         diagnosticsService: service,
@@ -73,7 +74,7 @@ Future<void> main() async {
           database: database,
           userId: userId,
           sessions: sessions,
-          http: httpClient,
+          http: sourceHttp,
           campusLogin: campusLogin,
           browser: browser,
         ),
