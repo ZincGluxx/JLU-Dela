@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
 import 'package:jlu_dela/app/app.dart';
+import 'package:jlu_dela/app/local_migrations.dart';
+import 'package:jlu_dela/app/local_workbench.dart';
 import 'package:jlu_dela/core/api/api_failure.dart';
 import 'package:jlu_dela/core/api/diagnostics_service.dart';
 import 'package:jlu_dela/core/auth/account_gateway.dart';
@@ -11,6 +13,10 @@ import 'package:jlu_dela/core/auth/refresh_token_store.dart';
 import 'package:jlu_dela/core/auth/session_controller.dart';
 import 'package:jlu_dela/core/auth/session_models.dart';
 import 'package:jlu_dela/core/config/app_config.dart';
+import 'package:jlu_dela/core/source/campus_login.dart';
+import 'package:jlu_dela/core/source/source_session.dart';
+import 'package:jlu_dela/core/storage/local_database.dart';
+import 'package:jlu_dela/core/storage/local_identity_store.dart';
 
 const _apiBaseUrl = String.fromEnvironment('API_BASE_URL');
 const _inviteToken = String.fromEnvironment('TEST_INVITE_TOKEN');
@@ -52,8 +58,9 @@ void main() {
       apiBaseUri: baseUri,
       httpClient: http.Client(),
     );
+    final localApp = await _LocalApp.open();
     await tester.pumpWidget(
-      JluDelaApp(
+      localApp.app(
         diagnosticsService: diagnostics,
         session: session,
         accountGateway: accountGateway,
@@ -132,7 +139,7 @@ void main() {
     expect(restarted.currentUser?.displayName, _expectedDisplayName);
 
     await tester.pumpWidget(
-      JluDelaApp(
+      localApp.app(
         diagnosticsService: diagnostics,
         session: restarted,
         accountGateway: accountGateway,
@@ -198,5 +205,45 @@ Future<void> _waitForStoredTokenCleared(
       fail('the secure refresh token store was not cleared');
     }
     await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+}
+
+class _LocalApp {
+  _LocalApp._(this.database) : identityStore = LocalIdentityStore(database) {
+    _sessions = SourceSessionRegistry();
+    _http = UnavailableSourceHttpClient(sessions: _sessions);
+  }
+
+  static Future<_LocalApp> open() async {
+    final database = await LocalDatabase.openInMemory(
+      migrations: appLocalMigrations,
+    );
+    addTearDown(database.close);
+    return _LocalApp._(database);
+  }
+
+  final LocalDatabase database;
+  final LocalIdentityStore identityStore;
+  late final SourceSessionRegistry _sessions;
+  late final SourceHttpClient _http;
+
+  JluDelaApp app({
+    required DiagnosticsService diagnosticsService,
+    required SessionController session,
+    required AccountGateway accountGateway,
+  }) {
+    return JluDelaApp(
+      diagnosticsService: diagnosticsService,
+      session: session,
+      accountGateway: accountGateway,
+      identityStore: identityStore,
+      workbenchBuilder: (userId) => buildWorkbenchData(
+        database: database,
+        userId: userId,
+        sessions: _sessions,
+        http: _http,
+        campusLogin: const UnsupportedCampusLogin(),
+      ),
+    );
   }
 }

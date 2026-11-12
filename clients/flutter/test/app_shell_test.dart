@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:jlu_dela/app/app.dart';
 import 'package:jlu_dela/app/app_shell.dart';
 import 'package:jlu_dela/app/theme.dart';
 import 'package:jlu_dela/core/api/diagnostics_service.dart';
 import 'package:jlu_dela/core/auth/session_controller.dart';
 
+import 'support/local_app_test_support.dart';
 import 'support/session_test_support.dart';
 
 void main() {
@@ -80,6 +80,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('mobile-more')));
     await tester.pumpAndSettle();
+    expect(find.text('待办'), findsOneWidget);
+    expect(find.text('课程资料'), findsOneWidget);
+    expect(find.text('校园通知'), findsOneWidget);
     await tester.tap(find.text('课程资料'));
     await tester.pumpAndSettle();
 
@@ -126,9 +129,10 @@ void main() {
         refreshTokenStore: MemoryRefreshTokenStore(),
       );
       await session.signIn(testCredentials());
+      final harness = await LocalAppHarness.create();
 
       await tester.pumpWidget(
-        JluDelaApp(
+        harness.buildApp(
           diagnosticsService: service,
           session: session,
           accountGateway: FakeAccountGateway(),
