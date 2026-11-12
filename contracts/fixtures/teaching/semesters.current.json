@@ -1,0 +1,42 @@
+{
+  "data": [
+    {
+      "id": "62f03adb-1400-5352-bc30-0b6e223e4af2",
+      "name": "Synthetic semester",
+      "starts_on": "2026-11-02",
+      "ends_on": null,
+      "timezone": "Asia/Shanghai",
+      "source_ref": {
+        "source": "jlu_iedu",
+        "source_id": "synthetic-term-62f03adb",
+        "source_scope": "synthetic-2026-term"
+      }
+    },
+    {
+      "id": "72361b4f-d43d-56f9-92cd-e72f56767e15",
+      "name": "Synthetic semester",
+      "starts_on": null,
+      "ends_on": null,
+      "timezone": "Asia/Shanghai",
+      "source_ref": {
+        "source": "jlu_iedu",
+        "source_id": "synthetic-term-72361b4f",
+        "source_scope": "synthetic-2026-term"
+      }
+    }
+  ],
+  "meta": {
+    "request_id": "synthetic-teaching-request",
+    "next_cursor": null,
+    "has_more": false,
+    "current_semester_id": "62f03adb-1400-5352-bc30-0b6e223e4af2",
+    "snapshot": {
+      "status": "current",
+      "last_success_at": "2026-11-12T02:00:00.000Z",
+      "last_attempt_at": "2026-11-12T01:58:00.000Z",
+      "observed_at": "2026-11-12T01:59:00.000Z",
+      "last_error_code": null,
+      "coverage": {}
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "data": [],
+  "meta": {
+    "request_id": "synthetic-teaching-request",
+    "next_cursor": null,
+    "has_more": false,
+    "snapshot": {
+      "status": "never_synced",
+      "last_success_at": null,
+      "last_attempt_at": null,
+      "observed_at": null,
+      "last_error_code": null,
+      "coverage": {
+        "semester_id": "62f03adb-1400-5352-bc30-0b6e223e4af2",
+        "from": "2026-11-09",
+        "to": "2026-11-16"
+      }
+    }
+  }
+}

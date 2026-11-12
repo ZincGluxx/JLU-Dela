@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "id": "b735c9fb-78e8-5ba7-af29-f8bd90865c06",
+      "course_offering_id": "98b85250-16d6-57df-b378-d07b9b58b29d",
+      "title": "Synthetic course",
+      "starts_at": "2026-11-13T00:00:00.000Z",
+      "ends_at": "2026-11-13T01:40:00.000Z",
+      "location": "Synthetic room A-101",
+      "period_start": 1,
+      "period_end": 2
+    }
+  ],
+  "meta": {
+    "request_id": "synthetic-teaching-request",
+    "next_cursor": null,
+    "has_more": false,
+    "snapshot": {
+      "status": "current",
+      "last_success_at": "2026-11-12T02:00:00.000Z",
+      "last_attempt_at": "2026-11-12T01:58:00.000Z",
+      "observed_at": "2026-11-12T01:59:00.000Z",
+      "last_error_code": null,
+      "coverage": {
+        "semester_id": "62f03adb-1400-5352-bc30-0b6e223e4af2",
+        "from": "2026-11-09",
+        "to": "2026-11-16"
+      }
+    }
+  }
+}
