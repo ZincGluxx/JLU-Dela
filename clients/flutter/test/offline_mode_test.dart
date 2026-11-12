@@ -69,7 +69,7 @@ void main() {
 
     expect(find.byKey(const Key('offline-banner')), findsOneWidget);
     expect(find.text('离线 · 身份未验证'), findsOneWidget);
-    expect(find.byKey(const Key('calendar-empty')), findsOneWidget);
+    expect(find.byKey(const Key('calendar-schedule-axis')), findsOneWidget);
     expect(harness.builtUserIds, ['user-a']);
     expect(find.byKey(const Key('login-page')), findsNothing);
 

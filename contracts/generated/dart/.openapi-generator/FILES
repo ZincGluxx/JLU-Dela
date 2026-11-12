@@ -16,6 +16,13 @@ lib/auth/authentication.dart
 lib/auth/http_basic_auth.dart
 lib/auth/http_bearer_auth.dart
 lib/auth/oauth.dart
+lib/model/academic_calendar.dart
+lib/model/academic_calendar_event.dart
+lib/model/academic_calendar_response.dart
+lib/model/academic_calendar_source.dart
+lib/model/academic_calendar_term.dart
+lib/model/academic_period.dart
+lib/model/academic_periods_source.dart
 lib/model/activate_request.dart
 lib/model/assignment_item.dart
 lib/model/calendar_data.dart

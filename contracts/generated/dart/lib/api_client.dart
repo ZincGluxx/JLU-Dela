@@ -183,6 +183,20 @@ class ApiClient {
           return valueString == 'true' || valueString == '1';
         case 'DateTime':
           return value is DateTime ? value : DateTime.tryParse(value);
+        case 'AcademicCalendar':
+          return AcademicCalendar.fromJson(value);
+        case 'AcademicCalendarEvent':
+          return AcademicCalendarEvent.fromJson(value);
+        case 'AcademicCalendarResponse':
+          return AcademicCalendarResponse.fromJson(value);
+        case 'AcademicCalendarSource':
+          return AcademicCalendarSource.fromJson(value);
+        case 'AcademicCalendarTerm':
+          return AcademicCalendarTerm.fromJson(value);
+        case 'AcademicPeriod':
+          return AcademicPeriod.fromJson(value);
+        case 'AcademicPeriodsSource':
+          return AcademicPeriodsSource.fromJson(value);
         case 'ActivateRequest':
           return ActivateRequest.fromJson(value);
         case 'AssignmentItem':

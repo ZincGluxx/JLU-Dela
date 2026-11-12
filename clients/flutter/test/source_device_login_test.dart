@@ -86,6 +86,35 @@ void main() {
     expect(http.requests.single.timeout, const Duration(seconds: 30));
   });
 
+  for (final source in SourceKind.values) {
+    testWidgets('opens and probes the selected ${source.name} source', (
+      tester,
+    ) async {
+      final endpoints = CampusSourceEndpoints.forSource(source);
+      final webView = FakeSourceWebView(
+        controller: FakeSourceWebViewController(
+          cookies: [
+            source == SourceKind.chaoxing ? _chaoxingCookie() : _jluCookie(),
+          ],
+        ),
+      );
+      final http = StubSourceHttpClient();
+      final login = DeviceCampusLogin(
+        sessions: SourceSessionRegistry(),
+        http: http,
+        webView: webView,
+      );
+
+      final future = await _openConnect(tester, login, source);
+      expect(webView.initialUri, endpoints.loginEntryUri);
+      await tester.tap(find.byKey(const Key('source-login-confirm')));
+      await tester.pumpAndSettle();
+
+      expect((await future).connected, isTrue);
+      expect(http.requests.single.uri, endpoints.probeUri);
+    });
+  }
+
   testWidgets('saves Chaoxing cookies in their own group', (tester) async {
     final sessions = SourceSessionRegistry();
     final login = DeviceCampusLogin(

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
+import '../../app/widgets/academic_calendar_status.dart';
+import '../../app/teaching_calendar_data.dart';
+import '../../core/models/teaching_timeline.dart';
 import '../../core/models/assignment.dart';
 import '../../core/models/lesson.dart';
 import '../../core/models/local_date.dart';
@@ -13,6 +16,7 @@ import '../../core/storage/todo_store.dart';
 import 'calendar_details.dart';
 import 'calendar_entries.dart';
 import 'calendar_grid.dart';
+import 'calendar_schedule_grid.dart';
 import 'calendar_sources.dart';
 import 'calendar_time.dart';
 import 'calendar_views.dart';
@@ -35,6 +39,7 @@ class _CalendarPageState extends State<CalendarPage> {
   bool _showCompleted = false;
   _CalendarData? _data;
   List<SourceSnapshot> _snapshots = const [];
+  List<TeachingPeriod> _periods = const [];
   Object? _error;
   bool _loading = true;
   int _loadToken = 0;
@@ -47,7 +52,19 @@ class _CalendarPageState extends State<CalendarPage> {
   void initState() {
     super.initState();
     _anchor = _today;
+    _workspace.academicCalendar?.addListener(_calendarChanged);
+    _workspace.academicCalendar?.load();
     _load();
+  }
+
+  void _calendarChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _workspace.academicCalendar?.removeListener(_calendarChanged);
+    super.dispose();
   }
 
   CalendarDateRange get _range {
@@ -110,6 +127,7 @@ class _CalendarPageState extends State<CalendarPage> {
         to: range.to,
       );
       final snapshots = await _workspace.sources.list();
+      final periods = await loadTeachingPeriods(_workspace);
       if (!mounted || token != _loadToken) {
         return;
       }
@@ -120,6 +138,7 @@ class _CalendarPageState extends State<CalendarPage> {
           assignments: assignments,
         );
         _snapshots = snapshots;
+        _periods = periods;
         _loading = false;
         _error = null;
       });
@@ -258,6 +277,11 @@ class _CalendarPageState extends State<CalendarPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHeader(context),
+          AcademicCalendarStatus(
+            service: _workspace.academicCalendar,
+            date: _anchor,
+            personalPeriods: _periods,
+          ),
           if (!_loading && _error == null && _data != null) ...[
             const SizedBox(height: AppSpacing.xs),
             CalendarSourceStatusBar(
@@ -274,7 +298,9 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Widget _buildHeader(BuildContext context) {
     final label = switch (_view) {
-      _CalendarView.week => calendarWeekLabel(weekRangeOf(_anchor).from),
+      _CalendarView.week =>
+        '${calendarWeekLabel(weekRangeOf(_anchor).from)}'
+            '${weekRangeOf(_anchor).contains(_today) ? ' · 本周' : ''}',
       _CalendarView.month || _CalendarView.list => calendarMonthLabel(_anchor),
     };
     final periodLabel = _view == _CalendarView.week ? '周' : '月';
@@ -406,14 +432,34 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Widget _buildWeek(List<CalendarEntry> entries, {required bool wide}) {
     final week = CalendarWeek.build(entries, weekRangeOf(_anchor).days);
-    if (week.isEmpty) {
-      return CalendarEmptyState(hasAnyData: _hasAnyData);
+    if (!wide) {
+      return _scrollable(
+        CalendarDayList(week: week, today: _today, onTap: _showEntry),
+        week.undated,
+      );
     }
-    return _scrollable(
-      wide
-          ? CalendarWeekGrid(week: week, today: _today, onTap: _showEntry)
-          : CalendarDayList(week: week, today: _today, onTap: _showEntry),
-      week.undated,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: CalendarScheduleGrid(
+            key: ValueKey(week.days.first.date),
+            week: week,
+            now: _workspace.now,
+            onTap: _showEntry,
+          ),
+        ),
+        if (week.undated.isNotEmpty)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 160),
+            child: SingleChildScrollView(
+              child: CalendarUndatedSection(
+                entries: week.undated,
+                onTap: _showEntry,
+              ),
+            ),
+          ),
+      ],
     );
   }
 

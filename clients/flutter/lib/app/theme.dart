@@ -34,6 +34,7 @@ abstract final class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: background,
+      fontFamily: 'HarmonyOS Sans SC',
     );
 
     return base.copyWith(

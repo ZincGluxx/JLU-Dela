@@ -25,7 +25,7 @@
 
 > **开发预览 · 非吉林大学官方产品。** 提供 macOS 13+ M 系列 DMG 和 Windows 10/11 x64 安装包，均为未签名预览；Mac 包尚未公证，Intel Mac 未验证。[Mac 安装说明](app/docs/install-macos.md) · [Windows 安装说明](app/docs/windows-testing.md)。
 
-> **架构重构中（A01）**：仓库正在从 Electron 单应用迁移到 Flutter + Rust 多端工作台。新工程位于 `server/`、`clients/flutter/`、`contracts/` 与 `infra/`，`app/` 保留为旧实现和行为参考。新底座不是学生正式首页；启动、契约生成与验证命令见 [docs/foundation.md](docs/foundation.md)。现有安装包仍由 `app/` 构建。
+> **架构重构中（A01）**：仓库正在从 Electron 单应用迁移到 Flutter + Rust 多端工作台。新工程位于 `server/`、`clients/flutter/`、`contracts/` 与 `infra/`，`app/` 保留为旧实现和行为参考。新底座不是学生正式首页；启动、契约生成与验证命令见 [docs/foundation.md](docs/foundation.md)。现有安装包仍由 `app/` 构建。Flutter 本地验证版已提供课表、连续时间轴学习日历和附官方来源的校历同步；尚不等同于旧版安装包的完整业务能力。
 
 ## 从「今天学什么」开始
 

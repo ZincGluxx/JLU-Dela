@@ -1,3 +1,7 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/app/local_workbench.dart';
@@ -27,6 +31,7 @@ T _value<T>(SourceResult<T> result) {
   LocalDatabase database, {
   SourceHttpClient? http,
   CampusLogin? campusLogin,
+  double textScale = 1,
 }) {
   final sessions = SourceSessionRegistry();
   final data = buildWorkbenchData(
@@ -42,6 +47,12 @@ T _value<T>(SourceResult<T> result) {
   return (
     widget: MaterialApp(
       theme: AppTheme.light(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       home: Scaffold(
         body: TeachingPage(
           workspace: data.workspace,
@@ -70,7 +81,53 @@ Finder _listLessonBlocks() {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    final loader = FontLoader('HarmonyOS Sans SC')
+      ..addFont(rootBundle.load('assets/fonts/HarmonyOS_Sans_SC_Regular.ttf'));
+    await loader.load();
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+  });
   late LocalDatabase database;
+
+  for (final width in [390.0, 1280.0]) {
+    testWidgets('teaching responsive capture $width and 2x text', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final harness = _harness(database);
+      _value(await harness.data.teachingStore.syncCurrentSemester());
+      _value(
+        await harness.data.teachingStore.refreshSemester(
+          semesterCode: '2026-2027-1',
+        ),
+      );
+      await tester.pumpWidget(
+        RepaintBoundary(key: const Key('capture'), child: harness.widget),
+      );
+      await tester.pumpAndSettle();
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const Key('capture')),
+      );
+      final image = (await tester.runAsync(() => boundary.toImage()))!;
+      final bytes = await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.png),
+      );
+      final file = File('../../.local/research/teaching-${width.toInt()}.png');
+      await tester.runAsync(() async {
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes!.buffer.asUint8List());
+      });
+      image.dispose();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(_harness(database, textScale: 2).widget);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   setUp(() async {
     database = await openTestDatabase();
@@ -109,7 +166,7 @@ void main() {
     expect(find.textContaining('上次成功'), findsOneWidget);
     expect(_gridLessonBlocks(), findsOneWidget);
     expect(_listLessonBlocks(), findsNothing);
-    expect(find.text('第 1 / 20 周'), findsOneWidget);
+    expect(find.text('教务课表 · 第 1 / 20 周'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -141,11 +198,11 @@ void main() {
     await tester.tap(find.byKey(const Key('teaching-sync-empty')));
     await tester.pumpAndSettle();
 
-    expect(find.text('第 1 / 20 周'), findsOneWidget);
+    expect(find.text('教务课表 · 第 1 / 20 周'), findsOneWidget);
     await tester.tap(find.byKey(const Key('teaching-week-next')));
     await tester.pumpAndSettle();
 
-    expect(find.text('第 2 / 20 周'), findsOneWidget);
+    expect(find.text('教务课表 · 第 2 / 20 周'), findsOneWidget);
     expect(find.byKey(const Key('teaching-empty-week')), findsOneWidget);
     expect(find.text('第 2 周暂无课程'), findsOneWidget);
     expect(tester.takeException(), isNull);

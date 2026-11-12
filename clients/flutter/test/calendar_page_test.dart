@@ -1,3 +1,7 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -203,6 +207,59 @@ Future<void> _pumpCalendar(
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    final loader = FontLoader('HarmonyOS Sans SC')
+      ..addFont(rootBundle.load('assets/fonts/HarmonyOS_Sans_SC_Regular.ttf'));
+    await loader.load();
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+  });
+  for (final width in [390.0, 1280.0]) {
+    testWidgets('calendar responsive capture $width and 2x text', (
+      tester,
+    ) async {
+      final harness = await _CalendarHarness.create(
+        lessons: [_lesson()],
+        assignments: [_assignment()],
+      );
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      Widget app(double scale) => MaterialApp(
+        theme: AppTheme.light(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!,
+        ),
+        home: Scaffold(body: CalendarPage(workspace: harness.workspace)),
+      );
+      await tester.pumpWidget(
+        RepaintBoundary(key: const Key('capture'), child: app(1)),
+      );
+      await tester.pumpAndSettle();
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const Key('capture')),
+      );
+      final image = (await tester.runAsync(() => boundary.toImage()))!;
+      final bytes = await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.png),
+      );
+      final file = File('../../.local/research/calendar-${width.toInt()}.png');
+      await tester.runAsync(() async {
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes!.buffer.asUint8List());
+      });
+      image.dispose();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(app(2));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('加载态之后显示课程、作业、待办与真实来源状态', (tester) async {
     final harness = await _CalendarHarness.create(
       lessons: [_lesson()],
@@ -231,13 +288,14 @@ void main() {
     expect(find.byKey(const Key('calendar-login-chaoxing')), findsOneWidget);
   });
 
-  testWidgets('空库引导连接来源或新建待办', (tester) async {
+  testWidgets('空库仍显示完整日程轴与来源入口', (tester) async {
     final harness = await _CalendarHarness.create();
     await _pumpCalendar(tester, harness);
 
-    expect(find.byKey(const Key('calendar-empty')), findsOneWidget);
-    expect(find.text('还没有可显示的安排'), findsOneWidget);
-    expect(find.textContaining('新建待办'), findsOneWidget);
+    expect(find.byKey(const Key('calendar-empty')), findsNothing);
+    expect(find.byKey(const Key('calendar-schedule-axis')), findsOneWidget);
+    expect(find.text('00:00'), findsOneWidget);
+    expect(find.text('24:00'), findsOneWidget);
     expect(find.byKey(const Key('calendar-login-jluIedu')), findsOneWidget);
   });
 
@@ -298,7 +356,7 @@ void main() {
     expect(find.text('周一 11/9'), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const Key('calendar-range-label'))).data,
-      '2026年11月9日 – 11月15日',
+      '2026年11月9日 – 11月15日 · 本周',
     );
     expect(harness.lessonQuery.calls.last, (
       const LocalDate(2026, 11, 9),
@@ -391,6 +449,9 @@ void main() {
     await tester.ensureVisible(
       find.byKey(const Key('calendar-entry-lesson:l1')),
     );
+    await tester.ensureVisible(
+      find.byKey(const Key('calendar-entry-lesson:l1')),
+    );
     await tester.tap(find.byKey(const Key('calendar-entry-lesson:l1')));
     await tester.pumpAndSettle();
     expect(find.text('教务课表 · 只读'), findsOneWidget);
@@ -414,6 +475,9 @@ void main() {
     await tester.ensureVisible(
       find.byKey(Key('calendar-entry-todo:${todo.id}')),
     );
+    await tester.ensureVisible(
+      find.byKey(Key('calendar-entry-todo:${todo.id}')),
+    );
     await tester.tap(find.byKey(Key('calendar-entry-todo:${todo.id}')));
     await tester.pumpAndSettle();
     expect(find.text('带笔记本'), findsOneWidget);
@@ -430,6 +494,9 @@ void main() {
     );
     await _pumpCalendar(tester, harness);
 
+    await tester.ensureVisible(
+      find.byKey(Key('calendar-entry-todo:${todo.id}')),
+    );
     await tester.tap(find.byKey(Key('calendar-entry-todo:${todo.id}')));
     await tester.pumpAndSettle();
     expect(find.text('标记为完成'), findsOneWidget);
@@ -451,6 +518,9 @@ void main() {
     );
     await _pumpCalendar(tester, harness);
 
+    await tester.ensureVisible(
+      find.byKey(Key('calendar-entry-todo:${todo.id}')),
+    );
     await tester.tap(find.byKey(Key('calendar-entry-todo:${todo.id}')));
     await tester.pumpAndSettle();
 

@@ -6,6 +6,14 @@ A02 已实现工作台会话生命周期（刷新、退出、当前用户、令�
 
 本文对应规划 A01。新架构以 Flutter + Rust 为目标；`app/` 保留为旧 Electron 实现与行为参考。`AGENTS.md` 仍只由人类维护。
 
+### 本地日历验证更新（2026-11-12）
+
+- 新增只读公共接口 `GET /api/v1/academic-calendar?academic_year=2026-2027`，另支持 `2025-2026`。新增迁移 `20261112010000_create_academic_calendars.sql`，schema 升至 `6`；启动顺序仍为先备份、执行 `migrate`、再启动 API。
+- 校历来自本科生院[2026–2027 学年](https://jwc.jlu.edu.cn/info/1067/12517.htm)、[2025–2026 学年](https://jwc.jlu.edu.cn/info/1067/12536.htm)及[作息表](https://jwc.jlu.edu.cn/sksj.htm)。日期范围含首尾，节日不推断调休；全校教学与新生开课分开标记。
+- Flutter 在 `lib/core/academic/` 同步并缓存公开校历，`lib/app/widgets/` 提供校历详情与课表展示；个人教务节次优先，公共校历不改写个人课次。学习日历使用独立连续小时轴，待办与作业表示截止点而非虚构持续时长。
+- Windows Cookie 读取边界修复插件返回秒、应用按毫秒解读的问题。真实教务导入由用户验证成功；学习通读取故障尚需新版真实账号复测，不标记已解决。HarmonyOS Sans SC 字体与许可随客户端打包。
+- 本轮验证限 Windows x64：Flutter 静态检查、547 项测试与 release 构建通过；Rust 95 项含 PostgreSQL 的测试及 Clippy 通过。macOS、移动端、Compose 和生产部署未验证。下文早期里程碑中的待办与能力清单保留为历史交接记录。
+
 ## 1. 工具链基线
 
 | 工具              | 版本                                            | 位置                                    |
@@ -109,13 +117,13 @@ npm run verify     # lint + generate + drift
 
 ## 5. 目录与 owner
 
-| 目录                                                                                                                                                                                                                              | Owner   | 边界                                     |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------- |
+| 目录                                                                                                                                                                                                                                                   | Owner   | 边界                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | ---------------------------------------- |
 | `server/src/{config,db,error,http,health,json,meta,state,response,logging,auth}`、`server/src/{connections,sync}`（connections 计划；sync 已实现）、`migrations/`、`infra/`、`.github/workflows/foundation-ci.yml`、`contracts/`、`docs/foundation.md` | A       | 公共契约、身份权限、发布与合并           |
-| `server/src/connectors/{iedu,chaoxing,oa}`、`server/src/{teaching,assignments,notices,materials}`                                                                                                                                 | B/C/D   | 各自校园来源与业务模块                   |
-| `clients/flutter/lib/features/{teaching,assignments,content,planner}`                                                                                                                                                             | B/C/D/E | 各自业务页面，先消费契约夹具             |
-| `clients/flutter/lib/{app,core,features/auth}`、`contracts/openapi.yaml`                                                                                                                                                          | A       | 公共主题、路由入口、API 客户端与契约总审 |
-| `server/src/{todos,calendar}`、`clients/flutter/lib/features/planner`                                                                                                                                                             | E       | 待办、幂等、冲突与日历聚合               |
+| `server/src/connectors/{iedu,chaoxing,oa}`、`server/src/{teaching,assignments,notices,materials}`                                                                                                                                                      | B/C/D   | 各自校园来源与业务模块                   |
+| `clients/flutter/lib/features/{teaching,assignments,content,planner}`                                                                                                                                                                                  | B/C/D/E | 各自业务页面，先消费契约夹具             |
+| `clients/flutter/lib/{app,core,features/auth}`、`contracts/openapi.yaml`                                                                                                                                                                               | A       | 公共主题、路由入口、API 客户端与契约总审 |
+| `server/src/{todos,calendar}`、`clients/flutter/lib/features/planner`                                                                                                                                                                                  | E       | 待办、幂等、冲突与日历聚合               |
 
 具体任务映射见工作区的 `output/planning/JLU-Dela-Development-Plan.md`。该规划文档由用户维护，当前未纳入本 PR。
 
@@ -202,6 +210,7 @@ Flutter DiagnosticsPage
 - 公共应用壳：桌面玻璃侧栏与顶部工具栏、手机玻璃底栏与「更多」入口、`AppDestination -> AppPageBuilder` 页面注册、玻璃/实色同布局切换、未接入页面明确显示尚未开放。窗口缩放、文字缩放（2.0）与 390/820/1280 宽度由 widget 测试覆盖；Windows release 构建通过。Android 未构建、未真机验证。
 
 当前壳截图：[桌面 1280×720](client/app-shell-desktop.png) · [手机 390×844](client/app-shell-mobile.png)。两张图来自 Windows release 构建，页面显示「此功能尚未开放」，不含业务数据。
+
 - Compose 本地栈、Caddy 入口、内部 PG/Redis、健康检查、持久卷、staging 覆盖模板；配置已在本机校验，启动冒烟由 CI 执行。
 
 尚未实现，不能标记为完成：
@@ -300,12 +309,12 @@ bash smoke.sh
 
 以下问题在 2026-11-11 仍没有仓库内证据表明已获批准（工作台身份已于 2026-11-12 确认），不能把提案当作实现依据：
 
-| 决策             | 现状与证据                                                                                                                                                                           | 影响                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| 工作台身份       | 2026-11-12 主开发确认首期采用受控邀请账号；仓库没有学校 OAuth/OIDC 证据                                                                                                               | 已交付激活/登录契约、迁移、服务端、Flutter 入口与真实闭环（PR #18）；刷新、退出、`/me` 与会话撤销见 PR #11 |
-| 来源授权执行位置 | 旧 Electron 只证明“可见学校窗口 + 用户手工完成 CAS/登录”的客户端会话；没有服务器可达或无人交互登录证据；Flutter 当前没有 webview 依赖                                                | connections/challenge、来源会话托管与 B/C/D 来源实现阻塞；sync-jobs 公共机制已实现但未注册 adapter |
-| 正式应用壳与视觉 | 诊断页品牌侧栏明确不是正式业务导航；没有批准稿                                                                                                                                       | 登录/激活页已按现有 `AppTheme` 落地，正式导航与视觉基线仍无批准稿 |
-| 来源实测条件     | 教务：文档自述本人会话可用，缺新用户、自然过期与换账号；学习通：发起人账号 33 门课程，缺第二账号与过期；电子校务：匿名列表与 6 篇正文可读，网络位置未核实，附件必须由学校页面执行 JS | 来源只能标记“未验证/未接入”，不能宣称已连接                          |
+| 决策             | 现状与证据                                                                                                                                                                           | 影响                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| 工作台身份       | 2026-11-12 主开发确认首期采用受控邀请账号；仓库没有学校 OAuth/OIDC 证据                                                                                                              | 已交付激活/登录契约、迁移、服务端、Flutter 入口与真实闭环（PR #18）；刷新、退出、`/me` 与会话撤销见 PR #11 |
+| 来源授权执行位置 | 旧 Electron 只证明“可见学校窗口 + 用户手工完成 CAS/登录”的客户端会话；没有服务器可达或无人交互登录证据；Flutter 当前没有 webview 依赖                                                | connections/challenge、来源会话托管与 B/C/D 来源实现阻塞；sync-jobs 公共机制已实现但未注册 adapter         |
+| 正式应用壳与视觉 | 诊断页品牌侧栏明确不是正式业务导航；没有批准稿                                                                                                                                       | 登录/激活页已按现有 `AppTheme` 落地，正式导航与视觉基线仍无批准稿                                          |
+| 来源实测条件     | 教务：文档自述本人会话可用，缺新用户、自然过期与换账号；学习通：发起人账号 33 门课程，缺第二账号与过期；电子校务：匿名列表与 6 篇正文可读，网络位置未核实，附件必须由学校页面执行 JS | 来源只能标记“未验证/未接入”，不能宣称已连接                                                                |
 
 已确认的来源边界：
 
