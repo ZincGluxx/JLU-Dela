@@ -16,9 +16,7 @@ info:
     - GET /api/v1/me
     - GET /api/v1/todos, POST /api/v1/todos, PATCH and DELETE /api/v1/todos/{id}
     - POST /api/v1/sync-jobs, GET /api/v1/sync-jobs/{id}
-
-    Endpoints described but not yet served:
-    - GET /api/v1/calendar (contract fixed, aggregation pending the campus sources)
+    - GET /api/v1/calendar
 
     The session endpoints operate on an opaque token pair. Activation and login
     are not part of this contract yet: the workbench identity scheme still needs
@@ -101,9 +99,8 @@ x-contract-status:
     - DELETE /api/v1/todos/{id}
     - POST /api/v1/sync-jobs
     - GET /api/v1/sync-jobs/{id}
-  design-only:
     - GET /api/v1/calendar
-  note: Activation and login, connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build.
+  note: Activation and login, connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build. The calendar aggregates personal todos today; lessons and assignments arrive once B/C register a source adapter, so `sources` is an empty array until then.
 
 paths:
   /health/live:
@@ -638,14 +635,20 @@ paths:
         - name: from
           in: query
           required: true
-          description: Inclusive start day in Asia/Shanghai.
+          description: |
+            Inclusive start day in Asia/Shanghai, written as a plain calendar
+            day `YYYY-MM-DD`. The generated Dart client serialises `DateTime`
+            query parameters as RFC 3339 instants, which this endpoint rejects
+            with 422 `INVALID_FORMAT`; call the endpoint through
+            `ApiClient.invokeAPI` with a formatted day, or fix the generator
+            template before using `CalendarApi` directly.
           schema:
             type: string
             format: date
         - name: to
           in: query
           required: true
-          description: Exclusive end day in Asia/Shanghai.
+          description: Exclusive end day in Asia/Shanghai, same wire format as `from`.
           schema:
             type: string
             format: date
