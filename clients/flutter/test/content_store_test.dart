@@ -9,6 +9,36 @@ import 'package:jlu_dela/features/content/content_store.dart';
 import 'content_test_support.dart';
 
 void main() {
+  test('通知搜索和部门筛选覆盖超过五百条的全部缓存', () async {
+    final harness = await ContentHarness.open();
+    addTearDown(harness.close);
+    final store = harness.storeFor('user-a');
+    final workspace = harness.workspaceFor('user-a');
+    harness.http.handler = (request) async => htmlResponse(
+      noticeListPage(
+        rows: [
+          for (var index = 0; index < 501; index++)
+            noticeRow(
+              id: '${1000 + index}',
+              title: index == 500 ? '末条目标通知' : '普通通知',
+              department: index == 500 ? '末条部门' : '示例单位',
+            ),
+        ].join(),
+        totalPages: 1,
+        totalCount: 501,
+      ),
+    );
+
+    expect(
+      await store.refreshNotices(workspace),
+      isA<SourceSuccess<NoticeRefreshSummary>>(),
+    );
+    expect(await store.listNotices(), hasLength(501));
+    expect(await store.searchNotices(query: '末条目标'), hasLength(1));
+    expect(await store.searchNotices(organization: '末条部门'), hasLength(1));
+    expect(await store.noticeOrganizations(), contains('末条部门'));
+  });
+
   test('通知刷新保存三种发布时间精度，失败时保留旧缓存', () async {
     final harness = await ContentHarness.open();
     addTearDown(harness.close);
