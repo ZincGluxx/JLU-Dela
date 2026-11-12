@@ -27,7 +27,6 @@ class TeachingSemester {
     required this.code,
     required this.name,
     this.startsOn,
-    this.endsOn,
     this.totalWeeks,
     required this.isCurrent,
   });
@@ -36,7 +35,6 @@ class TeachingSemester {
   final String code;
   final String name;
   final LocalDate? startsOn;
-  final LocalDate? endsOn;
   final int? totalWeeks;
   final bool isCurrent;
 
@@ -83,21 +81,36 @@ class TeachingStore implements LessonQuery {
   final DateTime Function() _now;
 
   Future<List<TeachingSemester>> listSemesters() async {
-    final rows = await _database.query(
-      'teaching_semesters',
-      where: 'user_id = ?',
-      whereArgs: [userId],
-      orderBy: 'is_current DESC, starts_on DESC, source_id DESC',
+    final rows = await _database.rawQuery(
+      '''
+SELECT semesters.*, calendars.starts_on AS starts_on,
+       calendars.total_weeks AS total_weeks
+FROM teaching_semesters AS semesters
+LEFT JOIN teaching_calendars AS calendars
+  ON calendars.user_id = semesters.user_id
+  AND calendars.semester_id = semesters.id
+WHERE semesters.user_id = ?
+ORDER BY semesters.is_current DESC, calendars.starts_on DESC,
+         semesters.source_id DESC
+''',
+      [userId],
     );
     return rows.map(_semesterFromRow).toList();
   }
 
   Future<TeachingSemester?> semesterByCode(String code) async {
-    final rows = await _database.query(
-      'teaching_semesters',
-      where: 'user_id = ? AND source_id = ?',
-      whereArgs: [userId, code],
-      limit: 1,
+    final rows = await _database.rawQuery(
+      '''
+SELECT semesters.*, calendars.starts_on AS starts_on,
+       calendars.total_weeks AS total_weeks
+FROM teaching_semesters AS semesters
+LEFT JOIN teaching_calendars AS calendars
+  ON calendars.user_id = semesters.user_id
+  AND calendars.semester_id = semesters.id
+WHERE semesters.user_id = ? AND semesters.source_id = ?
+LIMIT 1
+''',
+      [userId, code],
     );
     return rows.isEmpty ? null : _semesterFromRow(rows.first);
   }
@@ -238,9 +251,9 @@ ORDER BY lessons.starts_at_utc
       await transaction.rawInsert(
         '''
 INSERT INTO teaching_semesters(
-  id, user_id, source, source_scope, source_id, name, starts_on, ends_on,
-  total_weeks, is_current, last_observed_at_utc, created_at_utc, updated_at_utc
-) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 1, ?, ?, ?)
+  id, user_id, source, source_scope, source_id, name, is_current,
+  last_observed_at_utc, created_at_utc, updated_at_utc
+) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
   is_current = 1,
@@ -299,13 +312,11 @@ ON CONFLICT(id) DO UPDATE SET
       await transaction.rawInsert(
         '''
 INSERT INTO teaching_semesters(
-  id, user_id, source, source_scope, source_id, name, starts_on, ends_on,
-  total_weeks, is_current, last_observed_at_utc, created_at_utc, updated_at_utc
-) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, ?, ?, ?)
+  id, user_id, source, source_scope, source_id, name, is_current,
+  last_observed_at_utc, created_at_utc, updated_at_utc
+) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
-  starts_on = excluded.starts_on,
-  total_weeks = excluded.total_weeks,
   last_observed_at_utc = excluded.last_observed_at_utc,
   updated_at_utc = excluded.updated_at_utc
 ''',
@@ -316,8 +327,6 @@ ON CONFLICT(id) DO UPDATE SET
           teachingSemesterScope,
           value.semesterCode,
           jluSemesterName(value.semesterCode),
-          timetable.semesterStart,
-          timetable.totalWeeks,
           timestamp,
           timestamp,
           timestamp,
@@ -414,13 +423,11 @@ ON CONFLICT(user_id, semester_id) DO UPDATE SET
 
   TeachingSemester _semesterFromRow(Map<String, Object?> row) {
     final startsOn = row['starts_on'] as String?;
-    final endsOn = row['ends_on'] as String?;
     return TeachingSemester(
       id: row['id'] as String,
       code: row['source_id'] as String,
       name: row['name'] as String,
       startsOn: startsOn == null ? null : LocalDate.parse(startsOn),
-      endsOn: endsOn == null ? null : LocalDate.parse(endsOn),
       totalWeeks: row['total_weeks'] as int?,
       isCurrent: (row['is_current'] as int) == 1,
     );
