@@ -62,7 +62,12 @@ class _SourceLoginDialogState extends State<_SourceLoginDialog> {
       _message = null;
     });
     try {
-      final cookies = await controller.readCookies(widget.endpoints.cookieUris);
+      final cookies = await controller.readCookies({
+        ...widget.endpoints.cookieUris,
+        widget.endpoints.loginEntryUri,
+        widget.endpoints.probeUri,
+        ?_currentUri,
+      });
       if (!mounted) {
         return;
       }

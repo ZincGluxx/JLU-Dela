@@ -45,7 +45,51 @@ Future<Future<SourceLoginCapture?>> _openDialog(
   return future;
 }
 
+class _PathScopedCookieController extends FakeSourceWebViewController {
+  @override
+  Future<List<SourceCookie>> readCookies(Iterable<Uri> uris) async {
+    await super.readCookies(uris);
+    final registry = SourceSessionRegistry()
+      ..save(SourceAuthGroup.jluCampus, const [
+        SourceCookie(
+          name: 'JSESSIONID',
+          value: 'path-session',
+          domain: 'iedu.jlu.edu.cn',
+          path: '/jwapp',
+          secure: true,
+        ),
+      ]);
+    return [
+      for (final uri in uris)
+        ...registry.cookiesForUri(SourceKind.jluIedu, uri),
+    ];
+  }
+}
+
 void main() {
+  testWidgets('captures cookies for the login and current page paths', (
+    tester,
+  ) async {
+    final webView = FakeSourceWebView(
+      controller: _PathScopedCookieController(),
+    );
+    final future = await _openDialog(tester, webView: webView);
+    final current = Uri.parse('https://iedu.jlu.edu.cn/jwapp/student/home');
+    webView.emitPage(current);
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('source-login-confirm')));
+    await tester.pumpAndSettle();
+
+    final capture = await future;
+    expect(capture, isNotNull);
+    expect(capture!.cookies.first.value, 'path-session');
+    expect(webView.controller.readCookieUris, contains(current));
+    expect(
+      webView.controller.readCookieUris,
+      contains(CampusSourceEndpoints.forSource(SourceKind.jluIedu).probeUri),
+    );
+  });
+
   testWidgets('captures cookies after the user confirms the login', (
     tester,
   ) async {

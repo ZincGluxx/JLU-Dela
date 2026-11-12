@@ -14,6 +14,7 @@ class FakeSourceWebViewController implements SourceWebViewController {
   List<SourceCookie> setCookieCalls = const [];
   int clearCalls = 0;
   Uri? loadedUri;
+  List<Uri> readCookieUris = const [];
 
   @override
   Future<void> load(Uri uri) async {
@@ -24,6 +25,7 @@ class FakeSourceWebViewController implements SourceWebViewController {
   @override
   Future<List<SourceCookie>> readCookies(Iterable<Uri> uris) async {
     calls.add('readCookies');
+    readCookieUris = uris.toList();
     if (failRead) {
       throw Exception('read failed');
     }
