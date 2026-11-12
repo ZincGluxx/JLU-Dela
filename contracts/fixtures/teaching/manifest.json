@@ -1,0 +1,81 @@
+{
+  "provenance": "synthetic",
+  "school_verified": false,
+  "fixtures": [
+    {
+      "file": "semesters.current.json",
+      "schema": "SemesterListResponse",
+      "scenario": "Known and unknown semester dates; all dates are invented."
+    },
+    {
+      "file": "semesters.unknown_start.json",
+      "schema": "SemesterListResponse",
+      "scenario": "No evidence for the current semester or teaching-week origin."
+    },
+    {
+      "file": "courses.multisource.json",
+      "schema": "CourseListResponse",
+      "scenario": "Identical names remain separate; unmapped Chaoxing semester is null."
+    },
+    {
+      "file": "courses.filtered.json",
+      "schema": "CourseListResponse",
+      "scenario": "Source and semester filters exclude the unmapped Chaoxing offering."
+    },
+    {
+      "file": "schedule.normal.json",
+      "schema": "ScheduleListResponse",
+      "scenario": "Synthetic Friday 08:00-09:40 Asia/Shanghai represented in UTC."
+    },
+    {
+      "file": "schedule.rescheduled.json",
+      "schema": "ScheduleListResponse",
+      "scenario": "Same source lesson identity; original occurrence replaced after complete range confirmation. No real school ID mapping is claimed."
+    },
+    {
+      "file": "schedule.cancelled.json",
+      "schema": "ScheduleListResponse",
+      "scenario": "Complete range after cancellation of the only synthetic lesson."
+    },
+    {
+      "file": "schedule.empty.json",
+      "schema": "ScheduleListResponse",
+      "scenario": "Successful complete empty snapshot, not never-synced."
+    },
+    {
+      "file": "schedule.never_synced.json",
+      "schema": "ScheduleListResponse",
+      "scenario": "No snapshot has been collected."
+    },
+    {
+      "file": "schedule.partial.json",
+      "schema": "ScheduleListResponse",
+      "scenario": "Existing cached lesson retained after a later page times out; absence in a partial page is not deletion."
+    },
+    {
+      "file": "schedule.source_auth_required.json",
+      "schema": "ScheduleListResponse",
+      "scenario": "A valid workbench session can still read cached lessons after school authorization expires."
+    },
+    {
+      "file": "schedule.cross_midnight.json",
+      "schema": "ScheduleListResponse",
+      "scenario": "Explicit time spanning Shanghai midnight, with unknown period numbers."
+    },
+    {
+      "file": "error.workbench_auth_required.json",
+      "schema": "ErrorResponse",
+      "scenario": "Synthetic AUTH_REQUIRED response; no real credentials or user data."
+    },
+    {
+      "file": "error.bad_cursor.json",
+      "schema": "ErrorResponse",
+      "scenario": "Synthetic BAD_CURSOR response; no real credentials or user data."
+    },
+    {
+      "file": "error.semester_not_found.json",
+      "schema": "ErrorResponse",
+      "scenario": "Synthetic NOT_FOUND response; no real credentials or user data."
+    }
+  ]
+}

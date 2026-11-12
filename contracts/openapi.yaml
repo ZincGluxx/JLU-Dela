@@ -4,8 +4,8 @@ info:
   title: JLU Dela HTTP API
   version: 0.1.0
   description: |
-    Single source of truth for the HTTP endpoints currently implemented by the
-    JLU Dela foundation service (planning item A01).
+    Single source of truth for the implemented and design-only HTTP endpoints
+    of the JLU Dela foundation service (planning item A01).
 
     Implemented endpoints:
     - GET /health/live
@@ -19,6 +19,10 @@ info:
     - GET /api/v1/todos, POST /api/v1/todos, PATCH and DELETE /api/v1/todos/{id}
     - POST /api/v1/sync-jobs, GET /api/v1/sync-jobs/{id}
     - GET /api/v1/calendar
+
+    Endpoints described but not yet served:
+    - GET /api/v1/semesters, GET /api/v1/courses, GET /api/v1/schedule
+      (B teaching draft, pending A and consumer review)
 
     The session endpoints operate on an opaque token pair. Workbench accounts
     are provisioned through controlled one-time invitations: an operator issues
@@ -92,6 +96,8 @@ tags:
     description: Study calendar aggregation over lessons, assignments and personal todos.
   - name: Sync
     description: Persisted source synchronization jobs. Source adapters are owned by B/C/D.
+  - name: Teaching
+    description: Draft reads of saved semesters, shared courses and expanded lessons. Not implemented.
 
 x-contract-status:
   implemented:
@@ -110,6 +116,10 @@ x-contract-status:
     - POST /api/v1/sync-jobs
     - GET /api/v1/sync-jobs/{id}
     - GET /api/v1/calendar
+  design-only:
+    - GET /api/v1/semesters
+    - GET /api/v1/courses
+    - GET /api/v1/schedule
   note: Accounts are created only by controlled invitation; there is no self-service registration or school SSO. Connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build. The calendar currently aggregates personal todos; lessons and assignments require registered source adapters.
 
 paths:
@@ -710,6 +720,202 @@ paths:
         '5XX':
           $ref: '#/components/responses/ServerError'
 
+  /api/v1/semesters:
+    get:
+      operationId: listSemesters
+      tags:
+        - Teaching
+      security:
+        - bearerAuth: []
+      x-contract-status: design-only
+      x-review-status: draft
+      summary: List the caller's saved semesters
+      description: |
+        Draft only; this route is not implemented. Reads normalized workbench
+        data for the bearer user and does not initiate a campus request.
+        `current_semester_id` is null without reliable current-term evidence.
+
+        Sort by `starts_on` descending, nulls last, then `id` ascending. The
+        cursor must continue into the null-date region and is bound to the
+        user and ordering. A malformed or mismatched cursor returns 422
+        `BAD_CURSOR`; other invalid query values return 422 `VALIDATION_FAILED`.
+
+        An unobserved source returns an empty list with `never_synced`; a
+        complete empty snapshot returns an empty list with `current`. A failed
+        refresh keeps saved data and reports `stale` with `last_error_code`.
+        Source authorization failure does not turn this cached read into 409
+        or invalidate the workbench identity.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: One page of saved semesters and source snapshot metadata.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SemesterListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/courses:
+    get:
+      operationId: listCourses
+      tags:
+        - Teaching
+      security:
+        - bearerAuth: []
+      x-contract-status: design-only
+      x-review-status: draft
+      summary: List the caller's shared course offerings
+      description: |
+        Draft only; this route is not implemented. Reads saved normalized
+        courses for the bearer user. Omitting a filter leaves it unrestricted.
+        `semester_id` matches exactly; a missing or invisible semester returns
+        404. Courses with an unknown semester have `semester_id: null` and
+        appear only when no semester filter is supplied. A source filter
+        matches a course with that source association, without discarding its
+        other `source_refs`. Equal course names do not imply shared identity.
+
+        Sort by source `name` ascending, then `id` ascending, regardless of the
+        user's remark. The cursor binds the user, all filters and ordering.
+        Malformed or mismatched cursors return 422 `BAD_CURSOR`; other invalid
+        query values return 422 `VALIDATION_FAILED`.
+
+        Per-source metadata is a draft choice pending A/C/E review. With a
+        source filter, `source_snapshots` contains exactly that source; without
+        it, it contains `jlu_iedu` then `chaoxing`, including sources never
+        synced. Source failures preserve cached records and are reported in
+        the corresponding snapshot, not as 409 or a workbench 401.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: semester_id
+          in: query
+          required: false
+          description: Exact workbench semester ID owned by the caller.
+          schema:
+            type: string
+            format: uuid
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TeachingSource'
+        - name: retained
+          in: query
+          required: false
+          description: Filter the user's retained preference. Omit to return both values.
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: One page of saved course offerings and per-source snapshot metadata.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/schedule:
+    get:
+      operationId: getSchedule
+      tags:
+        - Teaching
+      security:
+        - bearerAuth: []
+      x-contract-status: design-only
+      x-review-status: draft
+      summary: List the caller's expanded lessons in a semester and date range
+      description: |
+        Draft only; this route is not implemented. Reads saved actual lesson
+        occurrences for the bearer user. A missing or invisible semester
+        returns 404. `semester_id`, `from` and `to` are all required.
+
+        `from` is inclusive and `to` exclusive, interpreted as campus dates in
+        `Asia/Shanghai`; `from < to` and the range is at most 93 calendar days.
+        Convert both midnights to UTC before applying interval overlap:
+        `starts_at < to AND ends_at > from`, including cross-midnight lessons.
+        Unknown school dates or period times must not produce guessed lessons.
+
+        Sort by `starts_at` ascending, then `id` ascending. The cursor binds
+        the user, semester, date range and ordering. Malformed or mismatched
+        cursors return 422 `BAD_CURSOR`; other invalid query values return 422
+        `VALIDATION_FAILED`. Calendar aggregation must traverse every page or
+        use an equivalent complete internal range query.
+
+        Snapshot metadata describes the requested range. A failed refresh
+        preserves cached lessons and reports `stale` and `last_error_code`,
+        including `SOURCE_AUTH_REQUIRED`; it does not turn this read into 409.
+        Partial observations never remove unseen lessons. Removal after a
+        cancellation or move requires a complete, serially confirmed scope;
+        the device upload and concurrency protocol remains owned by A.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: semester_id
+          in: query
+          required: true
+          description: Workbench semester ID owned by the caller.
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: true
+          description: Inclusive start day in Asia/Shanghai.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          description: Exclusive end day in Asia/Shanghai, at most 93 days after from.
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: One page of actual lessons and snapshot metadata for the requested range.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
   /api/v1/calendar:
     get:
       operationId: getCalendar
@@ -914,6 +1120,23 @@ components:
         tokens in the platform secure storage and never log them.
 
   parameters:
+    ListLimit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of records on this page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    ListCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque meta.next_cursor from the previous page, bound to the caller, filters and ordering.
+      schema:
+        type: string
     XRequestId:
       name: X-Request-Id
       in: header
@@ -1211,6 +1434,314 @@ components:
       allOf:
         - $ref: '#/components/schemas/RequestIdMeta'
         - $ref: '#/components/schemas/PaginationMeta'
+
+    TeachingSource:
+      type: string
+      description: Campus sources supported by the draft teaching course contract.
+      enum:
+        - jlu_iedu
+        - chaoxing
+
+    SourceRef:
+      type: object
+      description: |
+        Source identity within the current user. The mapping key consists of
+        the authenticated user, source, source_scope and source_id. Re-reading
+        this key preserves the workbench UUID. School field mappings and scope
+        values must be verified from source responses, not inferred from names.
+      required:
+        - source
+        - source_id
+        - source_scope
+      properties:
+        source:
+          $ref: '#/components/schemas/TeachingSource'
+        source_id:
+          type: string
+          minLength: 1
+          description: Original source identifier preserved as a string.
+        source_scope:
+          type: string
+          minLength: 1
+          description: Source-defined scope that disambiguates the original identifier; draft string representation pending source review.
+
+    Semester:
+      type: object
+      required:
+        - id
+        - name
+        - starts_on
+        - ends_on
+        - timezone
+        - source_ref
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          description: Nonempty semester display name from the source.
+        starts_on:
+          type: string
+          format: date
+          nullable: true
+          description: School-defined teaching-week origin; unknown is null, never the collection date or an assumed Monday.
+        ends_on:
+          type: string
+          format: date
+          nullable: true
+        timezone:
+          type: string
+          enum:
+            - Asia/Shanghai
+        source_ref:
+          description: Verified teaching source identity; semesters in this draft come from jlu_iedu.
+          allOf:
+            - $ref: '#/components/schemas/SourceRef'
+
+    CourseOffering:
+      type: object
+      description: |
+        A course owned by the bearer user. Equal names do not merge offerings
+        across sources. Display a nonempty remark in preference to name.
+        Source refreshes preserve remark and retained, whose writes belong to
+        C. Removing one source association must not delete a course still
+        referenced by another source. Cross-source merging requires a separate
+        reviewed contract for downstream references.
+      required:
+        - id
+        - semester_id
+        - name
+        - teacher
+        - source_refs
+        - remark
+        - retained
+      properties:
+        id:
+          type: string
+          format: uuid
+        semester_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Owned workbench semester, or null when the source has no reliable mapping.
+        name:
+          type: string
+          minLength: 1
+        teacher:
+          type: string
+          nullable: true
+          description: Preserve the source display text when it contains multiple teachers.
+        source_refs:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/SourceRef'
+        remark:
+          type: string
+          nullable: true
+        retained:
+          type: boolean
+          default: true
+
+    Lesson:
+      type: object
+      description: |
+        One actual lesson with a stable workbench ID and a course owned by the
+        caller. starts_at must precede ends_at. period_start and period_end are
+        both null or both positive with start <= end. Unknown concrete dates
+        or times are parsing issues, not fabricated lessons. Use verified
+        school calendar and period times; teaching weeks need not start on a
+        natural Monday. A source lesson ID takes precedence for identity;
+        sources without one require separately reviewed deduplication and
+        rescheduling rules.
+
+        For E's existing LessonItem, use kind=lesson, lesson_id=this id and
+        item id=lesson:<id>:<starts_at>; copy the remaining lesson fields.
+      required:
+        - id
+        - course_offering_id
+        - title
+        - starts_at
+        - ends_at
+        - location
+        - period_start
+        - period_end
+      properties:
+        id:
+          type: string
+          format: uuid
+        course_offering_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          description: Source course name for the calendar lesson title.
+        starts_at:
+          type: string
+          format: date-time
+          pattern: 'Z$'
+        ends_at:
+          type: string
+          format: date-time
+          pattern: 'Z$'
+        location:
+          type: string
+          nullable: true
+        period_start:
+          type: integer
+          minimum: 1
+          nullable: true
+        period_end:
+          type: integer
+          minimum: 1
+          nullable: true
+
+    SnapshotMeta:
+      type: object
+      description: |
+        State of saved source data for the stated coverage, not just this page.
+        A never-synced read is empty; a successfully saved complete empty
+        snapshot is current. Failed refreshes keep cached records and mark
+        stale. A partial read cannot mark a scope current or delete unseen
+        records. Device observation is not school-signed authentication.
+      required:
+        - status
+        - last_success_at
+        - last_attempt_at
+        - observed_at
+        - last_error_code
+        - coverage
+      properties:
+        status:
+          type: string
+          enum:
+            - never_synced
+            - current
+            - stale
+        last_success_at:
+          type: string
+          format: date-time
+          pattern: 'Z$'
+          nullable: true
+          description: Server time when a complete snapshot for this scope was successfully saved, or null if none.
+        last_attempt_at:
+          type: string
+          format: date-time
+          pattern: 'Z$'
+          nullable: true
+        observed_at:
+          type: string
+          format: date-time
+          pattern: 'Z$'
+          nullable: true
+          description: Source content observation time, distinct from server save time.
+        last_error_code:
+          type: string
+          nullable: true
+          description: SOURCE_AUTH_REQUIRED, SOURCE_NETWORK_ERROR, SOURCE_TIMEOUT, SOURCE_PROTOCOL_ERROR or another stable code; network and protocol errors do not imply lost authorization.
+        coverage:
+          type: object
+          additionalProperties: true
+          description: |
+            Draft source scope, pending A and consumer review. Semesters use
+            an empty object for the user's source-wide semester list. Courses
+            use an empty object or semester_id for a semester filter. Schedule
+            uses semester_id, from and to (campus dates matching the query).
+            Pagination and retained are result filters, not collection scopes.
+
+    SourceSnapshot:
+      type: object
+      required:
+        - source
+        - snapshot
+      properties:
+        source:
+          $ref: '#/components/schemas/TeachingSource'
+        snapshot:
+          $ref: '#/components/schemas/SnapshotMeta'
+
+    SemesterListMeta:
+      allOf:
+        - $ref: '#/components/schemas/ListMeta'
+        - type: object
+          required:
+            - current_semester_id
+            - snapshot
+          properties:
+            current_semester_id:
+              type: string
+              format: uuid
+              nullable: true
+              description: Current semester established by source evidence, or null. It need not be on this page.
+            snapshot:
+              $ref: '#/components/schemas/SnapshotMeta'
+
+    CourseListMeta:
+      allOf:
+        - $ref: '#/components/schemas/ListMeta'
+        - type: object
+          required:
+            - source_snapshots
+          properties:
+            source_snapshots:
+              type: array
+              minItems: 1
+              maxItems: 2
+              description: Draft per-source states pending A/C/E review; exactly the filtered source, otherwise jlu_iedu then chaoxing, with no duplicates.
+              items:
+                $ref: '#/components/schemas/SourceSnapshot'
+
+    ScheduleListMeta:
+      allOf:
+        - $ref: '#/components/schemas/ListMeta'
+        - type: object
+          required:
+            - snapshot
+          properties:
+            snapshot:
+              $ref: '#/components/schemas/SnapshotMeta'
+
+    SemesterListResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Semester'
+        meta:
+          $ref: '#/components/schemas/SemesterListMeta'
+
+    CourseListResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseOffering'
+        meta:
+          $ref: '#/components/schemas/CourseListMeta'
+
+    ScheduleListResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lesson'
+        meta:
+          $ref: '#/components/schemas/ScheduleListMeta'
 
     Todo:
       type: object
