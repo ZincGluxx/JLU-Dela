@@ -59,6 +59,7 @@ void main() {
       JluDelaApp(
         diagnosticsService: service,
         session: await signedOutSession(),
+        accountGateway: FakeAccountGateway(),
       ),
     );
     await tester.tap(find.byKey(const Key('destination-settings')));
@@ -199,15 +200,16 @@ void main() {
       JluDelaApp(
         diagnosticsService: serviceFor(successClient()),
         session: await signedOutSession(),
+        accountGateway: FakeAccountGateway(),
       ),
     );
-    expect(find.text('工作台登录尚未开放'), findsOneWidget);
+    expect(find.byKey(const Key('login-page')), findsOneWidget);
     expect(requests, isEmpty);
 
     await tester.tap(find.byKey(const Key('destination-assignments')));
     await tester.pumpAndSettle();
     expect(find.text('作业'), findsWidgets);
-    expect(find.text('工作台登录尚未开放'), findsOneWidget);
+    expect(find.byKey(const Key('login-page')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('destination-settings')));
     await tester.pumpAndSettle();

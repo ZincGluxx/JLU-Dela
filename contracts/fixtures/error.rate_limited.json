@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many login attempts. Try again later.",
+    "request_id": "fixture-login-request",
+    "retryable": true,
+    "fields": []
+  }
+}

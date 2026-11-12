@@ -2,7 +2,7 @@
 
 状态：本地服务、迁移、契约生成、Flutter Windows 构建与真实诊断页已验证。Compose 启动冒烟在 CI 执行，本机没有 Docker daemon。公共应用壳已按暂定视觉基线交接；设备端校园可见登录仍在验证，真实学校认证需授权用户人工完成。
 
-A02 已实现工作台会话生命周期（刷新、退出、当前用户、令牌轮换与撤销、认证上下文）。A05 已交付客户端会话公共层：刷新令牌只进平台安全存储、访问令牌只留内存，启动恢复、单飞刷新、退出与用户切换的缓存隔离由 75 个 Dart 测试、Windows release 构建与 Windows 安全存储集成测试覆盖。工作台身份方案已由主开发确认为受控邀请账号，激活与登录入口在后续主题 PR（`codex/a05-auth-activation`）交付。同步任务公共机制已落地（持久化、活跃任务复用、租约恢复与失败状态）；校园来源连接与真实来源适配尚未实现，未注册来源由创建接口明确拒绝。
+A02 已实现工作台会话生命周期（刷新、退出、当前用户、令牌轮换与撤销、认证上下文）。A05 已交付客户端会话公共层与受控邀请身份：刷新令牌只进平台安全存储、访问令牌只留内存；启动恢复、单飞刷新、退出与切换用户的缓存隔离由 94 个 Dart 测试覆盖；维护者用 `invite` 命令签发一次性邀请，用户激活时设置密码并登录，服务端使用 argon2id、统一失败响应与按账号限流。激活 → 工作台 → 退出 → 重新登录 → 重启恢复已在 Windows 客户端连接真实 API 与隔离 PostgreSQL 验证。同步任务公共机制已落地（持久化、活跃任务复用、租约恢复与失败状态）；校园来源连接与真实来源适配尚未实现，未注册来源由创建接口明确拒绝。
 
 本文对应规划 A01。新架构以 Flutter + Rust 为目标；`app/` 保留为旧 Electron 实现与行为参考。`AGENTS.md` 仍只由人类维护。
 
@@ -99,7 +99,8 @@ npm run verify     # lint + generate + drift
 ## 4. 数据库迁移
 
 - 迁移文件：`server/migrations/`，由 SQLx 顺序执行并记录在 `_sqlx_migrations`。
-- `20261110000000_create_service_meta.sql` 创建 `service_meta`；`20261111000000_create_identity.sql` 创建 `users`、`sessions`；`20261111010000_create_todos.sql` 创建 `todos`、`idempotency_keys`；`20261111020000_create_sync_jobs.sql` 创建 `sync_jobs`。`schema_version` 依次推进到 `4`，`GET /health/ready` 依赖该行。
+- `20261110000000_create_service_meta.sql` 创建 `service_meta`；`20261111000000_create_identity.sql` 创建 `users`、`sessions`；`20261111010000_create_todos.sql` 创建 `todos`、`idempotency_keys`；`20261111020000_create_sync_jobs.sql` 创建 `sync_jobs`；`20261112000000_create_invites_and_password.sql` 增加可空的 `users.password_hash`、`invites` 与 `login_attempts`。`schema_version` 依次推进到 `5`，`GET /health/ready` 依赖该行。
+- 邀请只保存 SHA-256 摘要，一次性使用，默认 24 小时、最长 7 天；激活在单个事务内消费邀请、创建用户并签发会话。`login_attempts` 按账号记录失败次数，每次登录尝试会清理超过 1 天的旧桶。已发布迁移不改写。
 - `sync_jobs` 先落库再返回 202；同一用户、来源、资源和规范化 scope 的 queued/running 任务通过部分唯一索引复用。运行中的任务有 120 秒租约，进程中断后租约过期会重新排队，达到三次尝试上限后标记 `SYNC_INTERRUPTED`。
 - 会话只保存访问令牌与刷新令牌的 SHA-256 摘要。访问令牌 15 分钟，刷新令牌 30 天；刷新时两者同时轮换，旧值立即失效；退出按会话撤销。
 - 独立命令：`cargo run --bin migrate`；Compose 使用一次性 `migrate` 服务。
@@ -126,7 +127,7 @@ npm run verify     # lint + generate + drift
 2. Handler 使用 `State<AppState>` 获取 `PgPool`；需要当前用户时加入 `AuthenticatedUser`，JSON 请求体用 `ApiJson<T>`（拒绝未知字段，映射 415/422）。成功返回 `Json(ApiResponse::new(data, request_id))`，失败调用 `error.response(&request_id)`；不要另写错误包装。
 3. 在 `server/src/http.rs` 注册路由，统一挂到 `/api/v1` 下；HTTP 契约先改 `contracts/openapi.yaml` 并生成客户端。
 4. 需要新配置时在 `config.rs` 增加带默认值的变量并校验；不要把秘密写进代码或日志。
-5. 需要新错误码时扩展 `AppError`，保持 `{error:{code,message,request_id,retryable,fields}}` 结构。401 只表示工作台身份问题（`AUTH_REQUIRED`、`INVALID_TOKEN`、`TOKEN_EXPIRED`、`SESSION_REVOKED`）；校园来源失效必须用 409 `SOURCE_AUTH_REQUIRED`，不能把用户登出工作台。
+5. 需要新错误码时扩展 `AppError`，保持 `{error:{code,message,request_id,retryable,fields}}` 结构。401 只表示工作台身份问题（`AUTH_REQUIRED`、`INVALID_TOKEN`、`TOKEN_EXPIRED`、`SESSION_REVOKED`，以及登录/激活入口的 `INVALID_CREDENTIALS`、`INVALID_INVITE`）；登录失败统一使用不会暴露账号是否存在的 401，连续失败返回 429 `RATE_LIMITED` 并带 `Retry-After`。校园来源失效必须用 409 `SOURCE_AUTH_REQUIRED`，不能把用户登出工作台。
 6. 需要迁移时新增 `server/migrations/<timestamp>_<name>.sql`，同步更新 `service_meta.schema_version`（由迁移负责）并补集成测试。
 
 认证上下文的最小用法：
@@ -145,7 +146,7 @@ pub async fn list_example(
 }
 ```
 
-测试或运维需要创建会话时使用 `auth::session::issue_for_user(&pool, user_id)`。该函数只签发会话，不创建用户；用户创建随身份方案确定后接入。
+测试或运维需要创建会话时使用 `auth::session::issue_for_user(&pool, user_id)`。受控邀请账号通过 `cargo run --bin invite -- --login <login> --display-name <名字> [--ttl-hours <1..168>]` 签发，命令只向 stdout 输出一次邀请原文；激活与登录接口见 `POST /api/v1/auth/activate`、`POST /api/v1/auth/login`。数据库只保存 argon2id PHC 哈希与邀请摘要，日志不记录密码或邀请原文。
 
 来源同步通过 `SyncRegistry` 注册：`AppState::with_sync(pool, build_id, registry)` 注册来源与受支持资源，`SyncHandler` 返回 `SyncOutcome` 或 `SyncFailure`（稳定错误码与是否可重试）。`SyncContext` 只携带任务数据，handler 需要的连接池等依赖在注册时由 handler 自己持有。只有已验证的来源能力才注册；未注册来源的 `POST /api/v1/sync-jobs` 返回 422 `UNSUPPORTED_SOURCE`，未注册资源返回 422 `UNSUPPORTED_RESOURCE`，都不会创建任务。worker 在 registry 为空时不启动；真实来源注册时需在 `main` 中改用 `AppState::with_sync`，并确认 worker 生命周期与优雅退出。handler 不保存上游原文、URL、Cookie 或学号。
 
@@ -159,7 +160,7 @@ pub async fn list_example(
 6. 统一错误映射在 `lib/core/api/api_failure.dart`；新错误码在展示层给出可读文案。
 7. 当前没有引入路由/状态管理库：`MaterialApp` + `StatefulWidget` 管理当前入口与玻璃开关。页面注册不是路由器，没有深链、多标签或 URL 还原需求；出现第三个独立应用级状态域或 B–E 多页导航时再选型。
 8. 客户端会话公共层在 `lib/core/auth/`：刷新令牌只写入平台安全存储（`flutter_secure_storage` 11.2.0，Windows 经真实凭据管理器验证），访问令牌只在内存；`WorkbenchApi` 是业务 API 的唯一认证入口，`SessionController` 负责启动恢复、并发刷新单飞、退出与切换用户时的私有缓存清理。登录/退出会推进会话生命周期标记，传输层只对同一生命周期的请求做刷新后重放；安全存储写入与清理串行化，旧登录的延迟结果不能覆盖或删除新会话。业务页面经 `lib/app/app.dart` 的统一门禁进入，不自行读写令牌。
-9. 登录与激活入口尚未实现；工作台身份方案已由主开发确认为受控邀请账号，入口在后续主题 PR 交付。设备端校园登录仍在验证，公共层不保存 Cookie，不把来源会话上传服务端，也不开放无认证的私有业务 API。
+9. 登录与激活入口在 `lib/features/auth/`，通过 `AccountGateway` 调用激活/登录接口；未登录时工作台显示登录页与邀请码激活入口，`ApiFailure.retryAfter` 用于 429 倒计时。设备端校园登录仍在验证，公共层不保存 Cookie，不把来源会话上传服务端，也不开放无认证的私有业务 API。
 
 ## 7. 一次完整请求路径
 
@@ -192,7 +193,8 @@ Flutter DiagnosticsPage
 - `GET /health/live`、`GET /health/ready`、`GET /api/v1/meta`。
 - request_id、统一 JSON 错误、CORS 白名单、请求体限制、请求超时、结构化日志与敏感值过滤。
 - 工作台会话：`users`/`sessions` 迁移、访问与刷新令牌签发及轮换、退出撤销、Bearer 认证上下文、`GET /api/v1/me`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`。双用户隔离、令牌过期、刷新复用拒绝与退出撤销由 8 个真实 PostgreSQL 集成测试覆盖。
-- 客户端会话公共层（A05）：平台安全存储刷新令牌、内存访问令牌；启动恢复 `/me`、单飞刷新、401 修复与至多一次重放、退出远端撤销确认、网络与 5xx 保留会话、退出/切号私有缓存清理。75 个 Dart 测试、Windows release 构建与 Windows 安全存储集成测试通过。
+- 客户端会话公共层（A05）：平台安全存储刷新令牌、内存访问令牌；启动恢复 `/me`、单飞刷新、401 修复与至多一次重放、退出远端撤销确认、网络与 5xx 保留会话、退出/切号私有缓存清理。94 个 Dart 测试、Windows release 构建与 Windows 安全存储集成测试通过。
+- 受控邀请激活与登录（A05）：`POST /api/v1/auth/activate`、`POST /api/v1/auth/login`、`invite` 受控命令、argon2id 密码哈希、邀请摘要与一次性消费、统一 401 与按账号限流（5 次失败/15 分钟锁定 15 分钟，429 + `Retry-After`），以及 Flutter 登录/激活页。服务端 81 项测试与真实 API + 隔离 PostgreSQL 的客户端闭环通过。
 - 待办：`todos`/`idempotency_keys` 迁移、CRUD、幂等创建、`revision` 乐观并发与分页（E01）。`GET /api/v1/calendar` 契约已固定，聚合仍是等待 B/C 来源的骨架。
 - 同步任务公共入口：`sync_jobs` 迁移、`POST /api/v1/sync-jobs`、`GET /api/v1/sync-jobs/{id}`、scope 规范化与活跃任务复用、120 秒租约恢复、失败状态与 `SYNC_INTERRUPTED`。复用、跨用户 404、worker 成功/失败、租约重排与三次上限由 7 个真实 PostgreSQL 集成测试覆盖。当前没有注册任何来源适配器，创建任务返回 422。
 - OpenAPI 3.0.3 契约、Redocly 校验、锁定版本的 Dart 客户端与漂移检查。
@@ -204,9 +206,8 @@ Flutter DiagnosticsPage
 
 尚未实现，不能标记为完成：
 
-- 激活与登录入口、用户创建/邀请流程：身份方案已确认为受控邀请账号，契约与实现在后续主题 PR `codex/a05-auth-activation` 交付。
 - 校园来源连接 challenge/action 与来源会话托管；`sync-jobs` 机制已存在，但没有来源适配器，不能宣称任何来源已接入。
-- 客户端登录与激活页面：会话公共层已交付，页面由后续主题 PR 接入。
+- 登录限流仅按账号维度，不含 IP/全局维度；无改密、重置、邀请撤销/列表命令；账号可被他人故意锁定至 15 分钟。
 - Redis 会话/限流/缓存；Compose 中的 Redis 当前未被 API 使用。
 - 课表、作业、通知、资料、日历聚合、笔记、邮箱、AI、社区等业务接口。
 - 对象存储、备份恢复演练、监控告警、生产发布。
@@ -245,6 +246,8 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 DATABASE_URL='postgres://.../jlu_dela_test' cargo test --all-targets --features integration
 DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test auth --features integration
+DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test identity --features integration
+DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test migrations --features integration
 DATABASE_URL='postgres://.../jlu_dela_test' cargo test --test sync --features integration
 cargo build --locked --release --bins
 
@@ -255,6 +258,12 @@ flutter analyze
 flutter test
 flutter build windows --release
 flutter test integration_test/secure_storage_test.dart -d windows
+# 激活 → 退出 → 重新登录 → 重启恢复，连接真实 API 与隔离 PostgreSQL
+flutter test integration_test/auth_flow_test.dart -d windows \
+  --dart-define=API_BASE_URL=http://127.0.0.1:18080 \
+  --dart-define=TEST_INVITE_TOKEN=<一次性邀请> \
+  --dart-define=TEST_LOGIN=<login> \
+  --dart-define=TEST_PASSWORD=<密码>
 
 # 契约
 cd contracts/tools
@@ -275,27 +284,27 @@ bash smoke.sh
 - **C（学习通/作业）**：先定义课程偏好、作业状态与截止时间契约；接入来源前先补认证/连接公共机制（A02），不要把开发者 Cookie 写入服务。
 - **D（通知/资料）**：先提交通知列表/详情与资料目录契约；附件访问必须做用户可见范围检查，后续再接对象存储。
 - **E（待办/日历）**：先定义 Todo revision/幂等键与日历判别联合；复用 A01 的请求超时、错误结构和 Flutter 错误映射。
-- **A**：A02 会话核心与 `sync-jobs` 公共机制已交付；激活/登录等待身份方案确认，来源连接与真实来源适配在人工决定执行位置后推进。A03 部署/备份/恢复另开任务，不混入身份 PR。
+- **A**：A02 会话核心、A05 客户端会话公共层与受控邀请激活/登录已交付；登录限流仅按账号，来源连接与真实来源适配在人工决定执行位置后推进。A03 部署/备份/恢复另开任务，不混入身份 PR。
 - **B/C/D**：2026-11-11 已提交来源授权的只读证据与契约需求；B01/C01/D01 仍阻塞于来源授权执行位置与人工实测条件，先用夹具推进允许的部分。
 
 ## 12. 分支与 CI
 
 - A01 合并提交：`8d590f4`（`upstream/main`），A01 分支提交 `c17f8ec`。
 - A02 身份分支 `codex/a02-auth-session` 已由 PR #11 合并；同步机制由 `codex/a02-sync-jobs-integration` 基于 `upstream/main` 单独提 PR，来源连接在决策后另开分支。
-- A05 客户端会话公共层分支 `codex/a05-client-session-layer`；受控邀请激活/登录主题分支 `codex/a05-auth-activation` 基于其叠加，两者均等待人工评审与合并。
+- A05 会话公共层分支 `codex/a05-client-session-layer`（PR #17）；受控邀请激活/登录分支 `codex/a05-auth-activation`（PR #18，基于前者叠加）均保持 draft，等待人工评审与合并。
 - 开发分支不得直接推送 `main`，禁止自动合并。
 - PR 合并检查使用 `Foundation required`。只有 `Server (Rust)`、`Contracts (OpenAPI)`、`Flutter (Windows)` 和 `Infra (Compose)` 均成功时才通过。旧 Electron macOS 检查按需手动运行。
 - 分支保护、必需检查、CODEOWNERS 与人工审批需要主开发在仓库设置中落实；本 PR 不修改远程保护设置。
 
-## 13. A02 待人类决定与验收缺口
+## 13. A02/A05 待人类决定与验收缺口
 
 以下问题在 2026-11-11 仍没有仓库内证据表明已获批准（工作台身份已于 2026-11-12 确认），不能把提案当作实现依据：
 
 | 决策             | 现状与证据                                                                                                                                                                           | 影响                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| 工作台身份       | 2026-11-12 主开发确认首期采用受控邀请账号；仓库没有学校 OAuth/OIDC 证据                                                                                                               | 激活/登录契约、迁移、服务端与 Flutter 入口由 `codex/a05-auth-activation` 交付；刷新、退出、`/me` 与会话撤销已实现 |
+| 工作台身份       | 2026-11-12 主开发确认首期采用受控邀请账号；仓库没有学校 OAuth/OIDC 证据                                                                                                               | 已交付激活/登录契约、迁移、服务端、Flutter 入口与真实闭环（PR #18）；刷新、退出、`/me` 与会话撤销见 PR #11 |
 | 来源授权执行位置 | 旧 Electron 只证明“可见学校窗口 + 用户手工完成 CAS/登录”的客户端会话；没有服务器可达或无人交互登录证据；Flutter 当前没有 webview 依赖                                                | connections/challenge、来源会话托管与 B/C/D 来源实现阻塞；sync-jobs 公共机制已实现但未注册 adapter |
-| 正式应用壳与视觉 | 诊断页品牌侧栏明确不是正式业务导航；没有批准稿                                                                                                                                       | 登录页、导航与主题基线不落地                                         |
+| 正式应用壳与视觉 | 诊断页品牌侧栏明确不是正式业务导航；没有批准稿                                                                                                                                       | 登录/激活页已按现有 `AppTheme` 落地，正式导航与视觉基线仍无批准稿 |
 | 来源实测条件     | 教务：文档自述本人会话可用，缺新用户、自然过期与换账号；学习通：发起人账号 33 门课程，缺第二账号与过期；电子校务：匿名列表与 6 篇正文可读，网络位置未核实，附件必须由学校页面执行 JS | 来源只能标记“未验证/未接入”，不能宣称已连接                          |
 
 已确认的来源边界：
@@ -307,10 +316,13 @@ bash smoke.sh
 人工设置缺口：
 
 - `GET /repos/goya4140/JLU-Dela/branches/main/protection` 在本次检查中返回 404；主分支保护未由 AI 修改。
-- PR 模板要求的人类前置四问尚未回答；身份 PR 与 sync-jobs 集成 PR 均保持 draft，等待人类补充与批准。
+- PR 模板要求的人类前置四问尚未回答；A05 两个 PR（#17、#18）保持 draft，等待人类补充与批准。
 
-A02 验收缺口：
+A02/A05 验收缺口：
 
 - 没有已批准的来源接入，sync-jobs 只能验证持久化、复用、恢复与失败状态；真实来源的 scope 粒度、完整性判定、退避数值与错误映射仍未验证，不得用固定成功响应替代。设备端领取/完成任务（`executor=device`）属于后续契约，需需求确认后另开 PR。
 - `sync-jobs` 的 worker 尚无 handler 超时、panic 捕获与监督；接入真实来源前需补齐，否则挂起或 panic 的 handler 会阻塞单 worker。
-- 校园来源连接、Flutter 登录与连接页在决策后另开 PR；本文不把诊断页当作正式产品设计。
+- 校园来源连接与连接页仍待人工决定执行位置；本文不把诊断页当作正式产品设计。
+- A05 的激活/登录使用真实 API 与隔离 PostgreSQL，在 Windows x64 验证；Android/iOS/macOS/Linux 未构建或真机验证，安全存储只有 Windows 凭据管理器的真机结果，其余平台仅有测试替身。
+- 登录限流仅按账号维度、无 IP/全局维度，且可被他人故意锁定 15 分钟；无后台清理任务、无改密/重置/邀请撤销命令。真实 429 未直接打服务端账号，由假服务与 widget 测试覆盖。
+- 邀请原文只经 `invite` 命令 stdout 交付一次；激活对“有效邀请 + 已存在同 login 用户”的手工边缘会返回 500，正常 CLI 路径已拦截。测试库中的测试账号不得带入生产。

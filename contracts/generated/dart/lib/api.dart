@@ -37,6 +37,7 @@ part 'api/meta_api.dart';
 part 'api/sync_api.dart';
 part 'api/todos_api.dart';
 
+part 'model/activate_request.dart';
 part 'model/assignment_item.dart';
 part 'model/calendar_data.dart';
 part 'model/calendar_item.dart';
@@ -50,6 +51,7 @@ part 'model/lesson_item.dart';
 part 'model/list_meta.dart';
 part 'model/live_response.dart';
 part 'model/live_status.dart';
+part 'model/login_request.dart';
 part 'model/logout_request.dart';
 part 'model/me.dart';
 part 'model/me_response.dart';

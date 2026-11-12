@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../core/api/diagnostics_service.dart';
+import '../core/auth/account_gateway.dart';
 import '../core/auth/session_controller.dart';
 import '../core/auth/session_models.dart';
+import '../features/auth/login_page.dart';
 import '../features/settings/settings_page.dart';
 import 'app_shell.dart';
 import 'session_gate.dart';
@@ -13,11 +15,13 @@ class JluDelaApp extends StatelessWidget {
     super.key,
     required this.diagnosticsService,
     required this.session,
+    required this.accountGateway,
     this.pages = const <AppDestination, AppPageBuilder>{},
   });
 
   final DiagnosticsService diagnosticsService;
   final SessionController session;
+  final AccountGateway accountGateway;
   final Map<AppDestination, AppPageBuilder> pages;
 
   @override
@@ -29,6 +33,7 @@ class JluDelaApp extends StatelessWidget {
       home: _WorkbenchPage(
         diagnosticsService: diagnosticsService,
         session: session,
+        accountGateway: accountGateway,
         pages: pages,
       ),
     );
@@ -39,11 +44,13 @@ class _WorkbenchPage extends StatefulWidget {
   const _WorkbenchPage({
     required this.diagnosticsService,
     required this.session,
+    required this.accountGateway,
     required this.pages,
   });
 
   final DiagnosticsService diagnosticsService;
   final SessionController session;
+  final AccountGateway accountGateway;
   final Map<AppDestination, AppPageBuilder> pages;
 
   @override
@@ -80,10 +87,15 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
             if (!keepContent)
               for (final destination in AppDestination.values)
                 if (destination != AppDestination.settings)
-                  destination: (context) => SessionGate(
-                    phase: phase,
-                    onRetry: widget.session.retryRestore,
-                  ),
+                  destination: (context) => phase == SessionPhase.signedOut
+                      ? LoginPage(
+                          session: widget.session,
+                          accountGateway: widget.accountGateway,
+                        )
+                      : SessionGate(
+                          phase: phase,
+                          onRetry: widget.session.retryRestore,
+                        ),
           },
           onDestinationSelected: (destination) {
             setState(() => _destination = destination);

@@ -158,7 +158,7 @@ class _SessionCard extends StatelessWidget {
             if (phase == SessionPhase.signedOut) ...[
               const SizedBox(height: AppSpacing.xs),
               Text(
-                '登录入口尚未开放。',
+                '登录入口位于工作台页面。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: AppTheme.muted,
                 ),
