@@ -16,7 +16,10 @@ const _apiBaseUrl = String.fromEnvironment('API_BASE_URL');
 const _inviteToken = String.fromEnvironment('TEST_INVITE_TOKEN');
 const _login = String.fromEnvironment('TEST_LOGIN');
 const _password = String.fromEnvironment('TEST_PASSWORD');
-const _expectedDisplayName = '闭环用户';
+const _expectedDisplayName = String.fromEnvironment(
+  'TEST_DISPLAY_NAME',
+  defaultValue: '闭环用户',
+);
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
