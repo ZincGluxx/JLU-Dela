@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:jlu_dela_api/api.dart' as api;
 
 import '../api/api_failure.dart';
+import '../models/local_date.dart';
 import 'academic_calendar.dart';
 import 'academic_calendar_cache.dart';
 import 'academic_calendar_contract.dart';
@@ -34,7 +35,42 @@ class AcademicCalendarService extends ChangeNotifier {
   final DateTime Function() now;
   final Duration timeout;
   AcademicCalendarSnapshot _snapshot;
+  final _snapshots = <String, AcademicCalendarSnapshot>{};
+  final _loads = <String, Future<void>>{};
   Future<void> _pending = Future.value();
+
+  static const publishedAcademicYears = ['2025-2026', '2026-2027'];
+
+  AcademicCalendarSnapshot snapshotForYear(String year) =>
+      _snapshots[year] ?? AcademicCalendarSnapshot(academicYear: year);
+
+  OfficialAcademicCalendar? calendarOn(LocalDate date) {
+    final calendars = [
+      for (final year in publishedAcademicYears)
+        ?snapshotForYear(year).calendar,
+    ];
+    for (final calendar in calendars) {
+      if (calendar.termOn(date) != null) return calendar;
+    }
+    for (final calendar in calendars) {
+      if (calendar.events.any(
+        (event) =>
+            date.compareTo(event.startDate) >= 0 &&
+            date.compareTo(event.endDate) <= 0,
+      )) {
+        return calendar;
+      }
+    }
+    return null;
+  }
+
+  Future<void> ensureLoaded(String year) {
+    if (_loads[year] case final pending?) return pending;
+    if (_snapshots.containsKey(year)) return Future.value();
+    final pending = load(academicYear: year);
+    _loads[year] = pending;
+    return pending.whenComplete(() => _loads.remove(year));
+  }
 
   AcademicCalendarSnapshot get snapshot => _snapshot;
   OfficialAcademicCalendar? get currentCalendar => _snapshot.calendar;
@@ -56,10 +92,8 @@ class AcademicCalendarService extends ChangeNotifier {
   }
 
   Future<void> _sync(String year, bool readCache) async {
-    var calendar = _snapshot.academicYear == year ? _snapshot.calendar : null;
-    var syncedAt = _snapshot.academicYear == year
-        ? _snapshot.lastSyncedAt
-        : null;
+    var calendar = snapshotForYear(year).calendar;
+    var syncedAt = snapshotForYear(year).lastSyncedAt;
     String? cacheError;
     if (readCache) {
       try {
@@ -81,6 +115,7 @@ class AcademicCalendarService extends ChangeNotifier {
       cacheError: cacheError,
       isRefreshing: true,
     );
+    _snapshots[year] = _snapshot;
     notifyListeners();
     ApiFailure? failure;
     try {
@@ -138,6 +173,7 @@ class AcademicCalendarService extends ChangeNotifier {
       cacheError: cacheError,
       error: failure,
     );
+    _snapshots[year] = _snapshot;
     notifyListeners();
   }
 

@@ -5,7 +5,7 @@ import '../../core/models/local_date.dart';
 import '../../core/models/teaching_timeline.dart';
 import '../theme.dart';
 
-class AcademicCalendarStatus extends StatelessWidget {
+class AcademicCalendarStatus extends StatefulWidget {
   const AcademicCalendarStatus({
     super.key,
     required this.service,
@@ -18,14 +18,48 @@ class AcademicCalendarStatus extends StatelessWidget {
   final List<TeachingPeriod> personalPeriods;
 
   @override
+  State<AcademicCalendarStatus> createState() => _AcademicCalendarStatusState();
+}
+
+class _AcademicCalendarStatusState extends State<AcademicCalendarStatus> {
+  @override
+  void initState() {
+    super.initState();
+    _loadCalendars();
+  }
+
+  @override
+  void didUpdateWidget(AcademicCalendarStatus oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.service != widget.service) _loadCalendars();
+  }
+
+  void _loadCalendars() {
+    final service = widget.service;
+    if (service == null) return;
+    for (final year in AcademicCalendarService.publishedAcademicYears) {
+      service.ensureLoaded(year);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final service = this.service;
+    final service = widget.service;
+    final date = widget.date;
+    final personalPeriods = widget.personalPeriods;
     if (service == null) return const SizedBox.shrink();
     return ListenableBuilder(
       listenable: service,
       builder: (context, _) {
-        final snapshot = service.snapshot;
-        final calendar = service.currentCalendar;
+        final calendar = service.calendarOn(date);
+        final snapshots = [
+          for (final year in AcademicCalendarService.publishedAcademicYears)
+            service.snapshotForYear(year),
+        ];
+        final refreshing = snapshots.any((snapshot) => snapshot.isRefreshing);
+        final failed = calendar == null
+            ? snapshots.any((snapshot) => snapshot.error != null)
+            : service.snapshotForYear(calendar.academicYear).error != null;
         final term = calendar?.termOn(date);
         final week = term?.teachingWeekOn(date);
         final events = [
@@ -43,7 +77,7 @@ class AcademicCalendarStatus extends StatelessWidget {
             children: [
               Text(
                 calendar == null
-                    ? '官方校历尚未同步'
+                    ? (refreshing ? '正在同步官方校历' : '该日期暂无已发布校历')
                     : '全校校历 · ${calendar.academicYear} · ${term?.name ?? '非学期内'}'
                           '${week == null ? '' : ' · 第 $week 教学周'}'
                           '${events.isEmpty ? '' : ' · ${events.join(' / ')}'}',
@@ -60,101 +94,114 @@ class AcademicCalendarStatus extends StatelessWidget {
                   '节次：个人教务同步',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
-              if (snapshot.error != null)
+              if (failed)
                 Text(
                   calendar == null ? '校历同步失败，请重试' : '校历更新失败，保留上次成功数据',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
               TextButton(
                 key: const Key('academic-calendar-details'),
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (context) => ListenableBuilder(
-                    listenable: service,
-                    builder: (context, _) {
-                      final calendar = service.currentCalendar;
-                      return AlertDialog(
-                        title: const Text('吉林大学校历'),
-                        content: SizedBox(
-                          width: 560,
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Wrap(
-                                  spacing: AppSpacing.sm,
+                onPressed: () {
+                  var selectedYear =
+                      calendar?.academicYear ??
+                      AcademicCalendarService.currentAcademicYear;
+                  showDialog<void>(
+                    context: context,
+                    builder: (context) => StatefulBuilder(
+                      builder: (context, setDialogState) => ListenableBuilder(
+                        listenable: service,
+                        builder: (context, _) {
+                          final snapshot = service.snapshotForYear(
+                            selectedYear,
+                          );
+                          final calendar = snapshot.calendar;
+                          return AlertDialog(
+                            title: const Text('吉林大学校历'),
+                            content: SizedBox(
+                              width: 560,
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    for (final year in [
-                                      '2025-2026',
-                                      '2026-2027',
-                                    ])
-                                      ChoiceChip(
-                                        label: Text(year),
-                                        selected:
-                                            service.snapshot.academicYear ==
-                                            year,
-                                        onSelected:
-                                            service.snapshot.isRefreshing
-                                            ? null
-                                            : (_) => service.load(
-                                                academicYear: year,
-                                              ),
+                                    Wrap(
+                                      spacing: AppSpacing.sm,
+                                      children: [
+                                        for (final year
+                                            in AcademicCalendarService
+                                                .publishedAcademicYears)
+                                          ChoiceChip(
+                                            label: Text(year),
+                                            selected: selectedYear == year,
+                                            onSelected: (_) {
+                                              setDialogState(
+                                                () => selectedYear = year,
+                                              );
+                                              service.ensureLoaded(year);
+                                            },
+                                          ),
+                                      ],
+                                    ),
+                                    if (snapshot.isRefreshing)
+                                      const LinearProgressIndicator(),
+                                    if (snapshot.error != null)
+                                      const Text('同步失败，保留上次成功校历'),
+                                    if (calendar != null) ...[
+                                      for (final term in calendar.terms)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: AppSpacing.sm,
+                                          ),
+                                          child: Text(
+                                            '${term.name} · ${term.startDate}–${term.endDate}\n${term.teachingWeeks} 教学周',
+                                          ),
+                                        ),
+                                      for (final event in calendar.events)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: AppSpacing.sm,
+                                          ),
+                                          child: Text(
+                                            '${event.title}\n${event.startDate}–${event.endDate}',
+                                          ),
+                                        ),
+                                      for (final note in calendar.notes)
+                                        Text(note),
+                                      const SizedBox(height: AppSpacing.md),
+                                      SelectableText(
+                                        '版本：${calendar.version}\n校历来源：${calendar.sourceUrl}\n作息来源：${calendar.periodsSourceUrl}\n发布：${calendar.publishedAt}',
                                       ),
+                                    ],
                                   ],
                                 ),
-                                if (service.snapshot.isRefreshing)
-                                  const LinearProgressIndicator(),
-                                if (service.snapshot.error != null)
-                                  const Text('同步失败，保留上次成功校历'),
-                                if (calendar != null) ...[
-                                  for (final term in calendar.terms)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: AppSpacing.sm,
-                                      ),
-                                      child: Text(
-                                        '${term.name} · ${term.startDate}–${term.endDate}\n${term.teachingWeeks} 教学周',
-                                      ),
-                                    ),
-                                  for (final event in calendar.events)
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: AppSpacing.sm,
-                                      ),
-                                      child: Text(
-                                        '${event.title}\n${event.startDate}–${event.endDate}',
-                                      ),
-                                    ),
-                                  for (final note in calendar.notes) Text(note),
-                                  const SizedBox(height: AppSpacing.md),
-                                  SelectableText(
-                                    '版本：${calendar.version}\n校历来源：${calendar.sourceUrl}\n作息来源：${calendar.periodsSourceUrl}\n发布：${calendar.publishedAt}',
-                                  ),
-                                ],
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('关闭'),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('关闭'),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                },
                 child: const Text('查看校历'),
               ),
               TextButton.icon(
                 key: const Key('academic-calendar-refresh'),
-                onPressed: snapshot.isRefreshing
+                onPressed: refreshing
                     ? null
-                    : () => service.refresh(),
+                    : () async {
+                        for (final year
+                            in AcademicCalendarService.publishedAcademicYears) {
+                          await service.refresh(academicYear: year);
+                        }
+                      },
                 icon: const Icon(Icons.sync, size: 16),
-                label: Text(snapshot.isRefreshing ? '正在同步校历' : '同步官方校历'),
+                label: Text(refreshing ? '正在同步校历' : '同步官方校历'),
               ),
             ],
           ),

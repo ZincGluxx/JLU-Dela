@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -32,6 +33,88 @@ void main() {
     await (FontLoader(
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+  });
+
+  late Directory captures;
+  setUp(() async {
+    captures = await Directory.systemTemp.createTemp('academic-calendar-test-');
+  });
+  tearDown(() async => captures.delete(recursive: true));
+
+  testWidgets('date navigation and detail year selection stay independent', (
+    tester,
+  ) async {
+    final current = File(
+      'test/fixtures/official_calendar_2026_2027.json',
+    ).readAsStringSync();
+    final historical = jsonDecode(current) as Map<String, dynamic>;
+    final data = historical['data'] as Map<String, dynamic>;
+    data['academic_year'] = '2025-2026';
+    data['terms'] = [
+      {
+        'id': '2025-2026-2',
+        'name': '第二学期',
+        'start_date': '2026-03-09',
+        'end_date': '2026-06-28',
+        'teaching_weeks': 16,
+      },
+    ];
+    data['events'] = [];
+    final service = AcademicCalendarService(
+      apiBaseUri: Uri.parse('https://example.test'),
+      httpClient: MockClient(
+        (request) async => http.Response(
+          request.url.queryParameters['academic_year'] == '2025-2026'
+              ? jsonEncode(historical)
+              : current,
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+      cache: _MemoryCache(),
+    );
+    addTearDown(service.dispose);
+    for (final year in AcademicCalendarService.publishedAcademicYears) {
+      await tester.runAsync(() => service.ensureLoaded(year));
+    }
+    var date = LocalDate(2026, 11, 12);
+    late StateSetter changeDate;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              changeDate = setState;
+              return AcademicCalendarStatus(
+                service: service,
+                date: date,
+                personalPeriods: const [],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2026-2027 · 第一学期 · 第 10 教学周'), findsOneWidget);
+    changeDate(() => date = LocalDate(2026, 3, 9));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2025-2026 · 第二学期 · 第 1 教学周'), findsOneWidget);
+    changeDate(() => date = LocalDate(2026, 11, 12));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('academic-calendar-details')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '2025-2026'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2026-03-09–2026-06-28'), findsOneWidget);
+    expect(find.textContaining('2026-2027 · 第一学期 · 第 10 教学周'), findsOneWidget);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2026-2027 · 第一学期 · 第 10 教学周'), findsOneWidget);
+    changeDate(() => date = LocalDate(2030, 3, 9));
+    await tester.pumpAndSettle();
+    expect(find.text('该日期暂无已发布校历'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   for (final width in [390.0, 1280.0]) {
@@ -109,7 +192,7 @@ void main() {
       );
       await tester.runAsync(
         () => File(
-          '../../.local/research/official-calendar-${width.toInt()}.png',
+          '${captures.path}/official-calendar-${width.toInt()}.png',
         ).writeAsBytes(bytes!.buffer.asUint8List()),
       );
       image.dispose();
@@ -122,7 +205,7 @@ void main() {
         );
         await tester.runAsync(
           () => File(
-            '../../.local/research/official-calendar-390-source.png',
+            '${captures.path}/official-calendar-390-source.png',
           ).writeAsBytes(bottomBytes!.buffer.asUint8List()),
         );
         bottomImage.dispose();
