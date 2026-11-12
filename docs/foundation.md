@@ -2,7 +2,7 @@
 
 状态：本地服务、迁移、契约生成、Flutter Windows 构建与真实诊断页已验证。Compose 启动冒烟在 CI 执行，本机没有 Docker daemon。公共应用壳已按暂定视觉基线交接；设备端校园可见登录仍在验证，真实学校认证需授权用户人工完成。
 
-A02 已实现工作台会话生命周期（刷新、退出、当前用户、令牌轮换与撤销、认证上下文）。登录与激活入口尚未实现：工作台身份方案仍需人工确认，客户端不得假设邀请账号或学校统一认证。同步任务公共机制已落地（持久化、活跃任务复用、租约恢复与失败状态）；校园来源连接与真实来源适配尚未实现，未注册来源由创建接口明确拒绝。
+A02 已实现工作台会话生命周期（刷新、退出、当前用户、令牌轮换与撤销、认证上下文）。A05 已交付客户端会话公共层：刷新令牌只进平台安全存储、访问令牌只留内存，启动恢复、单飞刷新、退出与用户切换的缓存隔离由 67 个 Dart 测试、Windows release 构建与 Windows 安全存储集成测试覆盖。工作台身份方案已由主开发确认为受控邀请账号，激活与登录入口在后续主题 PR（`codex/a05-auth-activation`）交付。同步任务公共机制已落地（持久化、活跃任务复用、租约恢复与失败状态）；校园来源连接与真实来源适配尚未实现，未注册来源由创建接口明确拒绝。
 
 本文对应规划 A01。新架构以 Flutter + Rust 为目标；`app/` 保留为旧 Electron 实现与行为参考。`AGENTS.md` 仍只由人类维护。
 
@@ -158,8 +158,8 @@ pub async fn list_example(
 5. 新接口必须先进入 `contracts/openapi.yaml`，再生成 `jlu_dela_api`；不要在客户端手写重复 DTO。
 6. 统一错误映射在 `lib/core/api/api_failure.dart`；新错误码在展示层给出可读文案。
 7. 当前没有引入路由/状态管理库：`MaterialApp` + `StatefulWidget` 管理当前入口与玻璃开关。页面注册不是路由器，没有深链、多标签或 URL 还原需求；出现第三个独立应用级状态域或 B–E 多页导航时再选型。
-8. 客户端令牌计划存入平台安全存储（例如 `flutter_secure_storage`），SQLite 不保存刷新令牌。本次未引入该依赖，也未实现登录/恢复页面。
-9. 设备端校园登录尚在验证，公共层不保存 Cookie；未获人工决定前不把来源会话上传服务端，也不开放无认证的私有业务 API。
+8. 客户端会话公共层在 `lib/core/auth/`：刷新令牌只写入平台安全存储（`flutter_secure_storage` 11.2.0，Windows 经真实凭据管理器验证），访问令牌只在内存；`WorkbenchApi` 是业务 API 的唯一认证入口，`SessionController` 负责启动恢复、并发刷新单飞、退出与切换用户时的私有缓存清理。业务页面经 `lib/app/app.dart` 的统一门禁进入，不自行读写令牌。
+9. 登录与激活入口尚未实现；工作台身份方案已由主开发确认为受控邀请账号，入口在后续主题 PR 交付。设备端校园登录仍在验证，公共层不保存 Cookie，不把来源会话上传服务端，也不开放无认证的私有业务 API。
 
 ## 7. 一次完整请求路径
 
@@ -192,6 +192,7 @@ Flutter DiagnosticsPage
 - `GET /health/live`、`GET /health/ready`、`GET /api/v1/meta`。
 - request_id、统一 JSON 错误、CORS 白名单、请求体限制、请求超时、结构化日志与敏感值过滤。
 - 工作台会话：`users`/`sessions` 迁移、访问与刷新令牌签发及轮换、退出撤销、Bearer 认证上下文、`GET /api/v1/me`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`。双用户隔离、令牌过期、刷新复用拒绝与退出撤销由 8 个真实 PostgreSQL 集成测试覆盖。
+- 客户端会话公共层（A05）：平台安全存储刷新令牌、内存访问令牌；启动恢复 `/me`、单飞刷新、401 修复与至多一次重放、退出远端撤销确认、网络与 5xx 保留会话、退出/切号私有缓存清理。67 个 Dart 测试、Windows release 构建与 Windows 安全存储集成测试通过。
 - 待办：`todos`/`idempotency_keys` 迁移、CRUD、幂等创建、`revision` 乐观并发与分页（E01）。`GET /api/v1/calendar` 契约已固定，聚合仍是等待 B/C 来源的骨架。
 - 同步任务公共入口：`sync_jobs` 迁移、`POST /api/v1/sync-jobs`、`GET /api/v1/sync-jobs/{id}`、scope 规范化与活跃任务复用、120 秒租约恢复、失败状态与 `SYNC_INTERRUPTED`。复用、跨用户 404、worker 成功/失败、租约重排与三次上限由 7 个真实 PostgreSQL 集成测试覆盖。当前没有注册任何来源适配器，创建任务返回 422。
 - OpenAPI 3.0.3 契约、Redocly 校验、锁定版本的 Dart 客户端与漂移检查。
@@ -203,9 +204,9 @@ Flutter DiagnosticsPage
 
 尚未实现，不能标记为完成：
 
-- 激活与登录入口、用户创建/邀请流程：工作台身份方案尚未获人工批准，当前只交付与方案无关的会话生命周期。
+- 激活与登录入口、用户创建/邀请流程：身份方案已确认为受控邀请账号，契约与实现在后续主题 PR `codex/a05-auth-activation` 交付。
 - 校园来源连接 challenge/action 与来源会话托管；`sync-jobs` 机制已存在，但没有来源适配器，不能宣称任何来源已接入。
-- 客户端会话安全存储与登录页面；Flutter 当前有公共应用壳、设置与诊断页，业务页面和登录页尚未接入。
+- 客户端登录与激活页面：会话公共层已交付，页面由后续主题 PR 接入。
 - Redis 会话/限流/缓存；Compose 中的 Redis 当前未被 API 使用。
 - 课表、作业、通知、资料、日历聚合、笔记、邮箱、AI、社区等业务接口。
 - 对象存储、备份恢复演练、监控告警、生产发布。
@@ -253,6 +254,7 @@ dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
 flutter build windows --release
+flutter test integration_test/secure_storage_test.dart -d windows
 
 # 契约
 cd contracts/tools
@@ -280,17 +282,18 @@ bash smoke.sh
 
 - A01 合并提交：`8d590f4`（`upstream/main`），A01 分支提交 `c17f8ec`。
 - A02 身份分支 `codex/a02-auth-session` 已由 PR #11 合并；同步机制由 `codex/a02-sync-jobs-integration` 基于 `upstream/main` 单独提 PR，来源连接在决策后另开分支。
+- A05 客户端会话公共层分支 `codex/a05-client-session-layer`；受控邀请激活/登录主题分支 `codex/a05-auth-activation` 基于其叠加，两者均等待人工评审与合并。
 - 开发分支不得直接推送 `main`，禁止自动合并。
 - PR 合并检查使用 `Foundation required`。只有 `Server (Rust)`、`Contracts (OpenAPI)`、`Flutter (Windows)` 和 `Infra (Compose)` 均成功时才通过。旧 Electron macOS 检查按需手动运行。
 - 分支保护、必需检查、CODEOWNERS 与人工审批需要主开发在仓库设置中落实；本 PR 不修改远程保护设置。
 
 ## 13. A02 待人类决定与验收缺口
 
-以下问题在 2026-11-11 仍没有仓库内证据表明已获批准，不能把提案当作实现依据：
+以下问题在 2026-11-11 仍没有仓库内证据表明已获批准（工作台身份已于 2026-11-12 确认），不能把提案当作实现依据：
 
 | 决策             | 现状与证据                                                                                                                                                                           | 影响                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| 工作台身份       | `API-Contract.md` 的“受控邀请账号”是提案；仓库没有学校 OAuth/OIDC 证据                                                                                                               | 激活、登录与用户创建未实现；刷新、退出、`/me` 与会话撤销已实现       |
+| 工作台身份       | 2026-11-12 主开发确认首期采用受控邀请账号；仓库没有学校 OAuth/OIDC 证据                                                                                                               | 激活/登录契约、迁移、服务端与 Flutter 入口由 `codex/a05-auth-activation` 交付；刷新、退出、`/me` 与会话撤销已实现 |
 | 来源授权执行位置 | 旧 Electron 只证明“可见学校窗口 + 用户手工完成 CAS/登录”的客户端会话；没有服务器可达或无人交互登录证据；Flutter 当前没有 webview 依赖                                                | connections/challenge、来源会话托管与 B/C/D 来源实现阻塞；sync-jobs 公共机制已实现但未注册 adapter |
 | 正式应用壳与视觉 | 诊断页品牌侧栏明确不是正式业务导航；没有批准稿                                                                                                                                       | 登录页、导航与主题基线不落地                                         |
 | 来源实测条件     | 教务：文档自述本人会话可用，缺新用户、自然过期与换账号；学习通：发起人账号 33 门课程，缺第二账号与过期；电子校务：匿名列表与 6 篇正文可读，网络位置未核实，附件必须由学校页面执行 JS | 来源只能标记“未验证/未接入”，不能宣称已连接                          |
