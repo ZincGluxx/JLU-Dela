@@ -7,6 +7,7 @@ typedef AppPageBuilder = Widget Function(BuildContext context);
 
 enum AppDestination {
   calendar('学习日历', '日历', Icons.calendar_month_outlined),
+  todos('待办', '待办', Icons.checklist_outlined),
   teaching('课表', '课表', Icons.menu_book_outlined),
   assignments('作业', '作业', Icons.task_alt_outlined),
   materials('课程资料', '资料', Icons.folder_open_outlined),
@@ -27,12 +28,16 @@ class AppShell extends StatefulWidget {
     required this.pages,
     required this.onDestinationSelected,
     this.glassEnabled = true,
+    this.offlineBanner,
+    this.pageScopeKey = 'anonymous',
   });
 
   final AppDestination destination;
   final Map<AppDestination, AppPageBuilder> pages;
   final ValueChanged<AppDestination> onDestinationSelected;
   final bool glassEnabled;
+  final Widget? offlineBanner;
+  final String pageScopeKey;
 
   static const mobileDestinations = [
     AppDestination.calendar,
@@ -42,6 +47,7 @@ class AppShell extends StatefulWidget {
   ];
 
   static const moreDestinations = [
+    AppDestination.todos,
     AppDestination.materials,
     AppDestination.notices,
   ];
@@ -70,7 +76,7 @@ class _AppShellState extends State<AppShell> {
               final page = KeyedSubtree(
                 key: _pageKey,
                 child: KeyedSubtree(
-                  key: ValueKey(widget.destination),
+                  key: ValueKey('${widget.pageScopeKey}-${widget.destination}'),
                   child:
                       widget.pages[widget.destination]?.call(context) ??
                       _UnavailablePage(destination: widget.destination),
@@ -81,6 +87,7 @@ class _AppShellState extends State<AppShell> {
                   destination: widget.destination,
                   page: page,
                   glassEnabled: widget.glassEnabled,
+                  offlineBanner: widget.offlineBanner,
                   sidebarWidth: constraints.maxWidth >= 1200 ? 224 : 184,
                   onDestinationSelected: widget.onDestinationSelected,
                 );
@@ -89,6 +96,7 @@ class _AppShellState extends State<AppShell> {
                 destination: widget.destination,
                 page: page,
                 glassEnabled: widget.glassEnabled,
+                offlineBanner: widget.offlineBanner,
                 onDestinationSelected: widget.onDestinationSelected,
               );
             },
@@ -104,6 +112,7 @@ class _DesktopLayout extends StatelessWidget {
     required this.destination,
     required this.page,
     required this.glassEnabled,
+    required this.offlineBanner,
     required this.sidebarWidth,
     required this.onDestinationSelected,
   });
@@ -111,6 +120,7 @@ class _DesktopLayout extends StatelessWidget {
   final AppDestination destination;
   final Widget page;
   final bool glassEnabled;
+  final Widget? offlineBanner;
   final double sidebarWidth;
   final ValueChanged<AppDestination> onDestinationSelected;
 
@@ -189,6 +199,16 @@ class _DesktopLayout extends StatelessWidget {
                   onDestinationSelected: onDestinationSelected,
                 ),
               ),
+              if (offlineBanner != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.sm,
+                    AppSpacing.md,
+                    0,
+                  ),
+                  child: offlineBanner,
+                ),
               Expanded(child: _PageSurface(child: page)),
             ],
           ),
@@ -203,12 +223,14 @@ class _MobileLayout extends StatelessWidget {
     required this.destination,
     required this.page,
     required this.glassEnabled,
+    required this.offlineBanner,
     required this.onDestinationSelected,
   });
 
   final AppDestination destination;
   final Widget page;
   final bool glassEnabled;
+  final Widget? offlineBanner;
   final ValueChanged<AppDestination> onDestinationSelected;
 
   @override
@@ -229,6 +251,16 @@ class _MobileLayout extends StatelessWidget {
             onDestinationSelected: onDestinationSelected,
           ),
         ),
+        if (offlineBanner != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.md,
+              0,
+            ),
+            child: offlineBanner,
+          ),
         Expanded(child: _PageSurface(child: page)),
         Padding(
           key: const Key('mobile-navigation'),

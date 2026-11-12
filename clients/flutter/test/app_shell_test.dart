@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:jlu_dela/app/app.dart';
 import 'package:jlu_dela/app/app_shell.dart';
 import 'package:jlu_dela/app/theme.dart';
 import 'package:jlu_dela/core/api/diagnostics_service.dart';
 import 'package:jlu_dela/core/auth/session_controller.dart';
 
+import 'support/local_app_test_support.dart';
 import 'support/session_test_support.dart';
 
 void main() {
@@ -19,11 +19,17 @@ void main() {
     Map<AppDestination, AppPageBuilder> pages = const {},
     AppDestination initial = AppDestination.calendar,
     bool glassEnabled = true,
+    String pageScopeKey = 'anonymous',
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      _ShellHarness(pages: pages, initial: initial, glassEnabled: glassEnabled),
+      _ShellHarness(
+        pages: pages,
+        initial: initial,
+        glassEnabled: glassEnabled,
+        pageScopeKey: pageScopeKey,
+      ),
     );
     await tester.pumpAndSettle();
   }
@@ -80,6 +86,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('mobile-more')));
     await tester.pumpAndSettle();
+    expect(find.text('待办'), findsOneWidget);
+    expect(find.text('课程资料'), findsOneWidget);
+    expect(find.text('校园通知'), findsOneWidget);
     await tester.tap(find.text('课程资料'));
     await tester.pumpAndSettle();
 
@@ -126,9 +135,10 @@ void main() {
         refreshTokenStore: MemoryRefreshTokenStore(),
       );
       await session.signIn(testCredentials());
+      final harness = await LocalAppHarness.create();
 
       await tester.pumpWidget(
-        JluDelaApp(
+        harness.buildApp(
           diagnosticsService: service,
           session: session,
           accountGateway: FakeAccountGateway(),
@@ -269,6 +279,33 @@ void main() {
     },
   );
 
+  testWidgets('changing the page scope remounts the destination state', (
+    tester,
+  ) async {
+    await pumpShell(
+      tester,
+      pages: {AppDestination.calendar: (context) => const TextField()},
+      pageScopeKey: 'user-a',
+    );
+    await tester.enterText(find.byType(TextField), '用户甲的草稿');
+    expect(find.text('用户甲的草稿'), findsOneWidget);
+
+    await pumpShell(
+      tester,
+      pages: {AppDestination.calendar: (context) => const TextField()},
+      pageScopeKey: 'user-a',
+    );
+    expect(find.text('用户甲的草稿'), findsOneWidget);
+
+    await pumpShell(
+      tester,
+      pages: {AppDestination.calendar: (context) => const TextField()},
+      pageScopeKey: 'user-b',
+    );
+    expect(find.text('用户甲的草稿'), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
   testWidgets('the selected destination is exposed to semantics', (
     tester,
   ) async {
@@ -317,11 +354,13 @@ class _ShellHarness extends StatefulWidget {
     required this.pages,
     required this.initial,
     required this.glassEnabled,
+    required this.pageScopeKey,
   });
 
   final Map<AppDestination, AppPageBuilder> pages;
   final AppDestination initial;
   final bool glassEnabled;
+  final String pageScopeKey;
 
   @override
   State<_ShellHarness> createState() => _ShellHarnessState();
@@ -338,6 +377,7 @@ class _ShellHarnessState extends State<_ShellHarness> {
         destination: _destination,
         pages: widget.pages,
         glassEnabled: widget.glassEnabled,
+        pageScopeKey: widget.pageScopeKey,
         onDestinationSelected: (destination) {
           setState(() => _destination = destination);
         },

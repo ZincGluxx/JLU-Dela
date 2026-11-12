@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:jlu_dela/app/app.dart';
 import 'package:jlu_dela/app/glass_surface.dart';
 import 'package:jlu_dela/core/api/diagnostics_service.dart';
 import 'package:jlu_dela/core/auth/session_controller.dart';
 
+import 'support/local_app_test_support.dart';
 import 'support/session_test_support.dart';
 
 void main() {
@@ -55,8 +55,9 @@ void main() {
     WidgetTester tester,
     DiagnosticsService service,
   ) async {
+    final harness = await LocalAppHarness.create();
     await tester.pumpWidget(
-      JluDelaApp(
+      harness.buildApp(
         diagnosticsService: service,
         session: await signedOutSession(),
         accountGateway: FakeAccountGateway(),
@@ -196,8 +197,9 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final harness = await LocalAppHarness.create();
     await tester.pumpWidget(
-      JluDelaApp(
+      harness.buildApp(
         diagnosticsService: serviceFor(successClient()),
         session: await signedOutSession(),
         accountGateway: FakeAccountGateway(),
