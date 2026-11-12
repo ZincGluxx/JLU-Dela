@@ -502,7 +502,16 @@ class _MaterialsPageState extends State<MaterialsPage> {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         TextButton(
-          onPressed: _path.isEmpty ? null : _goBack,
+          onPressed: _path.isEmpty
+              ? null
+              : () {
+                  setState(() {
+                    _path = const <domain.Material>[];
+                    _materials = const <domain.Material>[];
+                    _snapshot = null;
+                  });
+                  unawaited(_loadChildren());
+                },
           child: Text(
             course.remark?.isNotEmpty == true ? course.remark! : course.name,
           ),

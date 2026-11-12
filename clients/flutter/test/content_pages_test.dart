@@ -60,6 +60,48 @@ Future<void> _seedNotices(ContentHarness harness) async {
 }
 
 void main() {
+  testWidgets('点击课程面包屑从多层目录返回课程根目录', (tester) async {
+    final harness = await ContentHarness.open();
+    addTearDown(harness.close);
+    final course = await harness.seedCourse('user-a');
+    final store = harness.storeFor('user-a');
+    final workspace = harness.workspaceFor('user-a');
+    harness.chaoxing.setListing(course.id, entries: sampleFileEntries());
+    await store.refreshMaterialChildren(workspace, course);
+    final firstFolder = (await store.loadMaterials(course.id)).first;
+    harness.chaoxing.setListing(
+      course.id,
+      parentSourceId: firstFolder.sourceRef.sourceId,
+      entries: const [
+        MaterialEntry(
+          id: 'nested-folder',
+          name: '二级文件夹',
+          kind: MaterialKind.folder,
+          downloadable: false,
+        ),
+      ],
+    );
+    await store.refreshMaterialChildren(workspace, course, parent: firstFolder);
+
+    await _pumpPage(tester, MaterialsPage(workspace: workspace, store: store));
+    await tester.tap(find.byKey(const Key('material-folder-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('material-nested-folder')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('materials-crumb-nested-folder')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, '示例学习通课程'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('material-folder-1')), findsOneWidget);
+    expect(find.byKey(const Key('material-access-file-1')), findsOneWidget);
+    expect(find.byKey(const Key('materials-back')), findsNothing);
+    expect(find.byKey(const Key('materials-crumb-folder-1')), findsNothing);
+  });
+
   testWidgets('通知列表展示缓存状态，支持标题搜索与组织筛选', (tester) async {
     final harness = await ContentHarness.open();
     addTearDown(harness.close);
