@@ -300,7 +300,11 @@ class _InAppWebViewSourceWebViewController implements SourceWebViewController {
   }
 }
 
-SourceCookie? sourceCookieFromWebViewCookie(Cookie cookie, Uri queriedUri) {
+SourceCookie? sourceCookieFromWebViewCookie(
+  Cookie cookie,
+  Uri queriedUri, {
+  bool? isWindows,
+}) {
   final name = cookie.name;
   if (name.isEmpty) {
     return null;
@@ -328,6 +332,11 @@ SourceCookie? sourceCookieFromWebViewCookie(Cookie cookie, Uri queriedUri) {
     hostOnly: hostOnly,
     expiresAtUtc: sessionOnly || expiresDate == null || expiresDate <= 0
         ? null
-        : DateTime.fromMillisecondsSinceEpoch(expiresDate, isUtc: true),
+        : DateTime.fromMillisecondsSinceEpoch(
+            (isWindows ?? Platform.isWindows)
+                ? expiresDate * 1000
+                : expiresDate,
+            isUtc: true,
+          ),
   );
 }
