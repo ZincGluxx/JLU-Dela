@@ -11,6 +11,8 @@ info:
     - GET /health/live
     - GET /health/ready
     - GET /api/v1/meta
+    - POST /api/v1/auth/activate
+    - POST /api/v1/auth/login
     - POST /api/v1/auth/refresh
     - POST /api/v1/auth/logout
     - GET /api/v1/me
@@ -20,13 +22,17 @@ info:
     Endpoints described but not yet served:
     - GET /api/v1/calendar (contract fixed, aggregation pending the campus sources)
 
-    The session endpoints operate on an opaque token pair. Activation and login
-    are not part of this contract yet: the workbench identity scheme still needs
-    human approval, so no client may assume invitation accounts or school SSO.
-    Sync jobs persist a source synchronization request. This build registers no
-    source adapter, so creating a job returns 422 UNSUPPORTED_SOURCE until B/C/D
-    register a verified source. A job never reports success before its adapter
-    succeeds. Campuses, courses, assignments, notices and materials remain
+    The session endpoints operate on an opaque token pair. Workbench accounts
+    are provisioned through controlled one-time invitations: an operator issues
+    a login, display name and invitation out of band; the invitee calls `POST
+    /api/v1/auth/activate` to set a password and receives the first session, and
+    later calls `POST /api/v1/auth/login`. Login failures are uniform and rate
+    limited. School SSO and self-service registration are not part of this
+    contract. Sync jobs persist a source synchronization request. This build
+    registers no source adapter, so creating a job returns 422
+    UNSUPPORTED_SOURCE until B/C/D register a verified source. A job never
+    reports success before its adapter succeeds. Campuses, courses, assignments,
+    notices and materials remain
     planning proposals and are not available.
 
     Protocol conventions:
@@ -52,9 +58,11 @@ info:
       explicit null clears a field only when the schema marks it nullable.
     - Unknown write fields are rejected with 422. Clients ignore unknown response
       fields.
-    - 401 means the workbench identity is invalid. Its codes are `AUTH_REQUIRED`,
-      `INVALID_TOKEN`, `TOKEN_EXPIRED` and `SESSION_REVOKED`. A campus source
-      failure is never a 401 and must not log the user out of the workbench.
+    - 401 means the workbench identity is invalid or a login cannot be
+      authenticated. Its codes are `AUTH_REQUIRED`, `INVALID_TOKEN`,
+      `TOKEN_EXPIRED`, `SESSION_REVOKED`, `INVALID_INVITE` and
+      `INVALID_CREDENTIALS`. A campus source failure is never a 401 and must not
+      log the user out of the workbench.
       403 means the identity may not perform the operation. Missing and
       invisible private objects both use 404. 409 is a write or idempotency
       conflict, 422 a validation failure, 429 includes `Retry-After`, and 503
@@ -77,7 +85,7 @@ tags:
   - name: Meta
     description: Public build and contract identity.
   - name: Auth
-    description: Workbench session lifecycle. Campus source authorization is separate.
+    description: Controlled-invitation activation and workbench session lifecycle. Campus source authorization is separate.
   - name: Me
     description: The authenticated workbench user.
   - name: Todos
@@ -92,6 +100,8 @@ x-contract-status:
     - GET /health/live
     - GET /health/ready
     - GET /api/v1/meta
+    - POST /api/v1/auth/activate
+    - POST /api/v1/auth/login
     - POST /api/v1/auth/refresh
     - POST /api/v1/auth/logout
     - GET /api/v1/me
@@ -103,7 +113,7 @@ x-contract-status:
     - GET /api/v1/sync-jobs/{id}
   design-only:
     - GET /api/v1/calendar
-  note: Activation and login, connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build.
+  note: Accounts are created only by controlled invitation; there is no self-service registration or school SSO. Connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build.
 
 paths:
   /health/live:
@@ -205,6 +215,104 @@ paths:
                   request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
         '4XX':
           $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/auth/activate:
+    post:
+      operationId: activateAccount
+      tags:
+        - Auth
+      summary: Activate an invited workbench account
+      description: |
+        Exchanges a one-time invitation for a workbench account. The operator
+        issues the invitation out of band together with the login and display
+        name, so the invitee only chooses a password. The invitation is consumed
+        in the same transaction that creates the user and the first session, so
+        one invitation can activate at most one account even when two requests
+        race.
+
+        The password is 12-128 Unicode code points with no character-class
+        requirement, and it must differ from the invitation's login. The
+        invitation login is normalized when the operator creates the
+        invitation, not by this request.
+
+        An invalid, expired or already used invitation returns the same 401
+        `INVALID_INVITE` body, so the response does not reveal whether the token
+        ever existed. Clients must not log the invitation token.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivateRequest'
+      responses:
+        '200':
+          description: The account is activated and a fresh token pair is issued.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '401':
+          $ref: '#/components/responses/InvalidInvite'
+        '415':
+          $ref: '#/components/responses/ClientError'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/auth/login:
+    post:
+      operationId: loginAccount
+      tags:
+        - Auth
+      summary: Exchange a login and password for a session
+      description: |
+        Verifies a workbench password and issues a new session. The server trims
+        leading and trailing whitespace and lowercases `login` before validating
+        it, so mixed-case input is accepted but stored and compared in lower
+        case.
+
+        A wrong password, an unknown login, a user without a password and a
+        disabled user all return the same 401 `INVALID_CREDENTIALS` body and
+        cost one password verification, so the response does not reveal whether
+        an account exists. Consecutive failures are counted per account: five
+        failures within 15 minutes lock the account for 15 minutes, and further
+        attempts return 429 `RATE_LIMITED` with `Retry-After` seconds even when
+        the supplied password is correct. A successful login clears the counter.
+        The limiter is per account, not per IP address.
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: A fresh token pair.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '415':
+          $ref: '#/components/responses/ClientError'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
         '5XX':
           $ref: '#/components/responses/ServerError'
 
@@ -827,6 +935,12 @@ components:
         minLength: 1
         maxLength: 128
 
+    RetryAfter:
+      description: Seconds the client must wait before attempting this login again.
+      schema:
+        type: integer
+        minimum: 1
+
   responses:
     Unauthorized:
       description: |
@@ -842,6 +956,58 @@ components:
               message: The access token has expired.
               request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
               retryable: false
+              fields: []
+    InvalidInvite:
+      description: |
+        The invitation is invalid, expired or already used. All three cases use
+        the same status, code and message so the response cannot be used to test
+        whether an invitation token exists. This is not a session failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_INVITE
+              message: The invitation is invalid, expired or already used.
+              request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+              retryable: false
+              fields: []
+    InvalidCredentials:
+      description: |
+        The login or password is invalid. An unknown login, a wrong password, a
+        user without a password and a disabled user all use this response.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_CREDENTIALS
+              message: The login or password is invalid.
+              request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+              retryable: false
+              fields: []
+    RateLimited:
+      description: |
+        Too many failed login attempts for this account. The reply carries
+        `Retry-After` in seconds; the client must wait that long before trying
+        the same account again.
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/XRequestId'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many login attempts. Try again later.
+              request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
+              retryable: true
               fields: []
     ClientError:
       description: Client error. The response body follows the error envelope.
@@ -1528,6 +1694,51 @@ components:
           format: date-time
           nullable: true
           description: Null before the first successful sync.
+    ActivateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - invite_token
+        - password
+      properties:
+        invite_token:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: |
+            One-time invitation token supplied by the operator, prefixed
+            `inv_`. It is not a session token and clients must not log it.
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: |
+            New password, measured in Unicode code points. There is no
+            character-class requirement, but it must differ from the
+            invitation's login. The client and the server never log it.
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          minLength: 4
+          maxLength: 64
+          pattern: '^[a-z0-9._-]+$'
+          description: |
+            Workbench login. The server trims surrounding whitespace and
+            lowercases the value before validating it against the 4-64
+            `[a-z0-9._-]` rule.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The current password. A wrong value is 401, not 422.
+
     RefreshRequest:
       type: object
       additionalProperties: false

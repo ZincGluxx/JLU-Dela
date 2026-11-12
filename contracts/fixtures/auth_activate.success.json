@@ -1,0 +1,11 @@
+{
+  "data": {
+    "access_token": "at_fixture_activation_access_token",
+    "refresh_token": "rt_fixture_activation_refresh_token",
+    "token_type": "Bearer",
+    "expires_in": 900
+  },
+  "meta": {
+    "request_id": "fixture-activation-request"
+  }
+}

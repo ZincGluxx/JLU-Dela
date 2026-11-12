@@ -15,6 +15,7 @@ lib/auth/authentication.dart
 lib/auth/http_basic_auth.dart
 lib/auth/http_bearer_auth.dart
 lib/auth/oauth.dart
+lib/model/activate_request.dart
 lib/model/assignment_item.dart
 lib/model/calendar_data.dart
 lib/model/calendar_item.dart
@@ -28,6 +29,7 @@ lib/model/lesson_item.dart
 lib/model/list_meta.dart
 lib/model/live_response.dart
 lib/model/live_status.dart
+lib/model/login_request.dart
 lib/model/logout_request.dart
 lib/model/me.dart
 lib/model/me_response.dart
