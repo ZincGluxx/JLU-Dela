@@ -103,6 +103,135 @@ void main() {
     );
   });
 
+  test('a later module can add migrations below the current version', () async {
+    final path = await createTempDatabasePath();
+    const content = LocalMigration(20, [
+      'CREATE TABLE content_cache(id TEXT PRIMARY KEY)',
+    ]);
+    const teaching = LocalMigration(2, [
+      'CREATE TABLE lesson_cache(id TEXT PRIMARY KEY)',
+    ]);
+    final first = await openTempFileDatabase(
+      path,
+      migrations: const [...coreMigrations, content],
+    );
+    await first.database.insert('content_cache', {'id': 'saved-notice'});
+    await first.close();
+
+    final upgraded = await openTempFileDatabase(
+      path,
+      migrations: const [...coreMigrations, teaching, content],
+    );
+    await upgraded.database.insert('lesson_cache', {'id': 'new-lesson'});
+    expect(upgraded.schemaVersion, 20);
+    expect(
+      (await upgraded.database.query('content_cache')).single['id'],
+      'saved-notice',
+    );
+    await upgraded.close();
+
+    final reopened = await openTempFileDatabase(
+      path,
+      migrations: const [...coreMigrations, teaching, content],
+    );
+    addTearDown(reopened.close);
+    expect(
+      (await reopened.database.query('lesson_cache')).single['id'],
+      'new-lesson',
+    );
+    expect(
+      (await reopened.database.query(
+        'local_migrations',
+      )).map((row) => row['version']),
+      unorderedEquals([1, 2, 20]),
+    );
+  });
+
+  test(
+    'legacy sparse databases retain rows and install missing modules',
+    () async {
+      final path = await createTempDatabasePath();
+      final legacy = await databaseFactoryFfiNoIsolate.openDatabase(path);
+      for (final statement in coreMigrations.single.statements) {
+        await legacy.execute(statement);
+      }
+      await legacy.execute('CREATE TABLE content_cache(id TEXT PRIMARY KEY)');
+      await legacy.insert('content_cache', {'id': 'saved-notice'});
+      await legacy.insert('app_meta', {
+        'key': 'last_user_id',
+        'value': 'user-a',
+      });
+      await legacy.execute('PRAGMA user_version = 20');
+      await legacy.close();
+
+      final upgraded = await openTempFileDatabase(
+        path,
+        migrations: const [
+          ...coreMigrations,
+          LocalMigration(2, ['CREATE TABLE lesson_cache(id TEXT PRIMARY KEY)']),
+          LocalMigration(10, [
+            'CREATE TABLE assignment_cache(id TEXT PRIMARY KEY)',
+          ]),
+          LocalMigration(20, [
+            'CREATE TABLE content_cache(id TEXT PRIMARY KEY)',
+          ]),
+        ],
+      );
+      addTearDown(upgraded.close);
+      await upgraded.database.insert('lesson_cache', {'id': 'new-lesson'});
+      await upgraded.database.insert('assignment_cache', {
+        'id': 'new-assignment',
+      });
+      expect(upgraded.schemaVersion, 20);
+      expect(
+        (await upgraded.database.query('content_cache')).single['id'],
+        'saved-notice',
+      );
+      expect(
+        (await upgraded.database.query('app_meta')).single['value'],
+        'user-a',
+      );
+    },
+  );
+
+  test('failed lower migrations are rolled back and can be retried', () async {
+    final path = await createTempDatabasePath();
+    const content = LocalMigration(20, [
+      'CREATE TABLE content_cache(id TEXT PRIMARY KEY)',
+    ]);
+    final first = await openTempFileDatabase(
+      path,
+      migrations: const [...coreMigrations, content],
+    );
+    await first.close();
+
+    await expectLater(
+      openTempFileDatabase(
+        path,
+        migrations: const [
+          ...coreMigrations,
+          LocalMigration(2, [
+            'CREATE TABLE lesson_cache(id TEXT PRIMARY KEY)',
+            'CREATE TABLE lesson_cache(id TEXT PRIMARY KEY)',
+          ]),
+          content,
+        ],
+      ),
+      throwsA(isA<DatabaseException>()),
+    );
+    final retried = await openTempFileDatabase(
+      path,
+      migrations: const [
+        ...coreMigrations,
+        LocalMigration(2, ['CREATE TABLE lesson_cache(id TEXT PRIMARY KEY)']),
+        content,
+      ],
+    );
+    addTearDown(retried.close);
+    expect(retried.schemaVersion, 20);
+    await retried.database.insert('lesson_cache', {'id': 'new-lesson'});
+  });
+
   test('a failed migration rolls back and keeps the previous version', () async {
     final path = await createTempDatabasePath();
     const failing = LocalMigration(2, [
