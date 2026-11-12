@@ -30,6 +30,14 @@ class OaPublishedTime {
 
   const OaPublishedTime.unknown() : this._();
 
+  factory OaPublishedTime.fromStored({
+    DateTime? atUtc,
+    String? date,
+    String? text,
+  }) {
+    return OaPublishedTime._(text: text, atUtc: atUtc, date: date);
+  }
+
   factory OaPublishedTime.parse(String? raw, {required DateTime nowUtc}) {
     final text = raw?.trim() ?? '';
     if (text.isEmpty) return const OaPublishedTime.unknown();
@@ -376,6 +384,24 @@ bool oaNoticeRangeComplete({
 }) {
   if (totalPages == null || totalPages < 1) return false;
   return fetchedThroughPage >= totalPages;
+}
+
+String oaNoticeDetailUrl(String id, String channel) {
+  if (!_digits.hasMatch(id) || !_digits.hasMatch(channel)) {
+    throw ArgumentError('通知标识与频道应为数字');
+  }
+  return _detailUrl(id, channel);
+}
+
+Uri oaNoticeSourceUri(String sourcePath) {
+  final uri = Uri.tryParse(sourcePath);
+  if (uri == null ||
+      uri.hasScheme ||
+      uri.host.isNotEmpty ||
+      !sourcePath.startsWith('/')) {
+    throw ArgumentError.value(sourcePath, 'sourcePath', '只接受电子校务来源路径');
+  }
+  return Uri.parse(_oaNoticeOrigin).resolve(sourcePath);
 }
 
 String _detailUrl(String id, String channel) {
