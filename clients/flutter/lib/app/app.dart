@@ -15,6 +15,7 @@ import '../features/content/notices_page.dart';
 import '../features/planner/calendar_page.dart';
 import '../features/planner/todo_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/settings/source_connection_card.dart';
 import '../features/teaching/teaching_page.dart';
 import 'app_shell.dart';
 import 'local_workbench.dart';
@@ -201,6 +202,12 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
         onGlassEnabledChanged: (value) {
           setState(() => _glassEnabled = value);
         },
+        sourceConnections: workbench == null
+            ? null
+            : SourceConnectionController(
+                source: workbench.workspace.source,
+                enabled: phase != SessionPhase.signedOut,
+              ),
       ),
       if (contentVisible) ..._workbenchPages(workbench),
       if (contentVisible) ...widget.pages,

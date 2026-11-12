@@ -5,6 +5,7 @@ import '../../core/api/diagnostics_service.dart';
 import '../../core/auth/session_controller.dart';
 import '../../core/auth/session_models.dart';
 import '../diagnostics/diagnostics_page.dart';
+import 'source_connection_card.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -13,12 +14,14 @@ class SettingsPage extends StatefulWidget {
     required this.session,
     required this.glassEnabled,
     required this.onGlassEnabledChanged,
+    this.sourceConnections,
   });
 
   final DiagnosticsService diagnosticsService;
   final SessionController session;
   final bool glassEnabled;
   final ValueChanged<bool> onGlassEnabledChanged;
+  final SourceConnectionController? sourceConnections;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -45,52 +48,77 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg,
-            AppSpacing.lg,
-            AppSpacing.lg,
-            0,
-          ),
-          child: ListenableBuilder(
-            listenable: widget.session,
-            builder: (context, child) {
-              return _SessionCard(
-                session: widget.session,
-                signingOut: _signingOut,
-                signOutResult: _signOutResult,
-                onSignOut: _signOut,
-              );
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg,
-            AppSpacing.md,
-            AppSpacing.lg,
-            0,
-          ),
-          child: Material(
-            color: Theme.of(context).colorScheme.surface,
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppTheme.surfaceRadius),
-              side: const BorderSide(color: AppTheme.border),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final header = Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.lg,
+                0,
+              ),
+              child: ListenableBuilder(
+                listenable: widget.session,
+                builder: (context, child) {
+                  return _SessionCard(
+                    session: widget.session,
+                    signingOut: _signingOut,
+                    signOutResult: _signOutResult,
+                    onSignOut: _signOut,
+                  );
+                },
+              ),
             ),
-            child: SwitchListTile(
-              key: const Key('glass-toggle'),
-              title: const Text('玻璃材质'),
-              subtitle: const Text('关闭后使用实色表面，布局保持不变'),
-              value: widget.glassEnabled,
-              onChanged: widget.onGlassEnabledChanged,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.md,
+                AppSpacing.lg,
+                0,
+              ),
+              child: Material(
+                color: Theme.of(context).colorScheme.surface,
+                clipBehavior: Clip.antiAlias,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.surfaceRadius),
+                  side: const BorderSide(color: AppTheme.border),
+                ),
+                child: SwitchListTile(
+                  key: const Key('glass-toggle'),
+                  title: const Text('玻璃材质'),
+                  subtitle: const Text('关闭后使用实色表面，布局保持不变'),
+                  value: widget.glassEnabled,
+                  onChanged: widget.onGlassEnabledChanged,
+                ),
+              ),
             ),
-          ),
-        ),
-        Expanded(child: DiagnosticsPage(service: widget.diagnosticsService)),
-      ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.md,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
+              child: SourceConnectionCard(controller: widget.sourceConnections),
+            ),
+          ],
+        );
+        return Column(
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: constraints.maxHeight * 0.6,
+              ),
+              child: SingleChildScrollView(child: header),
+            ),
+            Expanded(
+              child: DiagnosticsPage(service: widget.diagnosticsService),
+            ),
+          ],
+        );
+      },
     );
   }
 }
