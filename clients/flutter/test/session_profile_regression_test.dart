@@ -71,6 +71,210 @@ void main() {
       });
     }
 
+    for (final outcome in ['refreshed', 'network', 'revoked', 'switch']) {
+      test(
+        '${action.key} waits for in-flight rotation on INVALID_TOKEN ($outcome)',
+        () async {
+          final fixture = await _signedInSession();
+          final refreshStarted = Completer<void>();
+          final rotation = Completer<TokenPair>();
+          final requestFailed = Completer<void>();
+          final requestTokens = <String>[];
+          final latest = testUser(displayName: '刷新后的昵称');
+          fixture.auth.onRefresh = (_) {
+            refreshStarted.complete();
+            return rotation.future;
+          };
+          fixture.auth.onFetchMe = (token) async {
+            if (token == 'access-a') {
+              requestFailed.complete();
+              throw _apiError(401, 'INVALID_TOKEN');
+            }
+            return token == 'access-b' ? testUser(id: 'user-b') : latest;
+          };
+          fixture.profile.onRequest = (token) async {
+            requestTokens.add(token);
+            if (token == 'access-a') {
+              requestFailed.complete();
+              throw _apiError(401, 'INVALID_TOKEN');
+            }
+          };
+          final refresh = fixture.session.refreshSession();
+          await refreshStarted.future;
+          var settled = false;
+          final request = action.value(fixture.session).then((result) {
+            settled = true;
+            return result;
+          });
+          await requestFailed.future;
+          await Future<void>.value();
+
+          expect(settled, isFalse);
+          expect(fixture.session.phase, SessionPhase.authenticated);
+          expect(fixture.session.accessToken, 'access-a');
+          expect(fixture.store.token, 'refresh-a');
+          expect(fixture.store.clearCount, 0);
+          expect(fixture.cacheClears, 0);
+
+          if (outcome == 'switch') {
+            await fixture.session.signIn(
+              testCredentials(
+                accessToken: 'access-b',
+                refreshToken: 'refresh-b',
+              ),
+            );
+          }
+          switch (outcome) {
+            case 'network':
+              rotation.completeError(http.ClientException('offline'));
+            case 'revoked':
+              rotation.completeError(_apiError(401, 'SESSION_REVOKED'));
+            default:
+              rotation.complete(
+                testTokenPair(
+                  accessToken: 'access-rotated',
+                  refreshToken: 'refresh-rotated',
+                ),
+              );
+          }
+
+          expect(await request, outcome == 'refreshed');
+          expect(await refresh, switch (outcome) {
+            'network' => SessionRefreshResult.networkFailure,
+            'revoked' => SessionRefreshResult.signedOut,
+            'switch' => SessionRefreshResult.cancelled,
+            _ => SessionRefreshResult.refreshed,
+          });
+          expect(fixture.auth.refreshCount, 1);
+          if (action.key != 'refreshCurrentUser') {
+            expect(requestTokens, [
+              'access-a',
+              if (outcome == 'refreshed') 'access-rotated',
+            ]);
+          }
+          expect(fixture.session.phase, switch (outcome) {
+            'network' => SessionPhase.unavailable,
+            'revoked' => SessionPhase.signedOut,
+            _ => SessionPhase.authenticated,
+          });
+          expect(fixture.session.accessToken, switch (outcome) {
+            'network' => 'access-a',
+            'revoked' => null,
+            'switch' => 'access-b',
+            _ => 'access-rotated',
+          });
+          expect(fixture.store.token, switch (outcome) {
+            'network' => 'refresh-a',
+            'revoked' => null,
+            'switch' => 'refresh-b',
+            _ => 'refresh-rotated',
+          });
+          expect(fixture.store.clearCount, outcome == 'revoked' ? 1 : 0);
+          expect(
+            fixture.cacheClears,
+            outcome == 'revoked' || outcome == 'switch' ? 1 : 0,
+          );
+          if (outcome == 'refreshed') {
+            expect(fixture.session.currentUser, same(latest));
+          } else if (outcome == 'switch') {
+            expect(fixture.session.currentUser?.id, 'user-b');
+          }
+        },
+      );
+    }
+
+    test(
+      '${action.key} does not defer SESSION_REVOKED during rotation',
+      () async {
+        final fixture = await _signedInSession();
+        final refreshStarted = Completer<void>();
+        final rotation = Completer<TokenPair>();
+        fixture.auth.onRefresh = (_) {
+          refreshStarted.complete();
+          return rotation.future;
+        };
+        fixture.auth.onFetchMe = (_) async =>
+            throw _apiError(401, 'SESSION_REVOKED');
+        fixture.profile.onRequest = (_) async =>
+            throw _apiError(401, 'SESSION_REVOKED');
+        final refresh = fixture.session.refreshSession();
+        await refreshStarted.future;
+
+        expect(await action.value(fixture.session), isFalse);
+        expect(fixture.session.phase, SessionPhase.signedOut);
+        expect(fixture.session.accessToken, isNull);
+        expect(fixture.store.token, isNull);
+        rotation.complete(
+          testTokenPair(
+            accessToken: 'access-rotated',
+            refreshToken: 'refresh-rotated',
+          ),
+        );
+        expect(await refresh, SessionRefreshResult.cancelled);
+        expect(fixture.store.token, isNull);
+        expect(fixture.store.clearCount, 1);
+        expect(fixture.cacheClears, 1);
+      },
+    );
+
+    test('${action.key} rejects a revoked rotated token', () async {
+      final fixture = await _signedInSession();
+      final refreshStarted = Completer<void>();
+      final requestFailed = Completer<void>();
+      final rotation = Completer<TokenPair>();
+      fixture.auth.onRefresh = (_) {
+        refreshStarted.complete();
+        return rotation.future;
+      };
+      fixture.auth.onFetchMe = (token) async {
+        if (token == 'access-a') {
+          requestFailed.complete();
+          throw _apiError(401, 'INVALID_TOKEN');
+        }
+        if (action.key == 'refreshCurrentUser') {
+          throw _apiError(401, 'SESSION_REVOKED');
+        }
+        return testUser();
+      };
+      final requestTokens = <String>[];
+      fixture.profile.onRequest = (token) async {
+        requestTokens.add(token);
+        if (token == 'access-a') requestFailed.complete();
+        throw _apiError(
+          401,
+          token == 'access-a' ? 'INVALID_TOKEN' : 'SESSION_REVOKED',
+        );
+      };
+      final refresh = fixture.session.refreshSession();
+      await refreshStarted.future;
+      final request = action.value(fixture.session);
+      await requestFailed.future;
+      await Future<void>.value();
+      rotation.complete(
+        testTokenPair(
+          accessToken: 'access-rotated',
+          refreshToken: 'refresh-rotated',
+        ),
+      );
+
+      expect(await request, isFalse);
+      expect(
+        await refresh,
+        action.key == 'refreshCurrentUser'
+            ? SessionRefreshResult.signedOut
+            : SessionRefreshResult.refreshed,
+      );
+      if (action.key != 'refreshCurrentUser') {
+        expect(requestTokens, ['access-a', 'access-rotated']);
+      }
+      expect(fixture.session.phase, SessionPhase.signedOut);
+      expect(fixture.session.accessToken, isNull);
+      expect(fixture.store.token, isNull);
+      expect(fixture.store.clearCount, 1);
+      expect(fixture.cacheClears, 1);
+      expect(fixture.auth.refreshCount, 1);
+    });
+
     test('${action.key} retains the session on business 503', () async {
       final fixture = await _signedInSession();
       final user = fixture.session.currentUser;

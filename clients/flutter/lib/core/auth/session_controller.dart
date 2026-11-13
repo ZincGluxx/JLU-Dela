@@ -123,7 +123,14 @@ class SessionController extends ChangeNotifier {
           operation != _userRefreshSerial) {
         return false;
       }
-      if (error.code == 401 && _isRevokedCode(_apiErrorCode(error))) {
+      final code = _apiErrorCode(error);
+      if (error.code == 401 && code == 'INVALID_TOKEN' && isRefreshing) {
+        final result = await refreshSession();
+        return !_disposed &&
+            revision == _sessionRevision &&
+            result == SessionRefreshResult.refreshed;
+      }
+      if (error.code == 401 && _isRevokedCode(code)) {
         if (token == _accessToken) await invalidateSession();
         return false;
       }
@@ -201,6 +208,20 @@ class SessionController extends ChangeNotifier {
       } on ApiException catch (error) {
         if (_disposed || revision != _sessionRevision) return false;
         final code = _apiErrorCode(error);
+        if (error.code == 401 &&
+            code == 'INVALID_TOKEN' &&
+            attempt == 0 &&
+            isRefreshing) {
+          final result = await refreshSession();
+          if (_disposed ||
+              revision != _sessionRevision ||
+              result != SessionRefreshResult.refreshed ||
+              _accessToken == null) {
+            return false;
+          }
+          usedToken = _accessToken!;
+          continue;
+        }
         if (error.code == 401 && _isRevokedCode(code)) {
           if (usedToken == _accessToken) await invalidateSession();
           return false;
