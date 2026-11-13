@@ -14,6 +14,8 @@ class CachedIdentity {
   final String userId;
   final String displayName;
   final String timezone;
+
+  /// Last server confirmation of the application account, not student identity.
   final DateTime verifiedAtUtc;
   final DateTime lastUsedAtUtc;
 }
@@ -45,6 +47,7 @@ class LocalIdentityStore {
     return rows.isEmpty ? null : _identityFromRow(rows.first);
   }
 
+  /// Caches an application account confirmed by /me; grants no access rights.
   Future<void> recordVerified({
     required String userId,
     required String displayName,

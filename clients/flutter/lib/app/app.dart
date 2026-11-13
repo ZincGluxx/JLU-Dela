@@ -7,6 +7,7 @@ import '../core/api/diagnostics_service.dart';
 import '../core/auth/account_gateway.dart';
 import '../core/auth/session_controller.dart';
 import '../core/auth/session_models.dart';
+import '../core/auth/session_scope.dart';
 import '../core/storage/local_identity_store.dart';
 import '../features/assignments/assignments_page.dart';
 import '../features/auth/login_page.dart';
@@ -48,6 +49,8 @@ class JluDelaApp extends StatelessWidget {
       title: 'JLU Dela',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
+      builder: (context, child) =>
+          SessionScope(session: session, child: child!),
       home: _WorkbenchPage(
         diagnosticsService: diagnosticsService,
         session: session,
@@ -118,7 +121,7 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
     final phase = widget.session.phase;
     final user = widget.session.currentUser;
     if (phase == SessionPhase.authenticated && user != null) {
-      _recordVerifiedIdentity(user);
+      _recordConfirmedAccount(user);
     } else {
       _recordedUserId = null;
     }
@@ -139,7 +142,7 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
     }
   }
 
-  void _recordVerifiedIdentity(Me user) {
+  void _recordConfirmedAccount(Me user) {
     if (_recordedUserId == user.id) {
       return;
     }
@@ -269,7 +272,7 @@ class _OfflineBanner extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             const Expanded(
               child: Text(
-                '离线 · 身份未验证',
+                '离线 · 应用会话未确认',
                 key: Key('offline-banner-label'),
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
@@ -277,7 +280,7 @@ class _OfflineBanner extends StatelessWidget {
             TextButton(
               key: const Key('offline-reverify'),
               onPressed: () => unawaited(onRetry()),
-              child: const Text('重新验证'),
+              child: const Text('重新连接'),
             ),
           ],
         ),

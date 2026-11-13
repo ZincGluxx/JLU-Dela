@@ -25,6 +25,8 @@ pub struct MeData {
     pub id: String,
     pub display_name: String,
     pub timezone: String,
+    pub student_verified: bool,
+    pub college: Option<session::College>,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,6 +72,8 @@ pub async fn me(
             id: user.user_id.to_string(),
             display_name: user.display_name,
             timezone: user.timezone,
+            student_verified: user.student_verified,
+            college: user.college,
         },
         request_id(&request_id_value),
     ))

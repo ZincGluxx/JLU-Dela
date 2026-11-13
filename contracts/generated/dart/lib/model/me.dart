@@ -16,6 +16,8 @@ class Me {
     required this.id,
     required this.displayName,
     required this.timezone,
+    required this.studentVerified,
+    required this.college,
   });
 
   /// Workbench user id derived from the server-side session.
@@ -26,27 +28,42 @@ class Me {
   /// IANA timezone used for campus display dates. Campus dates remain Asia/Shanghai in this contract.
   String timezone;
 
+  /// Server-verified Jilin University student status. Always false in this build because no trusted student identity source is integrated. Activation, login, refresh and source connections do not grant this status. Clients cannot submit or update it.
+  bool studentVerified;
+
+  College? college;
+
   @override
   bool operator ==(Object other) => identical(this, other) || other is Me &&
     other.id == id &&
     other.displayName == displayName &&
-    other.timezone == timezone;
+    other.timezone == timezone &&
+    other.studentVerified == studentVerified &&
+    other.college == college;
 
   @override
   int get hashCode =>
     // ignore: unnecessary_parenthesis
     (id.hashCode) +
     (displayName.hashCode) +
-    (timezone.hashCode);
+    (timezone.hashCode) +
+    (studentVerified.hashCode) +
+    (college == null ? 0 : college!.hashCode);
 
   @override
-  String toString() => 'Me[id=$id, displayName=$displayName, timezone=$timezone]';
+  String toString() => 'Me[id=$id, displayName=$displayName, timezone=$timezone, studentVerified=$studentVerified, college=$college]';
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
       json[r'id'] = this.id;
       json[r'display_name'] = this.displayName;
       json[r'timezone'] = this.timezone;
+      json[r'student_verified'] = this.studentVerified;
+    if (this.college != null) {
+      json[r'college'] = this.college;
+    } else {
+      json[r'college'] = null;
+    }
     return json;
   }
 
@@ -67,6 +84,9 @@ class Me {
         assert(json[r'display_name'] != null, 'Required key "Me[display_name]" has a null value in JSON.');
         assert(json.containsKey(r'timezone'), 'Required key "Me[timezone]" is missing from JSON.');
         assert(json[r'timezone'] != null, 'Required key "Me[timezone]" has a null value in JSON.');
+        assert(json.containsKey(r'student_verified'), 'Required key "Me[student_verified]" is missing from JSON.');
+        assert(json[r'student_verified'] != null, 'Required key "Me[student_verified]" has a null value in JSON.');
+        assert(json.containsKey(r'college'), 'Required key "Me[college]" is missing from JSON.');
         return true;
       }());
 
@@ -74,6 +94,8 @@ class Me {
         id: mapValueOfType<String>(json, r'id')!,
         displayName: mapValueOfType<String>(json, r'display_name')!,
         timezone: mapValueOfType<String>(json, r'timezone')!,
+        studentVerified: mapValueOfType<bool>(json, r'student_verified')!,
+        college: College.fromJson(json[r'college']),
       );
     }
     return null;
@@ -124,6 +146,8 @@ class Me {
     'id',
     'display_name',
     'timezone',
+    'student_verified',
+    'college',
   };
 }
 

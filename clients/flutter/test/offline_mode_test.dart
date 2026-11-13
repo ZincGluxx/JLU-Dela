@@ -68,7 +68,7 @@ void main() {
     final harness = await pumpApp(tester, session);
 
     expect(find.byKey(const Key('offline-banner')), findsOneWidget);
-    expect(find.text('离线 · 身份未验证'), findsOneWidget);
+    expect(find.text('离线 · 应用会话未确认'), findsOneWidget);
     expect(find.byKey(const Key('calendar-schedule-axis')), findsOneWidget);
     expect(harness.builtUserIds, ['user-a']);
     expect(find.byKey(const Key('login-page')), findsNothing);
@@ -117,6 +117,7 @@ void main() {
     expect(harness.builtUserIds, ['cached-user']);
     expect(session.accessToken, isNull);
 
+    expect(session.currentUser, isNull);
     final workspace = harness.workbenches.single.workspace;
     final todo = await workspace.todos.create(title: '离线待办');
     expect((await workspace.todos.list()).single.id, todo.id);
@@ -172,6 +173,9 @@ void main() {
         domain: '.chaoxing.com',
       ),
     ]);
+    expect(session.currentUser?.studentVerified, isFalse);
+    expect(session.currentUser?.college, isNull);
+    expect(harness.sessions.hasSession(SourceKind.chaoxing), isTrue);
     gateway.onFetchMe = (_) async => testUser(id: 'user-b', displayName: '用户乙');
     await session.signIn(testCredentials());
     await tester.pumpAndSettle();

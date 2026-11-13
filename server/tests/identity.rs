@@ -126,6 +126,8 @@ async fn activation_issues_a_usable_session_and_stores_only_hashes() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(me["data"]["display_name"], "激活用户");
     assert_eq!(me["data"]["timezone"], "Asia/Shanghai");
+    assert_eq!(me["data"]["student_verified"], false);
+    assert_eq!(me["data"].get("college"), Some(&Value::Null));
 
     let stored: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE login = $1")
         .bind(&login)
@@ -319,6 +321,8 @@ async fn logout_then_login_again_and_refresh_restore_the_session() {
     let (status, _, me) = common::send(app.clone(), get("/api/v1/me", &access)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(me["data"]["display_name"], "登录用户");
+    assert_eq!(me["data"]["student_verified"], false);
+    assert_eq!(me["data"].get("college"), Some(&Value::Null));
 
     let (status, _, body) = common::send(
         app.clone(),
@@ -331,6 +335,8 @@ async fn logout_then_login_again_and_refresh_restore_the_session() {
     let (status, _, me) = common::send(app, get("/api/v1/me", &next_access)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(me["data"]["display_name"], "登录用户");
+    assert_eq!(me["data"]["student_verified"], false);
+    assert_eq!(me["data"].get("college"), Some(&Value::Null));
 }
 
 #[tokio::test]

@@ -16,12 +16,20 @@ pub struct IssuedSession {
     pub refresh_expires_at: OffsetDateTime,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct College {
+    pub id: String,
+    pub name: String,
+}
+
 #[derive(Debug)]
 pub struct AuthenticatedSession {
     pub session_id: Uuid,
     pub user_id: Uuid,
     pub display_name: String,
     pub timezone: String,
+    pub student_verified: bool,
+    pub college: Option<College>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -197,6 +205,9 @@ pub async fn authenticate(
         user_id: row.user_id,
         display_name: row.display_name,
         timezone: row.timezone,
+        // Populate only from server-validated student identity when a trusted source is integrated.
+        student_verified: false,
+        college: None,
     })
 }
 

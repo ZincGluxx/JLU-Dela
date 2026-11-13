@@ -16,6 +16,8 @@ pub struct AuthenticatedUser {
     pub session_id: Uuid,
     pub display_name: String,
     pub timezone: String,
+    pub student_verified: bool,
+    pub college: Option<session::College>,
 }
 
 impl FromRequestParts<AppState> for AuthenticatedUser {
@@ -36,6 +38,8 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
             session_id: session.session_id,
             display_name: session.display_name,
             timezone: session.timezone,
+            student_verified: session.student_verified,
+            college: session.college,
         })
     }
 }

@@ -207,6 +207,8 @@ class ApiClient {
           return CalendarItem.fromJson(value);
         case 'CalendarResponse':
           return CalendarResponse.fromJson(value);
+        case 'College':
+          return College.fromJson(value);
         case 'CourseListMeta':
           return CourseListMeta.fromJson(value);
         case 'CourseListResponse':

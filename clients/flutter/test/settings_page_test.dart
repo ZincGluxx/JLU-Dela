@@ -7,6 +7,7 @@ import 'package:jlu_dela/core/api/diagnostics_service.dart';
 import 'package:jlu_dela/core/auth/session_controller.dart';
 import 'package:jlu_dela/core/auth/session_models.dart';
 import 'package:jlu_dela/features/settings/settings_page.dart';
+import 'package:jlu_dela_api/api.dart';
 
 import 'support/session_test_support.dart';
 
@@ -59,6 +60,8 @@ void main() {
 
     expect(find.text('已登录'), findsOneWidget);
     expect(find.text('当前用户：测试用户'), findsOneWidget);
+    expect(find.text('吉林大学学生身份：未验证'), findsOneWidget);
+    expect(find.text('学院归属：暂无已确认的学院信息'), findsOneWidget);
     expect(find.byKey(const Key('session-sign-out')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('session-sign-out')));
@@ -67,8 +70,65 @@ void main() {
     expect(session.phase, SessionPhase.signedOut);
     expect(store.token, isNull);
     expect(find.text('未登录'), findsOneWidget);
+    expect(find.byKey(const Key('student-verification-status')), findsNothing);
+    expect(find.byKey(const Key('college-affiliation')), findsNothing);
     expect(find.byKey(const Key('session-sign-out-notice')), findsNothing);
   });
+
+  testWidgets(
+    'trusted identity is replaced on account switch and hidden offline',
+    (tester) async {
+      final gateway = FakeAuthGateway(
+        onFetchMe: (_) async => testUser(
+          studentVerified: true,
+          college: College(id: 'test-college', name: '测试学院'),
+        ),
+        onRefresh: (_) async => throw http.ClientException('offline'),
+      );
+      final session = SessionController(
+        gateway: gateway,
+        refreshTokenStore: MemoryRefreshTokenStore(),
+      );
+      addTearDown(session.dispose);
+      await session.signIn(testCredentials());
+      await pumpSettings(tester, session);
+      expect(find.text('吉林大学学生身份：已验证'), findsOneWidget);
+      expect(find.text('学院归属：测试学院'), findsOneWidget);
+
+      await session.refreshSession();
+      await tester.pumpAndSettle();
+      expect(find.text('吉林大学学生身份：暂无法确认'), findsOneWidget);
+      expect(find.text('学院归属：暂无法确认'), findsOneWidget);
+      expect(find.text('学院归属：测试学院'), findsNothing);
+
+      gateway.onFetchMe = (_) async => testUser(id: 'user-b');
+      await session.signIn(testCredentials(accessToken: 'access-b'));
+      await tester.pumpAndSettle();
+      expect(find.text('吉林大学学生身份：未验证'), findsOneWidget);
+      expect(find.text('学院归属：暂无已确认的学院信息'), findsOneWidget);
+      expect(find.text('学院归属：测试学院'), findsNothing);
+    },
+  );
+
+  for (final width in [375.0, 800.0, 1100.0, 1920.0]) {
+    testWidgets('identity card remains readable at width $width', (
+      tester,
+    ) async {
+      final session = SessionController(
+        gateway: FakeAuthGateway(onFetchMe: (_) async => testUser()),
+        refreshTokenStore: MemoryRefreshTokenStore(),
+      );
+      addTearDown(session.dispose);
+      await session.signIn(testCredentials());
+      await pumpSettings(tester, session);
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      await tester.pumpAndSettle();
+      expect(find.text('吉林大学学生身份：未验证'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('identity-notice')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('reports an unconfirmed remote sign-out', (tester) async {
     final store = MemoryRefreshTokenStore();
