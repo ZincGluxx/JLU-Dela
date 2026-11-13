@@ -174,6 +174,11 @@ class MailStore extends ChangeNotifier {
   /// 同步文件夹列表。完整读取时删除本 account 下未出现的文件夹。
   ///
   /// 部分读取不得标记为完整：传 `complete: false` 时只做 upsert。
+  ///
+  /// 若某文件夹的 UIDVALIDITY 与本地不同，说明服务端重建了 UID 空间：
+  /// 在同一事务内清空该文件夹的邮件缓存。否则旧邮件会留在新 UID 空间里，
+  /// 而 [upsertSummary] 只更新摘要、保留正文，界面上就会出现
+  /// 「新标题 + 上一 UID 空间的旧正文」。
   Future<void> replaceFolders(
     String accountId,
     List<MailFolderSnapshot> snapshots, {
@@ -193,6 +198,16 @@ class MailStore extends ChangeNotifier {
             ? _uuid.v4()
             : existing.first['id'] as String;
         kept.add(id);
+        if (existing.isNotEmpty) {
+          final previous = existing.first['uid_validity'] as String?;
+          if (uidValidityChanged(previous, snapshot.uidValidity)) {
+            await txn.delete(
+              'mail_messages',
+              where: 'user_id = ? AND folder_id = ?',
+              whereArgs: [userId, id],
+            );
+          }
+        }
         final values = {
           'id': id,
           'user_id': userId,
@@ -216,16 +231,57 @@ class MailStore extends ChangeNotifier {
           );
         }
       }
-      if (complete && kept.isNotEmpty) {
-        final placeholders = List.filled(kept.length, '?').join(',');
-        await txn.delete(
-          'mail_folders',
-          where: 'user_id = ? AND account_id = ? AND id NOT IN ($placeholders)',
-          whereArgs: [userId, accountId, ...kept],
-        );
+      if (complete) {
+        // 完整快照语义：没出现在这次结果里的文件夹就是不存在了。
+        // 空列表同样是有效快照——服务端把文件夹全删了，本地必须跟着清。
+        if (kept.isEmpty) {
+          await txn.delete(
+            'mail_folders',
+            where: 'user_id = ? AND account_id = ?',
+            whereArgs: [userId, accountId],
+          );
+        } else {
+          final placeholders = List.filled(kept.length, '?').join(',');
+          await txn.delete(
+            'mail_folders',
+            where:
+                'user_id = ? AND account_id = ? AND id NOT IN ($placeholders)',
+            whereArgs: [userId, accountId, ...kept],
+          );
+        }
       }
     });
     notifyListeners();
+  }
+
+  /// 两个 UIDVALIDITY 是否构成「服务端重建了 UID 空间」。
+  ///
+  /// 任一方为空时无法判断，按未变化处理：宁可多留缓存，
+  /// 也不能因为服务端没报 UIDVALIDITY 就误删用户的邮件。
+  static bool uidValidityChanged(String? previous, String? next) {
+    if (previous == null || next == null) {
+      return false;
+    }
+    if (previous.isEmpty || next.isEmpty) {
+      return false;
+    }
+    return previous != next;
+  }
+
+  /// 记录文件夹新的 UIDVALIDITY。
+  ///
+  /// 与 [replaceFolders] 分开，是因为头部同步只拿到 UIDVALIDITY、
+  /// 拿不到完整的文件夹元数据；不记录的话下次同步会重复判定为变化。
+  Future<void> updateFolderUidValidity(
+    String folderId,
+    String uidValidity,
+  ) async {
+    await _database.update(
+      'mail_folders',
+      {'uid_validity': uidValidity},
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [folderId, userId],
+    );
   }
 
   // ---------------------------------------------------------------- messages

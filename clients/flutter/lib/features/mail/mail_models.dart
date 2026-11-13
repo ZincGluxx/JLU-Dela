@@ -352,6 +352,9 @@ abstract final class MailErrorCodes {
   static const attachmentMissing = 'MAIL_ATTACHMENT_MISSING';
   static const draftTooLarge = 'MAIL_DRAFT_TOO_LARGE';
   static const sendRejected = 'MAIL_SEND_REJECTED';
+
+  /// 内容属于另一个邮箱账号。必须切号后再操作，不能拿当前连接顶替。
+  static const wrongAccount = 'MAIL_WRONG_ACCOUNT';
 }
 
 class MailException implements Exception {

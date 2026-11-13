@@ -151,15 +151,27 @@ class MailSyncService {
           errorMessage: '本地没有该文件夹，请先同步文件夹列表',
         );
       }
-      final batch = await gateway.fetchHeaders(
+      var batch = await gateway.fetchHeaders(
         folderPath: folderPath,
         sinceUid: sinceUid,
         limit: limit,
       );
-      if (batch.uidValidity != null &&
-          folder.uidValidity != null &&
-          batch.uidValidity != folder.uidValidity) {
+      // 先比对 UIDVALIDITY，再决定这批结果能不能用。
+      //
+      // 顺序不能反：UID 空间重建后，旧 sinceUid 指向的是完全不存在的区间，
+      // 按旧水位拉回来的增量是空的——清完缓存就什么都没了。发现变化必须
+      // 从 0 重拉，并把新的 UIDVALIDITY 记下来，否则下次同步还会再判一次变化。
+      if (MailStore.uidValidityChanged(folder.uidValidity, batch.uidValidity)) {
         await store.clearFolderMessages(folder.id);
+        await store.updateFolderUidValidity(folder.id, batch.uidValidity!);
+        batch = await gateway.fetchHeaders(
+          folderPath: folderPath,
+          sinceUid: 0,
+          limit: limit,
+        );
+      } else if (folder.uidValidity == null && batch.uidValidity != null) {
+        // 首次同步：记下 UIDVALIDITY 作为后续比较的基准。
+        await store.updateFolderUidValidity(folder.id, batch.uidValidity!);
       }
       for (final header in batch.headers) {
         await store.upsertSummary(
@@ -197,10 +209,7 @@ class MailSyncService {
     if (summary.hasBody) {
       return summary;
     }
-    final gateway = _gateway;
-    if (gateway == null) {
-      throw const MailException(MailErrorCodes.unavailable, '邮箱未连接，暂时无法读取正文');
-    }
+    final gateway = _gatewayForAccount(summary.accountId);
     final body = await gateway.fetchBody(
       folderPath: summary.folderPath,
       uid: summary.uid,
@@ -221,10 +230,7 @@ class MailSyncService {
     required MailMessageDetail message,
     required MailAttachmentInfo attachment,
   }) async {
-    final gateway = _gateway;
-    if (gateway == null) {
-      throw const MailException(MailErrorCodes.unavailable, '邮箱未连接，暂时无法下载附件');
-    }
+    final gateway = _gatewayForAccount(message.accountId);
     final part = attachment.part;
     if (part == null || part.isEmpty) {
       throw MailException(
@@ -246,6 +252,26 @@ class MailSyncService {
     return bytes;
   }
 
+  /// 取指定账号的连接。
+  ///
+  /// 内容必须走它自己所属账号的网关：文件夹路径与 UID 只在同一个账号里
+  /// 有意义，拿 A 的 UID 去 B 的服务器上读，要么读到别人的邮件，
+  /// 要么把别人的正文写进 A 的缓存。当前连接不是这个账号时明确拒绝，
+  /// 让调用方先切号，而不是静默用错账号。
+  MailGateway _gatewayForAccount(String accountId) {
+    final gateway = _gateway;
+    if (gateway == null) {
+      throw const MailException(MailErrorCodes.unavailable, '邮箱未连接');
+    }
+    if (_gatewayAccountId != accountId) {
+      throw const MailException(
+        MailErrorCodes.wrongAccount,
+        '该内容属于另一个邮箱账号，请先切换到对应账号',
+      );
+    }
+    return gateway;
+  }
+
   /// 发送草稿。
   ///
   /// 顺序固定：先落 `sending`，再发信，最后按结果落 `sent` 或 `failed`。
@@ -261,6 +287,18 @@ class MailSyncService {
       return const MailSendOutcome.failed(
         code: MailErrorCodes.unavailable,
         message: '邮箱未连接',
+      );
+    }
+    if (_gatewayAccountId != draft.accountId) {
+      // 用 B 的连接发 A 的草稿会把 A 的私人内容交给 B 的服务器。
+      await store.markSendFailed(
+        draft.id,
+        code: MailErrorCodes.wrongAccount,
+        message: '该草稿属于另一个邮箱账号，请先切换到对应账号再发送',
+      );
+      return const MailSendOutcome.failed(
+        code: MailErrorCodes.wrongAccount,
+        message: '该草稿属于另一个邮箱账号，请先切换到对应账号再发送',
       );
     }
     final recipients = _parseRecipients(draft.recipientText);

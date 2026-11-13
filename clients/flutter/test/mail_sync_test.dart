@@ -50,7 +50,9 @@ class _FakeGateway implements MailGateway {
   });
 
   final List<MailHeader> headers;
-  final String uidValidity;
+
+  /// 可变：模拟服务端重建 UID 空间。
+  String uidValidity;
   final MailBody? body;
   final MailException? connectError;
   final MailException? headerError;
@@ -64,6 +66,10 @@ class _FakeGateway implements MailGateway {
   String? lastSinceUidFolder;
   int? lastSinceUid;
   MailOutgoing? lastOutgoing;
+  String? lastBodyFolder;
+  int? lastBodyUid;
+  String? lastAttachmentFolder;
+  int? lastAttachmentUid;
 
   @override
   Future<void> connect() async {
@@ -114,6 +120,8 @@ class _FakeGateway implements MailGateway {
     required String folderPath,
     required int uid,
   }) async {
+    lastBodyFolder = folderPath;
+    lastBodyUid = uid;
     if (bodyError != null) {
       throw bodyError!;
     }
@@ -126,6 +134,8 @@ class _FakeGateway implements MailGateway {
     required int uid,
     required String part,
   }) async {
+    lastAttachmentFolder = folderPath;
+    lastAttachmentUid = uid;
     return Uint8List(0);
   }
 
@@ -639,5 +649,289 @@ void main() {
 
     expect(await service.recoverInterruptedSends(), 1);
     expect((await store.draftById(draft.id))!.canRetry, isTrue);
+  });
+
+  group('account binding', () {
+    Future<MailAccount> secondAccount() =>
+        store.upsertAccount(address: 'other@mails.jlu.edu.cn');
+
+    test('reading a message of another account is refused', () async {
+      final other = await secondAccount();
+      final gatewayA = _FakeGateway(
+        headers: [MailHeader(uid: 1, subject: 'A 的邮件')],
+        body: const MailBody(bodyText: 'A 的正文'),
+      );
+      await secrets.write('user-a', account.id, 'secret');
+      await secrets.write('user-a', other.id, 'secret');
+      final serviceA = serviceFor(gatewayA);
+      await serviceA.connect(account);
+      await serviceA.syncFolders(account);
+      await serviceA.syncHeaders(account, folderPath: 'INBOX');
+      final inboxA = (await store.folderByPath(account.id, 'INBOX'))!;
+      final messageA = (await store.listMessages(folderId: inboxA.id)).single;
+      final detailA = (await store.messageById(messageA.id))!;
+
+      // 切到 B 的连接，再打开 A 的邮件。
+      final gatewayB = _FakeGateway(
+        headers: [MailHeader(uid: 1, subject: 'B 的邮件')],
+        body: const MailBody(bodyText: 'B 的正文'),
+      );
+      final serviceB = serviceFor(gatewayB);
+      await serviceB.connect(other);
+
+      await expectLater(
+        serviceB.openMessage(detailA),
+        throwsA(
+          isA<MailException>().having(
+            (error) => error.code,
+            'code',
+            MailErrorCodes.wrongAccount,
+          ),
+        ),
+      );
+      expect(gatewayB.lastBodyUid, isNull);
+      final untouched = (await store.messageById(detailA.id))!;
+      expect(untouched.hasBody, isFalse);
+      expect(untouched.bodyText, isNull);
+    });
+
+    test('downloading an attachment of another account is refused', () async {
+      final other = await secondAccount();
+      final gatewayA = _FakeGateway(
+        headers: [MailHeader(uid: 2, subject: 'A 的附件')],
+        body: const MailBody(
+          bodyText: '见附件',
+          attachments: [MailAttachmentInfo(filename: 'a.pdf', part: '2')],
+        ),
+      );
+      await secrets.write('user-a', account.id, 'secret');
+      await secrets.write('user-a', other.id, 'secret');
+      final serviceA = serviceFor(gatewayA);
+      await serviceA.connect(account);
+      await serviceA.syncFolders(account);
+      await serviceA.syncHeaders(account, folderPath: 'INBOX');
+      final inboxA = (await store.folderByPath(account.id, 'INBOX'))!;
+      final summary = (await store.listMessages(folderId: inboxA.id)).single;
+      final opened = await serviceA.openMessage(
+        (await store.messageById(summary.id))!,
+      );
+
+      final gatewayB = _FakeGateway();
+      final serviceB = serviceFor(gatewayB);
+      await serviceB.connect(other);
+
+      await expectLater(
+        serviceB.downloadAttachment(
+          message: opened,
+          attachment: opened.attachments.single,
+        ),
+        throwsA(
+          isA<MailException>().having(
+            (error) => error.code,
+            'code',
+            MailErrorCodes.wrongAccount,
+          ),
+        ),
+      );
+      expect(gatewayB.lastAttachmentUid, isNull);
+    });
+
+    test('sending a draft of another account is refused and kept', () async {
+      final other = await secondAccount();
+      final gatewayA = _FakeGateway();
+      await secrets.write('user-a', account.id, 'secret');
+      await secrets.write('user-a', other.id, 'secret');
+      final serviceA = serviceFor(gatewayA);
+      await serviceA.connect(account);
+      final draftA = await store.saveDraft(
+        await store.createDraft(
+          accountId: account.id,
+          recipientText: 'jwc@jlu.edu.cn',
+          subject: 'A 的私人草稿',
+          bodyText: '只有 A 该看到的内容',
+        ),
+      );
+
+      final gatewayB = _FakeGateway();
+      final serviceB = serviceFor(gatewayB);
+      await serviceB.connect(other);
+      final outcome = await serviceB.sendDraft(draftA);
+
+      expect(outcome.isSent, isFalse);
+      expect(outcome.code, MailErrorCodes.wrongAccount);
+      expect(gatewayB.lastOutgoing, isNull);
+      final kept = (await store.draftById(draftA.id))!;
+      expect(kept.sendState, MailSendState.failed);
+      expect(kept.bodyText, '只有 A 该看到的内容');
+      expect(kept.canRetry, isTrue);
+    });
+
+    test('the owning account still reads its own message', () async {
+      final gatewayA = _FakeGateway(
+        headers: [MailHeader(uid: 3, subject: '自己的')],
+        body: const MailBody(bodyText: '自己的正文'),
+      );
+      await secrets.write('user-a', account.id, 'secret');
+      final service = serviceFor(gatewayA);
+      await service.connect(account);
+      await service.syncFolders(account);
+      await service.syncHeaders(account, folderPath: 'INBOX');
+      final inbox = (await store.folderByPath(account.id, 'INBOX'))!;
+      final summary = (await store.listMessages(folderId: inbox.id)).single;
+
+      final opened = await service.openMessage(
+        (await store.messageById(summary.id))!,
+      );
+
+      expect(opened.bodyText, '自己的正文');
+      expect(gatewayA.lastBodyUid, 3);
+    });
+  });
+
+  group('uidvalidity handling', () {
+    Future<String> syncOnce(_FakeGateway gateway) async {
+      await secrets.write('user-a', account.id, 'secret');
+      final service = serviceFor(gateway);
+      await service.connect(account);
+      await service.syncFolders(account);
+      await service.syncHeaders(account, folderPath: 'INBOX');
+      final inbox = (await store.folderByPath(account.id, 'INBOX'))!;
+      return inbox.id;
+    }
+
+    test(
+      'a reset refetches from zero instead of reusing the old watermark',
+      () async {
+        final first = _FakeGateway(
+          headers: [MailHeader(uid: 100, subject: '旧')],
+        );
+        final inboxId = await syncOnce(first);
+        expect(await store.highestUid(inboxId), 100);
+
+        // 服务端重建 UID 空间：新邮件 uid 从 1 开始。
+        final second = _FakeGateway(
+          headers: [MailHeader(uid: 1, subject: '新')],
+          uidValidity: '2',
+        );
+        await secrets.write('user-a', account.id, 'secret');
+        final reopened = serviceFor(second);
+        await reopened.connect(account);
+        final result = await reopened.syncHeaders(
+          account,
+          folderPath: 'INBOX',
+          sinceUid: 100,
+        );
+
+        expect(result.isSuccess, isTrue);
+        // 发现 UIDVALIDITY 变化后必须从 0 重拉，否则 uid=1 会被旧水位挡掉。
+        expect(second.lastSinceUid, 0);
+        final messages = await store.listMessages(folderId: inboxId);
+        expect(messages.length, 1);
+        expect(messages.single.subject, '新');
+        expect(messages.single.uid, 1);
+      },
+    );
+
+    test(
+      'a reset records the new uidvalidity so the next sync is stable',
+      () async {
+        final first = _FakeGateway(headers: [MailHeader(uid: 50)]);
+        final inboxId = await syncOnce(first);
+
+        final second = _FakeGateway(
+          headers: [MailHeader(uid: 1)],
+          uidValidity: '2',
+        );
+        await secrets.write('user-a', account.id, 'secret');
+        final service = serviceFor(second);
+        await service.connect(account);
+        await service.syncHeaders(account, folderPath: 'INBOX', sinceUid: 50);
+
+        final folder = (await store.listFolders(
+          account.id,
+        )).firstWhere((f) => f.id == inboxId);
+        expect(folder.uidValidity, '2');
+
+        // 第二次同步：UIDVALIDITY 已相同，不该再清缓存、也不该回退到 0。
+        final third = _FakeGateway(
+          headers: [MailHeader(uid: 2, subject: '后续')],
+          uidValidity: '2',
+        );
+        await secrets.write('user-a', account.id, 'secret');
+        final again = serviceFor(third);
+        await again.connect(account);
+        await again.syncHeaders(account, folderPath: 'INBOX', sinceUid: 1);
+
+        expect(third.lastSinceUid, 1);
+        final messages = await store.listMessages(folderId: inboxId);
+        expect(messages.length, 2);
+      },
+    );
+
+    test(
+      'a folder snapshot that changes uidvalidity drops stale bodies',
+      () async {
+        final first = _FakeGateway(
+          headers: [MailHeader(uid: 7, subject: '旧标题')],
+          body: const MailBody(bodyText: '上一 UID 空间的正文'),
+        );
+        await secrets.write('user-a', account.id, 'secret');
+        final service = serviceFor(first);
+        await service.connect(account);
+        await service.syncFolders(account);
+        await service.syncHeaders(account, folderPath: 'INBOX');
+        final inbox = (await store.folderByPath(account.id, 'INBOX'))!;
+        final oldSummary = (await store.listMessages(
+          folderId: inbox.id,
+        )).single;
+        await service.openMessage((await store.messageById(oldSummary.id))!);
+        expect(
+          (await store.messageById(oldSummary.id))!.bodyText,
+          '上一 UID 空间的正文',
+        );
+
+        // 文件夹同步先看到新的 UIDVALIDITY —— 此时旧缓存必须立刻失效，
+        // 否则紧接着的头部同步会认为两边一致，把新摘要盖在旧正文上。
+        await store.replaceFolders(account.id, const [
+          MailFolderSnapshot(path: 'INBOX', name: '收件箱', uidValidity: '2'),
+        ], complete: false);
+        expect(await store.listMessages(folderId: inbox.id), isEmpty);
+
+        final second = _FakeGateway(
+          headers: [MailHeader(uid: 7, subject: '新标题')],
+          uidValidity: '2',
+          body: const MailBody(bodyText: '新 UID 空间的正文'),
+        );
+        await secrets.write('user-a', account.id, 'secret');
+        final reopened = serviceFor(second);
+        await reopened.connect(account);
+        // 调用方按契约重新读取本地水位：缓存刚被清空，此时应为 0。
+        final watermark = await store.highestUid(inbox.id);
+        expect(watermark, 0);
+        await reopened.syncHeaders(
+          account,
+          folderPath: 'INBOX',
+          sinceUid: watermark,
+        );
+        final fresh = (await store.listMessages(folderId: inbox.id)).single;
+        final detail = (await store.messageById(fresh.id))!;
+
+        expect(detail.subject, '新标题');
+        expect(detail.hasBody, isFalse);
+        expect(detail.bodyText, isNull);
+      },
+    );
+
+    test('an empty complete snapshot removes every folder', () async {
+      await secrets.write('user-a', account.id, 'secret');
+      final service = serviceFor(_FakeGateway());
+      await service.connect(account);
+      await service.syncFolders(account);
+      expect(await store.listFolders(account.id), isNotEmpty);
+
+      await store.replaceFolders(account.id, const [], complete: true);
+
+      expect(await store.listFolders(account.id), isEmpty);
+    });
   });
 }
