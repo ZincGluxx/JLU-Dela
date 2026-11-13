@@ -4,6 +4,7 @@ pub mod calendar;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod files;
 pub mod health;
 pub mod http;
 pub mod json;

@@ -31,6 +31,7 @@ part 'optional.dart';
 
 part 'api/auth_api.dart';
 part 'api/calendar_api.dart';
+part 'api/files_api.dart';
 part 'api/health_api.dart';
 part 'api/me_api.dart';
 part 'api/meta_api.dart';
@@ -90,6 +91,8 @@ part 'model/snapshot_meta.dart';
 part 'model/source_ref.dart';
 part 'model/source_snapshot.dart';
 part 'model/source_status.dart';
+part 'model/stored_file.dart';
+part 'model/stored_file_response.dart';
 part 'model/sync_job.dart';
 part 'model/sync_job_accepted.dart';
 part 'model/sync_job_accepted_response.dart';

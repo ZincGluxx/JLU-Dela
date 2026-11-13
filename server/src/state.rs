@@ -7,6 +7,7 @@ use crate::{calendar::source::CalendarSources, sync::SyncRegistry};
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    pub files: crate::files::FileStorageConfig,
     pub build_id: Arc<str>,
     pub sync: Arc<SyncRegistry>,
     /// 已注册的日历来源。空集合表示没有任何来源接入，`sources` 返回空数组。
@@ -17,6 +18,7 @@ pub struct AppState {
 impl AppState {
     pub fn from_config(pool: PgPool, config: &crate::config::Config) -> Self {
         let mut state = Self::new(pool, config.build_id.clone());
+        state.files = config.files.clone();
         state.sms_sender = crate::auth::phone::configured_sender(config);
         state
     }
@@ -37,6 +39,7 @@ impl AppState {
     ) -> Self {
         Self {
             pool,
+            files: crate::files::FileStorageConfig::default(),
             build_id: build_id.into(),
             sync: Arc::new(sync),
             calendar_sources: Arc::new(calendar_sources),

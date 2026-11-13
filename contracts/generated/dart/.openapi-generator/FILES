@@ -2,6 +2,7 @@ analysis_options.yaml
 lib/api.dart
 lib/api/auth_api.dart
 lib/api/calendar_api.dart
+lib/api/files_api.dart
 lib/api/health_api.dart
 lib/api/me_api.dart
 lib/api/meta_api.dart
@@ -68,6 +69,8 @@ lib/model/snapshot_meta.dart
 lib/model/source_ref.dart
 lib/model/source_snapshot.dart
 lib/model/source_status.dart
+lib/model/stored_file.dart
+lib/model/stored_file_response.dart
 lib/model/sync_job.dart
 lib/model/sync_job_accepted.dart
 lib/model/sync_job_accepted_response.dart

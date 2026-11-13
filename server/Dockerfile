@@ -20,7 +20,9 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --home-dir /nonexistent --shell /usr/sbin/nologin app
+    && useradd --system --uid 10001 --gid app --home-dir /nonexistent --shell /usr/sbin/nologin app \
+    && mkdir -p /var/lib/jlu-dela/files \
+    && chown 10001:10001 /var/lib/jlu-dela/files
 
 COPY --from=builder /build/target/release/jlu-dela-api /usr/local/bin/jlu-dela-api
 COPY --from=builder /build/target/release/migrate /usr/local/bin/migrate
