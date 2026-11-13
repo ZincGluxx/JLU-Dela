@@ -4,14 +4,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/app/local_migrations.dart';
 import 'package:jlu_dela/core/storage/local_database.dart';
 
+/// 当前代码支持的最高迁移版本。断言不写死数字，任何人新增迁移都不会
+/// 让本文件变红——这里关心的是内容表存在与事务回滚，不是具体版本号。
+final int _latestMigrationVersion = appLocalMigrations
+    .map((migration) => migration.version)
+    .reduce((a, b) => a > b ? a : b);
+
 void main() {
-  test('内容迁移创建通知与资料表，schema 版本包含 v20-23', () async {
+  test('内容迁移创建通知与资料表，schema 版本推进到当前最大值', () async {
     final database = await LocalDatabase.openInMemory(
       migrations: appLocalMigrations,
     );
     addTearDown(database.close);
 
-    expect(database.schemaVersion, 23);
+    expect(database.schemaVersion, _latestMigrationVersion);
     final tables = (await database.database.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table'",
     )).map((row) => row['name'] as String).toSet();
@@ -26,7 +32,7 @@ void main() {
       ]),
     );
     final version = await database.database.rawQuery('PRAGMA user_version');
-    expect(version.first['user_version'], 23);
+    expect(version.first['user_version'], _latestMigrationVersion);
   });
 
   test('重启后通知与资料缓存仍属于原用户', () async {
@@ -80,7 +86,7 @@ void main() {
       migrations: appLocalMigrations,
     );
     addTearDown(reopened.close);
-    expect(reopened.schemaVersion, 23);
+    expect(reopened.schemaVersion, _latestMigrationVersion);
     final notices = await reopened.database.query('notices');
     expect(notices, hasLength(1));
     expect(notices.single['user_id'], 'user-a');
@@ -113,7 +119,7 @@ void main() {
     final path = '${directory.path}${Platform.pathSeparator}dela.db';
     final broken = <LocalMigration>[
       ...appLocalMigrations,
-      const LocalMigration(24, <String>[
+      LocalMigration(_latestMigrationVersion + 1, <String>[
         'CREATE TABLE broken_table(',
         'CREATE TABLE should_not_exist(id TEXT)',
       ]),
@@ -128,7 +134,7 @@ void main() {
       migrations: appLocalMigrations,
     );
     addTearDown(recovered.close);
-    expect(recovered.schemaVersion, 23);
+    expect(recovered.schemaVersion, _latestMigrationVersion);
     final tables = (await recovered.database.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table'",
     )).map((row) => row['name'] as String).toSet();
