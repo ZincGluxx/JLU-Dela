@@ -106,13 +106,9 @@ class MailSyncService {
 
   /// 同步文件夹列表。完整读取时清掉服务端已不存在的文件夹。
   Future<MailSyncOutcome> syncFolders(MailAccount account) async {
-    final gateway = await _requireGateway(account);
+    final (gateway, failure) = await _requireGateway(account);
     if (gateway == null) {
-      return const MailSyncOutcome.failed(
-        state: MailConnectionState.authRequired,
-        errorCode: MailErrorCodes.authRequired,
-        errorMessage: '邮箱未连接',
-      );
+      return failure!;
     }
     try {
       final snapshots = await gateway.listFolders();
@@ -135,13 +131,9 @@ class MailSyncService {
     int sinceUid = 0,
     int limit = defaultHeaderBatch,
   }) async {
-    final gateway = await _requireGateway(account);
+    final (gateway, failure) = await _requireGateway(account);
     if (gateway == null) {
-      return const MailSyncOutcome.failed(
-        state: MailConnectionState.authRequired,
-        errorCode: MailErrorCodes.authRequired,
-        errorMessage: '邮箱未连接',
-      );
+      return failure!;
     }
     try {
       final folder = await store.folderByPath(account.id, folderPath);
@@ -397,15 +389,22 @@ class MailSyncService {
     }
   }
 
-  Future<MailGateway?> _requireGateway(MailAccount account) async {
+  /// 取指定账号的连接，失败时连原因一起返回。
+  ///
+  /// 不能把连接失败折叠成 null：`connect` 已经区分了凭据失效与网络故障，
+  /// 折叠掉状态会让同步调用方一律报 `SOURCE_AUTH_REQUIRED`，页面就会把
+  /// 「网络不通」显示成「需要重新认证」，与库里的错误记录也对不上。
+  Future<(MailGateway?, MailSyncOutcome?)> _requireGateway(
+    MailAccount account,
+  ) async {
     if (_gateway != null && _gatewayAccountId == account.id) {
-      return _gateway;
+      return (_gateway, null);
     }
     final outcome = await connect(account);
     if (!outcome.isSuccess) {
-      return null;
+      return (null, outcome);
     }
-    return _gateway;
+    return (_gateway, null);
   }
 
   Future<void> _recordFailure(MailAccount account, MailException error) {

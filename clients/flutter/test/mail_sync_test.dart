@@ -933,5 +933,130 @@ void main() {
 
       expect(await store.listFolders(account.id), isEmpty);
     });
+
+    test(
+      'a snapshot without uidvalidity keeps the known value and stale bodies drop',
+      () async {
+        final first = _FakeGateway(
+          headers: [MailHeader(uid: 7, subject: '旧标题')],
+          body: const MailBody(bodyText: '上一 UID 空间的正文'),
+        );
+        await secrets.write('user-a', account.id, 'secret');
+        final service = serviceFor(first);
+        await service.connect(account);
+        await service.syncFolders(account);
+        await service.syncHeaders(account, folderPath: 'INBOX');
+        final inbox = (await store.folderByPath(account.id, 'INBOX'))!;
+        expect(inbox.uidValidity, '1');
+        final oldSummary = (await store.listMessages(
+          folderId: inbox.id,
+        )).single;
+        await service.openMessage((await store.messageById(oldSummary.id))!);
+
+        // 快照没带 UIDVALIDITY：不能把已知的 '1' 抹成 null。
+        await store.replaceFolders(account.id, const [
+          MailFolderSnapshot(path: 'INBOX', name: '收件箱'),
+        ], complete: false);
+        expect(
+          (await store.folderByPath(account.id, 'INBOX'))!.uidValidity,
+          '1',
+        );
+        expect(
+          (await store.messageById(oldSummary.id))!.bodyText,
+          '上一 UID 空间的正文',
+        );
+
+        // 之后服务端报出 '2'：基准还在，必须判定为变化并清掉旧正文。
+        final second = _FakeGateway(
+          headers: [MailHeader(uid: 7, subject: '新标题')],
+          uidValidity: '2',
+          body: const MailBody(bodyText: '新 UID 空间的正文'),
+        );
+        await secrets.write('user-a', account.id, 'secret');
+        final reopened = serviceFor(second);
+        await reopened.connect(account);
+        await reopened.syncHeaders(account, folderPath: 'INBOX', sinceUid: 7);
+
+        final fresh = (await store.listMessages(folderId: inbox.id)).single;
+        final detail = (await store.messageById(fresh.id))!;
+        expect(detail.subject, '新标题');
+        expect(detail.hasBody, isFalse);
+        expect(detail.bodyText, isNull);
+        expect(
+          (await store.folderByPath(account.id, 'INBOX'))!.uidValidity,
+          '2',
+        );
+      },
+    );
+  });
+
+  group('connection failure reporting', () {
+    test(
+      'a network failure during folder sync is not reported as auth',
+      () async {
+        await secrets.write('user-a', account.id, 'secret');
+        final service = serviceFor(
+          _FakeGateway(
+            connectError: const MailException(MailErrorCodes.network, '连不上'),
+          ),
+        );
+
+        final outcome = await service.syncFolders(account);
+
+        expect(outcome.isSuccess, isFalse);
+        expect(outcome.state, MailConnectionState.unreachable);
+        expect(outcome.errorCode, MailErrorCodes.network);
+      },
+    );
+
+    test(
+      'a network failure during header sync is not reported as auth',
+      () async {
+        await secrets.write('user-a', account.id, 'secret');
+        final service = serviceFor(
+          _FakeGateway(
+            connectError: const MailException(MailErrorCodes.timeout, '超时'),
+          ),
+        );
+
+        final outcome = await service.syncHeaders(account, folderPath: 'INBOX');
+
+        expect(outcome.isSuccess, isFalse);
+        expect(outcome.state, MailConnectionState.unreachable);
+        expect(outcome.errorCode, MailErrorCodes.timeout);
+      },
+    );
+
+    test('an auth failure is still reported as auth required', () async {
+      await secrets.write('user-a', account.id, 'secret');
+      final service = serviceFor(
+        _FakeGateway(
+          connectError: const MailException(
+            MailErrorCodes.authRequired,
+            '密码错误',
+          ),
+        ),
+      );
+
+      final outcome = await service.syncHeaders(account, folderPath: 'INBOX');
+
+      expect(outcome.state, MailConnectionState.authRequired);
+      expect(outcome.errorCode, MailErrorCodes.authRequired);
+    });
+
+    test('the stored account reflects the real failure code', () async {
+      await secrets.write('user-a', account.id, 'secret');
+      final service = serviceFor(
+        _FakeGateway(
+          connectError: const MailException(MailErrorCodes.network, '连不上'),
+        ),
+      );
+
+      await service.syncFolders(account);
+
+      final stored = (await store.accountById(account.id))!;
+      expect(stored.lastErrorCode, MailErrorCodes.network);
+      expect(stored.connectionState, MailConnectionState.unreachable);
+    });
   });
 }

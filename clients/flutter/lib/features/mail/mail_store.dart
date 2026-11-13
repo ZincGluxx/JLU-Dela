@@ -208,6 +208,17 @@ class MailStore extends ChangeNotifier {
             );
           }
         }
+        // 快照没带 UIDVALIDITY 时保留原值。
+        //
+        // 写空值会把已知基准抹掉：下一次头部同步拿到真实值时，本地是 null，
+        // 会被当成首次同步而跳过清理，于是新摘要盖在旧正文上。
+        // 只有拿到明确的新值才更新，没有就保持原样。
+        final nextUidValidity =
+            (snapshot.uidValidity == null || snapshot.uidValidity!.isEmpty)
+            ? (existing.isEmpty
+                  ? null
+                  : existing.first['uid_validity'] as String?)
+            : snapshot.uidValidity;
         final values = {
           'id': id,
           'user_id': userId,
@@ -215,7 +226,7 @@ class MailStore extends ChangeNotifier {
           'path': snapshot.path,
           'name': snapshot.name,
           'special_use': snapshot.specialUse,
-          'uid_validity': snapshot.uidValidity,
+          'uid_validity': nextUidValidity,
           'total': snapshot.total,
           'unread': snapshot.unread,
           'synced_at_utc': timestamp,
