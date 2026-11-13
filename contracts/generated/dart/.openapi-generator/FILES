@@ -28,6 +28,7 @@ lib/model/assignment_item.dart
 lib/model/calendar_data.dart
 lib/model/calendar_item.dart
 lib/model/calendar_response.dart
+lib/model/college.dart
 lib/model/course_list_meta.dart
 lib/model/course_list_response.dart
 lib/model/course_offering.dart

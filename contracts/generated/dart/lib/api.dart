@@ -50,6 +50,7 @@ part 'model/assignment_item.dart';
 part 'model/calendar_data.dart';
 part 'model/calendar_item.dart';
 part 'model/calendar_response.dart';
+part 'model/college.dart';
 part 'model/course_list_meta.dart';
 part 'model/course_list_response.dart';
 part 'model/course_offering.dart';

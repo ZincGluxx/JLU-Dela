@@ -423,6 +423,8 @@ paths:
                   id: 0b6a4f8e-6f0e-4a5c-9b6d-2f4a7c1d8e30
                   display_name: 示例用户
                   timezone: Asia/Shanghai
+                  student_verified: false
+                  college: null
                 meta:
                   request_id: 95fd0c0e-0d5d-4d8d-a2b1-6e1f8e80d0c1
         '401':
@@ -2509,12 +2511,35 @@ components:
         meta:
           $ref: '#/components/schemas/RequestIdMeta'
 
+    College:
+      type: object
+      nullable: true
+      description: |
+        Trusted college affiliation, or null when no trusted affiliation is
+        available. Always null in this build. Clients cannot submit or update
+        it; a non-null value requires a verified student identity from the
+        server-side source.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: Stable college identifier assigned by the trusted server-side identity source, not a display name.
+        name:
+          type: string
+          minLength: 1
+          description: College display name from the trusted identity source.
+
     Me:
       type: object
       required:
         - id
         - display_name
         - timezone
+        - student_verified
+        - college
       properties:
         id:
           type: string
@@ -2527,6 +2552,15 @@ components:
         timezone:
           type: string
           description: IANA timezone used for campus display dates. Campus dates remain Asia/Shanghai in this contract.
+        student_verified:
+          type: boolean
+          description: |-
+            Server-verified Jilin University student status. Always false in this
+            build because no trusted student identity source is integrated.
+            Activation, login, refresh and source connections do not grant this
+            status. Clients cannot submit or update it.
+        college:
+          $ref: '#/components/schemas/College'
 
     MeResponse:
       type: object

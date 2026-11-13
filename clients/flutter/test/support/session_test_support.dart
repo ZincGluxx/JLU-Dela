@@ -157,8 +157,19 @@ class FakeAccountGateway implements AccountGateway {
   }
 }
 
-Me testUser({String id = 'user-a', String displayName = '测试用户'}) {
-  return Me(id: id, displayName: displayName, timezone: 'Asia/Shanghai');
+Me testUser({
+  String id = 'user-a',
+  String displayName = '测试用户',
+  bool studentVerified = false,
+  College? college,
+}) {
+  return Me(
+    id: id,
+    displayName: displayName,
+    timezone: 'Asia/Shanghai',
+    studentVerified: studentVerified,
+    college: college,
+  );
 }
 
 TokenPair testTokenPair({

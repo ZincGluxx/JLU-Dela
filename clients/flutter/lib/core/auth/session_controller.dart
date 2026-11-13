@@ -191,40 +191,7 @@ class SessionController extends ChangeNotifier {
       _notify();
     }
 
-    final revision = _sessionRevision;
-    final result = await refreshSession();
-    if (revision != _sessionRevision ||
-        result != SessionRefreshResult.refreshed) {
-      return;
-    }
-
-    final accessToken = _accessToken;
-    if (accessToken == null) {
-      await _enterSignedOut();
-      return;
-    }
-
-    try {
-      final user = await _gateway.fetchMe(accessToken);
-      if (revision != _sessionRevision) {
-        return;
-      }
-      _adoptUser(user);
-    } on ApiException catch (error) {
-      if (revision != _sessionRevision) {
-        return;
-      }
-      if (error.code == 401) {
-        await _enterSignedOut();
-      } else {
-        _setUnavailable();
-      }
-    } on Exception {
-      if (revision != _sessionRevision) {
-        return;
-      }
-      _setUnavailable();
-    }
+    await refreshSession();
   }
 
   Future<SessionRefreshResult> _refresh(int revision) async {
@@ -264,15 +231,17 @@ class SessionController extends ChangeNotifier {
         }
 
         _accessToken = pair.accessToken;
-        if (_currentUser != null && _phase != SessionPhase.authenticated) {
-          _phase = SessionPhase.authenticated;
-        }
-        _notify();
         return true;
       });
-      return applied
-          ? SessionRefreshResult.refreshed
-          : SessionRefreshResult.cancelled;
+      if (!applied) {
+        return SessionRefreshResult.cancelled;
+      }
+      final user = await _gateway.fetchMe(pair.accessToken);
+      if (revision != _sessionRevision) {
+        return SessionRefreshResult.cancelled;
+      }
+      _adoptUser(user);
+      return SessionRefreshResult.refreshed;
     } on ApiException catch (error) {
       if (revision != _sessionRevision) {
         return SessionRefreshResult.cancelled;

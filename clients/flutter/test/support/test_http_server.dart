@@ -97,6 +97,8 @@ Map<String, dynamic> meBody({
       'id': id,
       'display_name': displayName,
       'timezone': 'Asia/Shanghai',
+      'student_verified': false,
+      'college': null,
     },
     'meta': {'request_id': 'test'},
   };

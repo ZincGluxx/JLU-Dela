@@ -92,6 +92,8 @@ async fn two_users_receive_only_their_own_identity() {
     assert_eq!(body["data"]["id"], alice.to_string());
     assert_eq!(body["data"]["display_name"], "alice");
     assert_eq!(body["data"]["timezone"], "Asia/Shanghai");
+    assert_eq!(body["data"]["student_verified"], false);
+    assert_eq!(body["data"].get("college"), Some(&Value::Null));
 
     let (status, _, body) =
         common::send(app, get("/api/v1/me", Some(&bob_session.access_token))).await;

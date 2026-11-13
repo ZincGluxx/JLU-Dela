@@ -39,10 +39,103 @@ void main() {
 
     expect(controller.phase, SessionPhase.authenticated);
     expect(controller.currentUser?.id, 'user-a');
+    expect(controller.currentUser?.studentVerified, isFalse);
+    expect(controller.currentUser?.college, isNull);
     expect(controller.accessToken, 'access-2');
     expect(store.token, 'refresh-2');
     expect(controller.identityRevision, 1);
     expect(refreshBody, {'refresh_token': 'refresh-1'});
+  });
+
+  test(
+    'refresh replaces student and college information from the server',
+    () async {
+      final gateway = FakeAuthGateway(
+        onFetchMe: (_) async => testUser(
+          studentVerified: true,
+          college: College(id: 'fixture-college', name: '测试学院'),
+        ),
+        onRefresh: (_) async => testTokenPair(),
+        onRevoke: (_, _) async {},
+      );
+      final controller = SessionController(
+        gateway: gateway,
+        refreshTokenStore: MemoryRefreshTokenStore(),
+      );
+      addTearDown(controller.dispose);
+      await controller.signIn(testCredentials());
+      expect(controller.currentUser?.studentVerified, isTrue);
+      expect(controller.currentUser?.college?.id, 'fixture-college');
+
+      gateway.onFetchMe = (_) async => testUser();
+      expect(await controller.refreshSession(), SessionRefreshResult.refreshed);
+      expect(controller.currentUser?.studentVerified, isFalse);
+      expect(controller.currentUser?.college, isNull);
+      expect(gateway.fetchMeCount, 2);
+
+      await controller.signOut();
+      expect(controller.currentUser, isNull);
+    },
+  );
+
+  test(
+    'failed current-user refresh retains rotated token but is not online',
+    () async {
+      final store = MemoryRefreshTokenStore();
+      final gateway = FakeAuthGateway(
+        onFetchMe: (_) async => testUser(),
+        onRefresh: (_) async => testTokenPair(refreshToken: 'rotated-refresh'),
+      );
+      final controller = SessionController(
+        gateway: gateway,
+        refreshTokenStore: store,
+      );
+      addTearDown(controller.dispose);
+      await controller.signIn(testCredentials());
+      gateway.onFetchMe = (_) async => throw http.ClientException('offline');
+      expect(
+        await controller.refreshSession(),
+        SessionRefreshResult.networkFailure,
+      );
+      expect(controller.phase, SessionPhase.unavailable);
+      expect(store.token, 'rotated-refresh');
+      expect(controller.currentUser?.studentVerified, isFalse);
+      gateway.onFetchMe = (_) async => testUser();
+      await controller.retryRestore();
+      expect(controller.phase, SessionPhase.authenticated);
+    },
+  );
+
+  test('sign-out discards a delayed current-user refresh', () async {
+    final gateway = FakeAuthGateway(
+      onFetchMe: (_) async => testUser(),
+      onRefresh: (_) async => testTokenPair(),
+      onRevoke: (_, _) async {},
+    );
+    final controller = SessionController(
+      gateway: gateway,
+      refreshTokenStore: MemoryRefreshTokenStore(),
+    );
+    addTearDown(controller.dispose);
+    await controller.signIn(testCredentials());
+    final started = Completer<void>();
+    final result = Completer<Me>();
+    gateway.onFetchMe = (_) {
+      started.complete();
+      return result.future;
+    };
+    final refresh = controller.refreshSession();
+    await started.future;
+    await controller.signOut();
+    result.complete(
+      testUser(
+        studentVerified: true,
+        college: College(id: 'fixture', name: '测试学院'),
+      ),
+    );
+    expect(await refresh, SessionRefreshResult.cancelled);
+    expect(controller.currentUser, isNull);
+    expect(controller.phase, SessionPhase.signedOut);
   });
 
   test('signs out locally when no refresh token is stored', () async {

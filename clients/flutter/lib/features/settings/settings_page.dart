@@ -178,7 +178,7 @@ class _SessionCard extends StatelessWidget {
                 Icon(Icons.badge_outlined, color: theme.colorScheme.primary),
                 const SizedBox(width: AppSpacing.sm),
                 Text(
-                  '工作台会话',
+                  '应用账号',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -199,6 +199,34 @@ class _SessionCard extends StatelessWidget {
                 '当前用户：${user.displayName}',
                 key: const Key('session-user'),
                 style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                phase == SessionPhase.authenticated
+                    ? '吉林大学学生身份：${user.studentVerified ? '已验证' : '未验证'}'
+                    : '吉林大学学生身份：暂无法确认',
+                key: const Key('student-verification-status'),
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                phase != SessionPhase.authenticated
+                    ? '学院归属：暂无法确认'
+                    : '学院归属：${user.college?.name ?? '暂无已确认的学院信息'}',
+                key: const Key('college-affiliation'),
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                phase == SessionPhase.authenticated
+                    ? (user.studentVerified
+                          ? '学院内容的访问资格以服务端检查为准。'
+                          : '学生身份验证暂未开放。登录应用或连接学校平台不代表已验证学生身份。')
+                    : '离线信息不能用于确认当前学生身份或学院访问资格。',
+                key: const Key('identity-notice'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppTheme.muted,
+                ),
               ),
             ],
             if (phase == SessionPhase.signedOut) ...[
