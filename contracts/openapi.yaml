@@ -5,7 +5,8 @@ info:
   version: 0.1.0
   description: |
     Single source of truth for the implemented and design-only HTTP endpoints
-    of the JLU Dela foundation service (planning item A01).
+    of the JLU Dela foundation service (planning item A01). Contract availability
+    is not evidence of real SMS or student-report acceptance.
 
     Implemented endpoints:
     - GET /health/live
@@ -13,6 +14,10 @@ info:
     - GET /api/v1/meta
     - POST /api/v1/auth/activate
     - POST /api/v1/auth/login
+    - POST /api/v1/auth/phone/code
+    - POST /api/v1/auth/phone/login
+    - PATCH /api/v1/me/account
+    - POST /api/v1/me/student-verification
     - POST /api/v1/auth/refresh
     - POST /api/v1/auth/logout
     - GET /api/v1/me
@@ -25,13 +30,13 @@ info:
     - GET /api/v1/semesters, GET /api/v1/courses, GET /api/v1/schedule
       (B teaching draft, pending A and consumer review)
 
-    The session endpoints operate on an opaque token pair. Workbench accounts
-    are provisioned through controlled one-time invitations: an operator issues
-    a login, display name and invitation out of band; the invitee calls `POST
-    /api/v1/auth/activate` to set a password and receives the first session, and
-    later calls `POST /api/v1/auth/login`. Login failures are uniform and rate
-    limited. School SSO and self-service registration are not part of this
-    contract. Sync jobs persist a source synchronization request. This build
+    The session endpoints operate on an opaque token pair. Phone code login
+    creates or reuses an application account; controlled invitations and legacy
+    password login remain compatible. Account settings and server-side student
+    report verification are separate authenticated operations. Phone login never
+    grants student or college eligibility. Real SMS delivery and official report
+    success acceptance require separate verification; unrecognized report HTML
+    fails closed. Sync jobs persist a source synchronization request. This build
     registers no source adapter, so creating a job returns 422
     UNSUPPORTED_SOURCE until B/C/D register a verified source. A job never
     reports success before its adapter succeeds. Campuses, courses, assignments,
@@ -88,7 +93,7 @@ tags:
   - name: Meta
     description: Public build and contract identity.
   - name: Auth
-    description: Controlled-invitation activation and workbench session lifecycle. Campus source authorization is separate.
+    description: Phone login, legacy invitation activation and account session lifecycle. Campus source authorization is separate.
   - name: Me
     description: The authenticated workbench user.
   - name: Todos
@@ -107,6 +112,10 @@ x-contract-status:
     - GET /api/v1/meta
     - POST /api/v1/auth/activate
     - POST /api/v1/auth/login
+    - POST /api/v1/auth/phone/code
+    - POST /api/v1/auth/phone/login
+    - PATCH /api/v1/me/account
+    - POST /api/v1/me/student-verification
     - POST /api/v1/auth/refresh
     - POST /api/v1/auth/logout
     - GET /api/v1/me
@@ -122,7 +131,7 @@ x-contract-status:
     - GET /api/v1/semesters
     - GET /api/v1/courses
     - GET /api/v1/schedule
-  note: Accounts are created only by controlled invitation; there is no self-service registration or school SSO. Connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build. The calendar currently aggregates personal todos; lessons and assignments require registered source adapters.
+  note: Phone account endpoints and student-report verification are contract-defined; real SMS delivery and official report success acceptance remain unverified. Legacy invitation and password login remain compatible. Connections, campuses, courses, assignments, notices and materials are not exposed by the service and must not be treated as available. Sync jobs exist, but no source adapter is registered in this build. The calendar currently aggregates personal todos; lessons and assignments require registered source adapters.
 
 paths:
   /health/live:
@@ -325,6 +334,58 @@ paths:
         '5XX':
           $ref: '#/components/responses/ServerError'
 
+  /api/v1/auth/phone/code:
+    post:
+      operationId: sendPhoneCode
+      tags: [Auth]
+      summary: Send a phone login code
+      description: Prepares a phone login code. Real SMS mode returns dev_mode false and requires a configured provider; unavailable or failed delivery returns SMS_UNAVAILABLE or SMS_SEND_FAILED. DEV_SMS_FIXED_CODE_ENABLED=true enables a fixed code only in debug builds bound to loopback; release or non-loopback startup rejects this setting. Development mode returns dev_mode true without sending SMS. Never returns the code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneCodeRequest'
+      responses:
+        '200':
+          description: Code prepared. Durations are seconds. dev_mode true means local development readiness, not SMS delivery. Provider unavailable or delivery failure returns 503 SMS_UNAVAILABLE or SMS_SEND_FAILED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhoneCodeResponse'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/auth/phone/login:
+    post:
+      operationId: loginWithPhone
+      tags: [Auth]
+      summary: Exchange a phone code for an account session
+      description: Creates or reuses the phone account. Phone login does not verify student identity. Invalid and expired codes use INVALID_SMS_CODE and SMS_CODE_EXPIRED respectively.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneLoginRequest'
+      responses:
+        '200':
+          description: A fresh token pair.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
   /api/v1/auth/refresh:
     post:
       operationId: refreshSession
@@ -432,6 +493,78 @@ paths:
         '5XX':
           $ref: '#/components/responses/ServerError'
 
+
+  /api/v1/me/account:
+    patch:
+      operationId: updateAccount
+      tags: [Me]
+      summary: Update the current account
+      description: Omitted fields keep their values. New usernames are not trimmed or lowercased. New passwords require 8-16 Unicode scalar values including ASCII lowercase, uppercase and a digit. Existing password login rules are unchanged. A duplicate username returns 409 USERNAME_TAKEN. Phone and student identity fields are not accepted.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAccountRequest'
+      responses:
+        '200':
+          description: Updated current user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/ClientError'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/me/student-verification:
+    post:
+      operationId: verifyStudentReport
+      tags: [Me]
+      summary: Verify a student report on the server
+      description: |-
+        Accepts a report code, never a client-supplied student or college claim.
+        The server confirms Jilin University and college from the official
+        student report. The result records a past report check, not current
+        enrollment or proof that the caller is the report holder. No enrollment
+        status restriction, automatic expiry or repeated verification is imposed.
+        Phone numbers determine account uniqueness; the same report may verify
+        multiple phone accounts. Student identifiers, names and birth dates are
+        not processed. Report codes and raw personal reports are not stored.
+        Current official HTML has been observed in the browser; Rust end-to-end
+        verification is still pending. Invalid reports and non-Jilin University
+        reports return 422 STUDENT_REPORT_INVALID and STUDENT_NOT_ELIGIBLE.
+        Restricted, unrecognized or unavailable upstream responses return 503
+        STUDENT_REPORT_RESTRICTED, STUDENT_REPORT_PARSE_FAILED or
+        STUDENT_VERIFICATION_UNAVAILABLE.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyStudentReportRequest'
+      responses:
+        '200':
+          description: Current user with a recorded Jilin University report check and college.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '503':
+          $ref: '#/components/responses/ServerError'
 
   /api/v1/todos:
     get:
@@ -2451,6 +2584,80 @@ components:
           maxLength: 128
           description: The current password. A wrong value is 401, not 422.
 
+    PhoneCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          description: Mainland China mobile number beginning 13-19, as 11 digits or with +86 prefix. The server trims surrounding whitespace and stores the +86 form.
+
+    PhoneLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, sms_code]
+      properties:
+        phone:
+          type: string
+          description: Mainland China mobile number beginning 13-19, as 11 digits or with +86 prefix. The server trims surrounding whitespace and stores the +86 form.
+        sms_code:
+          type: string
+          pattern: '^[0-9]{6}$'
+
+    PhoneCode:
+      type: object
+      required: [expires_in, retry_after]
+      properties:
+        expires_in:
+          type: integer
+          minimum: 1
+        retry_after:
+          type: integer
+          minimum: 1
+        dev_mode:
+          type: boolean
+          default: false
+          description: True only for explicit local debug fixed-code mode. No SMS was sent. Missing in older responses means false.
+
+    PhoneCodeResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/PhoneCode'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
+
+    UpdateAccountRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          pattern: '^[a-z0-9]{6,10}$'
+          description: No trimming, lowercasing or other normalization.
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        password:
+          type: string
+          minLength: 8
+          maxLength: 16
+          pattern: '^(?=[\s\S]*[a-z])(?=[\s\S]*[A-Z])(?=[\s\S]*[0-9])[\s\S]*$'
+          description: 8-16 Unicode scalar values including ASCII lowercase, uppercase and a digit. This rule applies only when setting a new account password.
+
+    VerifyStudentReportRequest:
+      type: object
+      additionalProperties: false
+      required: [report_code]
+      properties:
+        report_code:
+          type: string
+          pattern: '^([0-9]{12}|[AX][A-Z0-9]{15})$'
+          description: A 12-digit legacy code or a 16-character uppercase alphanumeric code beginning A or X. Never log or include it in business backups.
+
     RefreshRequest:
       type: object
       additionalProperties: false
@@ -2516,9 +2723,8 @@ components:
       nullable: true
       description: |
         Trusted college affiliation, or null when no trusted affiliation is
-        available. Always null in this build. Clients cannot submit or update
-        it; a non-null value requires a verified student identity from the
-        server-side source.
+        available. Clients cannot submit it through account settings; a non-null
+        value requires a verified student identity from the server-side source.
       required:
         - id
         - name
@@ -2545,6 +2751,14 @@ components:
           type: string
           format: uuid
           description: Workbench user id derived from the server-side session.
+        username:
+          type: string
+          nullable: true
+          description: Account username, or null before it is set. May be absent in older responses.
+        password_set:
+          type: boolean
+          default: false
+          description: Whether the account has a password. Older responses default to false.
         display_name:
           type: string
           minLength: 1
@@ -2555,10 +2769,11 @@ components:
         student_verified:
           type: boolean
           description: |-
-            Server-verified Jilin University student status. Always false in this
-            build because no trusted student identity source is integrated.
-            Activation, login, refresh and source connections do not grant this
-            status. Clients cannot submit or update it.
+            Records that the server checked an official Jilin University student
+            report. Not proof of current enrollment, report ownership or one
+            student per account. No automatic expiry or enrollment restriction.
+            Phone login and source connections do not grant this status; clients
+            cannot submit a status value. Unrecognized report HTML fails closed.
         college:
           $ref: '#/components/schemas/College'
 

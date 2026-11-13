@@ -18,6 +18,8 @@ async fn me_serializes_unverified_identity_with_an_explicit_null_college() {
             session_id: Uuid::new_v4(),
             display_name: "未验证用户".to_owned(),
             timezone: "Asia/Shanghai".to_owned(),
+            username: None,
+            password_set: false,
             student_verified: false,
             college: None,
         },

@@ -5,8 +5,9 @@ use argon2::{
 
 use crate::error::{AppError, FieldError};
 
-pub const MIN_LENGTH: usize = 12;
-pub const MAX_LENGTH: usize = 128;
+pub const MIN_LENGTH: usize = 8;
+pub const MAX_LENGTH: usize = 16;
+pub const MAX_ATTEMPT_LENGTH: usize = 128;
 
 const SALT_BYTES: usize = 16;
 
@@ -25,6 +26,19 @@ pub fn validate_new(password: &str) -> Result<(), AppError> {
             "password", "too_long",
         )]));
     }
+    if !password
+        .chars()
+        .any(|character| character.is_ascii_lowercase())
+        || !password
+            .chars()
+            .any(|character| character.is_ascii_uppercase())
+        || !password.chars().any(|character| character.is_ascii_digit())
+    {
+        return Err(AppError::Validation(vec![FieldError::new(
+            "password",
+            "invalid_format",
+        )]));
+    }
     Ok(())
 }
 
@@ -34,7 +48,7 @@ pub fn validate_attempt(password: &str) -> Result<(), AppError> {
             "password", "required",
         )]));
     }
-    if password.chars().count() > MAX_LENGTH {
+    if password.chars().count() > MAX_ATTEMPT_LENGTH {
         return Err(AppError::Validation(vec![FieldError::new(
             "password", "too_long",
         )]));

@@ -1,6 +1,8 @@
 import 'package:http/http.dart' as http;
 import 'package:jlu_dela_api/api.dart';
 
+import 'profile_gateway.dart';
+
 abstract interface class AuthGateway {
   Future<TokenPair> refresh(String refreshToken);
 
@@ -12,7 +14,7 @@ abstract interface class AuthGateway {
   });
 }
 
-class HttpAuthGateway implements AuthGateway {
+class HttpAuthGateway implements AuthGateway, ProfileGateway {
   HttpAuthGateway({required this.baseUri, http.Client? httpClient})
     : _httpClient = httpClient ?? http.Client();
 
@@ -25,6 +27,38 @@ class HttpAuthGateway implements AuthGateway {
         ? _httpClient
         : _AuthorizedClient(_httpClient, accessToken);
     return apiClient;
+  }
+
+  @override
+  Future<void> updateAccount({
+    required String accessToken,
+    String? username,
+    String? displayName,
+    String? password,
+  }) async {
+    await MeApi(_apiClient(accessToken: accessToken)).updateAccount(
+      UpdateAccountRequest(
+        username: username == null
+            ? const Optional.absent()
+            : Optional.present(username),
+        displayName: displayName == null
+            ? const Optional.absent()
+            : Optional.present(displayName),
+        password: password == null
+            ? const Optional.absent()
+            : Optional.present(password),
+      ),
+    );
+  }
+
+  @override
+  Future<void> verifyStudentReport({
+    required String accessToken,
+    required String reportCode,
+  }) async {
+    await MeApi(
+      _apiClient(accessToken: accessToken),
+    ).verifyStudentReport(VerifyStudentReportRequest(reportCode: reportCode));
   }
 
   @override

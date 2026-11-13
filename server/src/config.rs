@@ -42,6 +42,7 @@ pub struct Config {
     pub max_body_bytes: usize,
     pub build_id: String,
     pub log_format: LogFormat,
+    pub dev_sms_fixed_code_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -64,6 +65,10 @@ impl fmt::Debug for Config {
             .field("max_body_bytes", &self.max_body_bytes)
             .field("build_id", &self.build_id)
             .field("log_format", &self.log_format)
+            .field(
+                "dev_sms_fixed_code_enabled",
+                &self.dev_sms_fixed_code_enabled,
+            )
             .finish()
     }
 }
@@ -233,6 +238,27 @@ impl Config {
             &mut errors,
         );
 
+        let dev_sms_fixed_code_enabled = match variables
+            .get("DEV_SMS_FIXED_CODE_ENABLED")
+            .map_or("false", String::as_str)
+        {
+            "false" => false,
+            "true" => {
+                if !cfg!(debug_assertions) {
+                    errors.push("DEV_SMS_FIXED_CODE_ENABLED requires a debug build".to_owned());
+                }
+                if !host.as_ref().is_ok_and(|host| host.is_loopback()) {
+                    errors
+                        .push("DEV_SMS_FIXED_CODE_ENABLED requires loopback HTTP_HOST".to_owned());
+                }
+                true
+            }
+            _ => {
+                errors.push("DEV_SMS_FIXED_CODE_ENABLED must be 'true' or 'false'".to_owned());
+                false
+            }
+        };
+
         match (
             host,
             port,
@@ -259,6 +285,7 @@ impl Config {
                 max_body_bytes,
                 build_id,
                 log_format,
+                dev_sms_fixed_code_enabled,
             }),
             _ => Err(ConfigError::new(errors)),
         }

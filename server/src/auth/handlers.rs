@@ -25,6 +25,8 @@ pub struct MeData {
     pub id: String,
     pub display_name: String,
     pub timezone: String,
+    pub username: Option<String>,
+    pub password_set: bool,
     pub student_verified: bool,
     pub college: Option<session::College>,
 }
@@ -72,6 +74,8 @@ pub async fn me(
             id: user.user_id.to_string(),
             display_name: user.display_name,
             timezone: user.timezone,
+            username: user.username,
+            password_set: user.password_set,
             student_verified: user.student_verified,
             college: user.college,
         },
@@ -166,6 +170,145 @@ async fn revoke(
     session::revoke(&state.pool, user.session_id, refresh_token).await
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PhoneCodeRequest {
+    pub phone: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PhoneLoginRequest {
+    pub phone: String,
+    pub sms_code: String,
+}
+
+#[derive(Serialize)]
+pub struct PhoneCodeData {
+    pub expires_in: u64,
+    pub retry_after: u64,
+    pub dev_mode: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccountUpdateRequest {
+    #[serde(default, deserialize_with = "present_string")]
+    pub username: Option<String>,
+    #[serde(default, deserialize_with = "present_string")]
+    pub display_name: Option<String>,
+    #[serde(default, deserialize_with = "present_string")]
+    pub password: Option<String>,
+}
+
+fn present_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(Some)
+}
+
+pub async fn send_phone_code(
+    State(state): State<AppState>,
+    Extension(id): Extension<RequestId>,
+    ApiJson(body): ApiJson<PhoneCodeRequest>,
+) -> Response {
+    let id = request_id(&id);
+    match super::phone::request_code(&state.pool, state.sms_sender.as_ref(), &body.phone).await {
+        Ok(()) => Json(ApiResponse::new(
+            PhoneCodeData {
+                expires_in: 300,
+                retry_after: 60,
+                dev_mode: state.sms_sender.dev_mode(),
+            },
+            id,
+        ))
+        .into_response(),
+        Err(error) => error.response(&id),
+    }
+}
+
+pub async fn phone_login(
+    State(state): State<AppState>,
+    Extension(id): Extension<RequestId>,
+    ApiJson(body): ApiJson<PhoneLoginRequest>,
+) -> Response {
+    let id = request_id(&id);
+    match super::phone::authenticate(&state.pool, &body.phone, &body.sms_code).await {
+        Ok(issued) => Json(ApiResponse::new(TokenData::from(issued), id)).into_response(),
+        Err(error) => error.response(&id),
+    }
+}
+
+pub async fn update_account(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Extension(id): Extension<RequestId>,
+    ApiJson(body): ApiJson<AccountUpdateRequest>,
+) -> Response {
+    let request_id_value = request_id(&id);
+    match super::account::update(
+        &state.pool,
+        user.user_id,
+        body.username.as_deref(),
+        body.display_name.as_deref(),
+        body.password.as_deref(),
+    )
+    .await
+    {
+        Ok(account) => {
+            let updated = AuthenticatedUser {
+                username: account.username,
+                display_name: account.display_name,
+                password_set: account.password_set,
+                ..user
+            };
+            me(updated, Extension(id)).await.into_response()
+        }
+        Err(error) => error.response(&request_id_value),
+    }
+}
+
+pub async fn verify_student_report(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Extension(id): Extension<RequestId>,
+    ApiJson(body): ApiJson<super::student::StudentReportRequest>,
+) -> Response {
+    let request_id_value = request_id(&id);
+    let result = async {
+        super::student::StudentVerifier::new()?
+            .verify_and_bind(&state.pool, user.user_id, &body.report_code)
+            .await
+    }
+    .await;
+    match result {
+        Ok(identity) => me(
+            AuthenticatedUser {
+                student_verified: identity.student_verified,
+                college: identity.college,
+                ..user
+            },
+            Extension(id),
+        )
+        .await
+        .into_response(),
+        Err(error) => student_error(error).response(&request_id_value),
+    }
+}
+
+fn student_error(error: super::student::StudentReportError) -> AppError {
+    use super::student::StudentReportError;
+    match error {
+        StudentReportError::Invalid => AppError::StudentReportInvalid,
+        StudentReportError::Restricted => AppError::StudentReportRestricted,
+        StudentReportError::ParseFailed => AppError::StudentReportParseFailed,
+        StudentReportError::NotEligible => AppError::StudentNotEligible,
+        StudentReportError::Unavailable => AppError::StudentVerificationUnavailable,
+        StudentReportError::Store => AppError::Internal,
+    }
+}
+
 impl From<IssuedSession> for TokenData {
     fn from(issued: IssuedSession) -> Self {
         Self {
@@ -207,4 +350,28 @@ fn validate_refresh_token(value: &str) -> Result<(), AppError> {
         )]));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn restricted_report_query_is_not_an_account_authentication_failure() {
+        let response = student_error(super::super::student::StudentReportError::Restricted)
+            .response("report-restricted-test");
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(
+            !response
+                .headers()
+                .contains_key(axum::http::header::WWW_AUTHENTICATE)
+        );
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["error"]["code"], "STUDENT_REPORT_RESTRICTED");
+        assert_eq!(body["error"]["retryable"], true);
+        assert!(body.get("data").is_none());
+    }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
 import '../../core/auth/account_gateway.dart';
+import '../../core/auth/account_validation.dart';
 import '../../core/auth/session_controller.dart';
 import '../../core/auth/session_models.dart';
 import 'auth_failure_message.dart';
@@ -196,17 +197,12 @@ class _ActivatePageState extends State<ActivatePage> {
                             textInputAction: TextInputAction.next,
                             decoration: const InputDecoration(
                               labelText: '新密码',
-                              helperText: '12–128 个字符，且不能与登录名相同',
+                              helperText: '8–16 个字符，包含大小写字母和数字',
+                              helperMaxLines: 3,
                               prefixIcon: Icon(Icons.password_outlined),
                               border: OutlineInputBorder(),
                             ),
-                            validator: (value) {
-                              final length = value?.runes.length ?? 0;
-                              if (length < 12 || length > 128) {
-                                return '密码长度需为 12–128 个字符';
-                              }
-                              return null;
-                            },
+                            validator: validateNewPassword,
                           ),
                           const SizedBox(height: AppSpacing.md),
                           TextFormField(

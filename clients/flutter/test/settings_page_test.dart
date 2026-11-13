@@ -60,7 +60,7 @@ void main() {
 
     expect(find.text('已登录'), findsOneWidget);
     expect(find.text('当前用户：测试用户'), findsOneWidget);
-    expect(find.text('吉林大学学生身份：未验证'), findsOneWidget);
+    expect(find.text('吉林大学学籍报告：未核验'), findsOneWidget);
     expect(find.text('学院归属：暂无已确认的学院信息'), findsOneWidget);
     expect(find.byKey(const Key('session-sign-out')), findsOneWidget);
 
@@ -92,19 +92,19 @@ void main() {
       addTearDown(session.dispose);
       await session.signIn(testCredentials());
       await pumpSettings(tester, session);
-      expect(find.text('吉林大学学生身份：已验证'), findsOneWidget);
+      expect(find.text('吉林大学学籍报告：已核验'), findsOneWidget);
       expect(find.text('学院归属：测试学院'), findsOneWidget);
 
       await session.refreshSession();
       await tester.pumpAndSettle();
-      expect(find.text('吉林大学学生身份：暂无法确认'), findsOneWidget);
+      expect(find.text('吉林大学学籍报告：暂无法确认'), findsOneWidget);
       expect(find.text('学院归属：暂无法确认'), findsOneWidget);
       expect(find.text('学院归属：测试学院'), findsNothing);
 
       gateway.onFetchMe = (_) async => testUser(id: 'user-b');
       await session.signIn(testCredentials(accessToken: 'access-b'));
       await tester.pumpAndSettle();
-      expect(find.text('吉林大学学生身份：未验证'), findsOneWidget);
+      expect(find.text('吉林大学学籍报告：未核验'), findsOneWidget);
       expect(find.text('学院归属：暂无已确认的学院信息'), findsOneWidget);
       expect(find.text('学院归属：测试学院'), findsNothing);
     },
@@ -123,7 +123,7 @@ void main() {
       await pumpSettings(tester, session);
       await tester.binding.setSurfaceSize(Size(width, 900));
       await tester.pumpAndSettle();
-      expect(find.text('吉林大学学生身份：未验证'), findsOneWidget);
+      expect(find.text('吉林大学学籍报告：未核验'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const Key('identity-notice')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);

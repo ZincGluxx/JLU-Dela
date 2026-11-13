@@ -50,7 +50,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('请输入邀请码'), findsOneWidget);
-    expect(find.text('密码长度需为 12–128 个字符'), findsOneWidget);
+    expect(find.text('密码须为 8–16 个字符，包含大写字母、小写字母和数字'), findsOneWidget);
     expect(find.text('请再次输入密码'), findsOneWidget);
     expect(accountGateway.activateCount, 0);
 
@@ -60,11 +60,11 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const Key('activate-password-field')),
-      'E2e-Flow-Password-2026',
+      'Fixture-Pass26',
     );
     await tester.enterText(
       find.byKey(const Key('activate-confirm-field')),
-      'E2e-Flow-Password-2027',
+      'Fixture-Pass27',
     );
     await tester.tap(find.byKey(const Key('activate-submit')));
     await tester.pump();
@@ -93,11 +93,11 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const Key('activate-password-field')),
-      'E2e-Flow-Password-2026',
+      'Fixture-Pass26',
     );
     await tester.enterText(
       find.byKey(const Key('activate-confirm-field')),
-      'E2e-Flow-Password-2026',
+      'Fixture-Pass26',
     );
     await tester.tap(find.byKey(const Key('activate-submit')));
     await tester.pumpAndSettle();
@@ -106,7 +106,7 @@ void main() {
     expect(fieldText(tester, 'activate-password-field'), isEmpty);
     expect(fieldText(tester, 'activate-confirm-field'), isEmpty);
     expect(find.text('邀请码无效、已过期或已使用，请联系管理员重新获取。'), findsOneWidget);
-    expect(find.textContaining('E2e-Flow-Password-2026'), findsNothing);
+    expect(find.textContaining('Fixture-Pass26'), findsNothing);
     expect(session.phase, isNot(SessionPhase.authenticated));
   });
 
@@ -130,11 +130,11 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const Key('activate-password-field')),
-      'E2e-Flow-Password-2026',
+      'Fixture-Pass26',
     );
     await tester.enterText(
       find.byKey(const Key('activate-confirm-field')),
-      'E2e-Flow-Password-2026',
+      'Fixture-Pass26',
     );
     await tester.tap(find.byKey(const Key('activate-submit')));
     await tester.pumpAndSettle();
@@ -145,7 +145,7 @@ void main() {
     expect(fieldText(tester, 'activate-password-field'), isEmpty);
     expect(fieldText(tester, 'activate-confirm-field'), isEmpty);
     expect(accountGateway.lastInviteToken, 'inv_test_token');
-    expect(accountGateway.lastPassword, 'E2e-Flow-Password-2026');
+    expect(accountGateway.lastPassword, 'Fixture-Pass26');
   });
 
   testWidgets('a disposed page cannot sign in after the activation returns', (
@@ -175,11 +175,11 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const Key('activate-password-field')),
-      'E2e-Flow-Password-2026',
+      'Fixture-Pass26',
     );
     await tester.enterText(
       find.byKey(const Key('activate-confirm-field')),
-      'E2e-Flow-Password-2026',
+      'Fixture-Pass26',
     );
     await tester.tap(find.byKey(const Key('activate-submit')));
     await tester.pump();

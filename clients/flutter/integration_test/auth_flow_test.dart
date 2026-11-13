@@ -115,6 +115,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('login-page')), findsOneWidget);
 
+    await tester.tap(find.byKey(const Key('login-method-toggle')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('login-field')), _login);
     await tester.enterText(
       find.byKey(const Key('login-password-field')),

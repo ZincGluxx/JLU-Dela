@@ -6,6 +6,7 @@ import '../../core/auth/session_controller.dart';
 import '../../core/auth/session_models.dart';
 import '../diagnostics/diagnostics_page.dart';
 import 'source_connection_card.dart';
+import 'account_settings_form.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -203,8 +204,8 @@ class _SessionCard extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               Text(
                 phase == SessionPhase.authenticated
-                    ? '吉林大学学生身份：${user.studentVerified ? '已验证' : '未验证'}'
-                    : '吉林大学学生身份：暂无法确认',
+                    ? '吉林大学学籍报告：${user.studentVerified ? '已核验' : '未核验'}'
+                    : '吉林大学学籍报告：暂无法确认',
                 key: const Key('student-verification-status'),
                 style: theme.textTheme.bodyMedium,
               ),
@@ -221,8 +222,8 @@ class _SessionCard extends StatelessWidget {
                 phase == SessionPhase.authenticated
                     ? (user.studentVerified
                           ? '学院内容的访问资格以服务端检查为准。'
-                          : '学生身份验证暂未开放。登录应用或连接学校平台不代表已验证学生身份。')
-                    : '离线信息不能用于确认当前学生身份或学院访问资格。',
+                          : '登录应用或连接学校平台不代表已核验吉林大学学籍报告。')
+                    : '离线信息不能用于确认服务端的报告核验结果或学院访问资格。',
                 key: const Key('identity-notice'),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: AppTheme.muted,
@@ -262,6 +263,11 @@ class _SessionCard extends StatelessWidget {
               ),
             ],
             if (phase == SessionPhase.authenticated) ...[
+              if (session.profileGateway != null)
+                AccountSettingsForm(
+                  key: ValueKey(session.sessionRevision),
+                  session: session,
+                ),
               const SizedBox(height: AppSpacing.sm),
               OutlinedButton.icon(
                 key: const Key('session-sign-out'),

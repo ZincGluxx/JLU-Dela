@@ -4,6 +4,25 @@ import 'package:jlu_dela_api/api.dart';
 import '../api/api_failure.dart';
 import 'session_models.dart';
 
+abstract interface class PhoneAccountGateway {
+  Future<PhoneCodeResult> sendPhoneCode(String phone);
+  Future<SessionCredentials> loginWithPhone({
+    required String phone,
+    required String smsCode,
+  });
+}
+
+class PhoneCodeResult {
+  const PhoneCodeResult({
+    required this.expiresIn,
+    required this.retryAfter,
+    this.devMode = false,
+  });
+  final int expiresIn;
+  final int retryAfter;
+  final bool devMode;
+}
+
 abstract interface class AccountGateway {
   Future<SessionCredentials> activate({
     required String inviteToken,
@@ -16,7 +35,7 @@ abstract interface class AccountGateway {
   });
 }
 
-class HttpAccountGateway implements AccountGateway {
+class HttpAccountGateway implements AccountGateway, PhoneAccountGateway {
   HttpAccountGateway({required this.baseUri, http.Client? httpClient})
     : _httpClient = httpClient ?? http.Client();
 
@@ -25,6 +44,48 @@ class HttpAccountGateway implements AccountGateway {
 
   ApiClient get _apiClient =>
       ApiClient(basePath: baseUri.toString())..client = _httpClient;
+
+  @override
+  Future<PhoneCodeResult> sendPhoneCode(String phone) async {
+    final response = await _send(
+      () => AuthApi(
+        _apiClient,
+      ).sendPhoneCodeWithHttpInfo(PhoneCodeRequest(phone: phone)),
+    );
+    if (response.statusCode >= 400) {
+      throw apiFailureFromErrorBody(
+        response.statusCode,
+        response.body,
+        retryAfter: _retryAfter(response),
+      );
+    }
+    final decoded = await _apiClient.deserializeAsync(
+      response.body,
+      'PhoneCodeResponse',
+    );
+    final data = (decoded as PhoneCodeResponse?)?.data;
+    if (data == null) {
+      throw const FormatException('The phone code response is empty.');
+    }
+    return PhoneCodeResult(
+      expiresIn: data.expiresIn,
+      retryAfter: data.retryAfter,
+      devMode: data.devMode.orElse(false) ?? false,
+    );
+  }
+
+  @override
+  Future<SessionCredentials> loginWithPhone({
+    required String phone,
+    required String smsCode,
+  }) async {
+    final response = await _send(
+      () => AuthApi(_apiClient).loginWithPhoneWithHttpInfo(
+        PhoneLoginRequest(phone: phone, smsCode: smsCode),
+      ),
+    );
+    return _credentialsFrom(response);
+  }
 
   @override
   Future<SessionCredentials> activate({

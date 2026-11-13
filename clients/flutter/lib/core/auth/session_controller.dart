@@ -8,22 +8,35 @@ import 'package:jlu_dela_api/api.dart';
 import '../api/api_failure.dart';
 import 'auth_gateway.dart';
 import 'refresh_token_store.dart';
+import 'profile_gateway.dart';
 import 'session_models.dart';
 
 class SessionController extends ChangeNotifier {
-  SessionController._(this._gateway, this._refreshTokenStore);
+  SessionController._(
+    this._gateway,
+    this._refreshTokenStore,
+    this.profileGateway,
+  );
 
   factory SessionController({
     required AuthGateway gateway,
     required RefreshTokenStore refreshTokenStore,
+    ProfileGateway? profileGateway,
   }) {
-    return SessionController._(gateway, refreshTokenStore);
+    return SessionController._(
+      gateway,
+      refreshTokenStore,
+      profileGateway ??
+          (gateway is ProfileGateway ? gateway as ProfileGateway : null),
+    );
   }
 
   static const remoteSignOutUnconfirmedMessage = '已从本机退出，但未能确认远端会话已撤销。';
   static const noRemoteSessionMessage = '当前没有可撤销的远端会话。';
 
   final AuthGateway _gateway;
+  final ProfileGateway? profileGateway;
+  int _userRefreshSerial = 0;
   final RefreshTokenStore _refreshTokenStore;
   final List<void Function()> _privateCacheClearers = [];
 
@@ -91,6 +104,99 @@ class SessionController extends ChangeNotifier {
     });
 
     return committed ? SignInOutcome.signedIn : SignInOutcome.cancelled;
+  }
+
+  Future<bool> refreshCurrentUser({int? expectedRevision}) async {
+    final revision = expectedRevision ?? _sessionRevision;
+    final token = _accessToken;
+    if (revision != _sessionRevision || token == null || _disposed) {
+      return false;
+    }
+    final operation = ++_userRefreshSerial;
+    Me user;
+    try {
+      user = await _gateway.fetchMe(token);
+    } on ApiException catch (error) {
+      if (_apiErrorCode(error) != 'TOKEN_EXPIRED' ||
+          revision != _sessionRevision) {
+        rethrow;
+      }
+      return await refreshSession() == SessionRefreshResult.refreshed &&
+          revision == _sessionRevision;
+    }
+    if (_disposed ||
+        revision != _sessionRevision ||
+        operation != _userRefreshSerial) {
+      return false;
+    }
+    _adoptUser(user);
+    return true;
+  }
+
+  Future<bool> updateAccount({
+    String? username,
+    String? displayName,
+    String? password,
+  }) async {
+    final gateway = profileGateway;
+    final token = _accessToken;
+    final revision = _sessionRevision;
+    if (gateway == null ||
+        token == null ||
+        _phase != SessionPhase.authenticated) {
+      return false;
+    }
+    try {
+      await gateway.updateAccount(
+        accessToken: token,
+        username: username,
+        displayName: displayName,
+        password: password,
+      );
+    } on ApiException catch (error) {
+      if (_apiErrorCode(error) != 'TOKEN_EXPIRED') rethrow;
+      if (revision != _sessionRevision ||
+          await refreshSession() != SessionRefreshResult.refreshed ||
+          revision != _sessionRevision) {
+        return false;
+      }
+      await gateway.updateAccount(
+        accessToken: _accessToken!,
+        username: username,
+        displayName: displayName,
+        password: password,
+      );
+    }
+    return refreshCurrentUser(expectedRevision: revision);
+  }
+
+  Future<bool> verifyStudentReport(String reportCode) async {
+    final gateway = profileGateway;
+    final token = _accessToken;
+    final revision = _sessionRevision;
+    if (gateway == null ||
+        token == null ||
+        _phase != SessionPhase.authenticated) {
+      return false;
+    }
+    try {
+      await gateway.verifyStudentReport(
+        accessToken: token,
+        reportCode: reportCode,
+      );
+    } on ApiException catch (error) {
+      if (_apiErrorCode(error) != 'TOKEN_EXPIRED') rethrow;
+      if (revision != _sessionRevision ||
+          await refreshSession() != SessionRefreshResult.refreshed ||
+          revision != _sessionRevision) {
+        return false;
+      }
+      await gateway.verifyStudentReport(
+        accessToken: _accessToken!,
+        reportCode: reportCode,
+      );
+    }
+    return refreshCurrentUser(expectedRevision: revision);
   }
 
   Future<SignOutResult> signOut() async {

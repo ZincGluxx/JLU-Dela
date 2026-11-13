@@ -16,6 +16,8 @@ pub struct AuthenticatedUser {
     pub session_id: Uuid,
     pub display_name: String,
     pub timezone: String,
+    pub username: Option<String>,
+    pub password_set: bool,
     pub student_verified: bool,
     pub college: Option<session::College>,
 }
@@ -38,9 +40,34 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
             session_id: session.session_id,
             display_name: session.display_name,
             timezone: session.timezone,
+            username: session.username,
+            password_set: session.password_set,
             student_verified: session.student_verified,
             college: session.college,
         })
+    }
+}
+
+impl AuthenticatedUser {
+    pub fn require_student(&self) -> Result<(), AppError> {
+        if self.student_verified {
+            Ok(())
+        } else {
+            Err(AppError::StudentRequired)
+        }
+    }
+
+    pub fn require_college(&self, college_id: &str) -> Result<(), AppError> {
+        self.require_student()?;
+        if self
+            .college
+            .as_ref()
+            .is_some_and(|college| college.id == college_id)
+        {
+            Ok(())
+        } else {
+            Err(AppError::CollegeRequired)
+        }
     }
 }
 
