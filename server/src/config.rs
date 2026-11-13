@@ -40,6 +40,7 @@ pub struct Config {
     pub cors_allowed_origins: Vec<HeaderValue>,
     pub request_timeout: Duration,
     pub max_body_bytes: usize,
+    pub files: crate::files::FileStorageConfig,
     pub build_id: String,
     pub log_format: LogFormat,
     pub dev_sms_fixed_code_enabled: bool,
@@ -63,6 +64,7 @@ impl fmt::Debug for Config {
             .field("cors_allowed_origins", &self.cors_allowed_origins)
             .field("request_timeout", &self.request_timeout)
             .field("max_body_bytes", &self.max_body_bytes)
+            .field("files", &self.files)
             .field("build_id", &self.build_id)
             .field("log_format", &self.log_format)
             .field(
@@ -209,6 +211,28 @@ impl Config {
             },
             &mut errors,
         );
+        let file_max_bytes = parse_value(
+            variables
+                .get("FILE_MAX_BYTES")
+                .map_or("10485760", String::as_str),
+            "FILE_MAX_BYTES",
+            |value| {
+                let bytes = value
+                    .parse::<usize>()
+                    .map_err(|_| "must be a byte count".to_owned())?;
+                if !(1..=64 * 1024 * 1024).contains(&bytes) {
+                    return Err("must be between 1 and 67108864 bytes".to_owned());
+                }
+                Ok(bytes)
+            },
+            &mut errors,
+        );
+        let file_storage_dir = variables
+            .get("FILE_STORAGE_DIR")
+            .map_or("./data/files", String::as_str);
+        if file_storage_dir.is_empty() {
+            errors.push("FILE_STORAGE_DIR must not be empty".to_owned());
+        }
         let build_id = parse_value(
             variables
                 .get("APP_BUILD_ID")
@@ -265,6 +289,7 @@ impl Config {
             database,
             request_timeout,
             max_body_bytes,
+            file_max_bytes,
             build_id,
             log_format,
         ) {
@@ -274,6 +299,7 @@ impl Config {
                 Some(database),
                 Ok(request_timeout),
                 Ok(max_body_bytes),
+                Ok(file_max_bytes),
                 Ok(build_id),
                 Ok(log_format),
             ) if errors.is_empty() => Ok(Self {
@@ -283,6 +309,10 @@ impl Config {
                 cors_allowed_origins,
                 request_timeout,
                 max_body_bytes,
+                files: crate::files::FileStorageConfig {
+                    dir: file_storage_dir.into(),
+                    max_bytes: file_max_bytes,
+                },
                 build_id,
                 log_format,
                 dev_sms_fixed_code_enabled,

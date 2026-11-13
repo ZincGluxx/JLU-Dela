@@ -28,6 +28,8 @@ output/playwright/
 *.pfx
 
 # Local application state
+/server/data/files/
+/data/files/
 *.db
 *.db-*
 *.sqlite

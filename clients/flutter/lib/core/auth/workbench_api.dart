@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'package:jlu_dela_api/api.dart';
 
+import '../files/files_gateway.dart';
 import 'auth_gateway.dart';
 import 'refresh_token_store.dart';
 import 'session_controller.dart';
@@ -34,6 +35,8 @@ class WorkbenchApi {
   TodosApi get todos => TodosApi(_apiClient);
 
   MeApi get me => MeApi(_apiClient);
+
+  FilesGateway get files => FilesGateway(_apiClient);
 
   void close() {
     session.dispose();

@@ -25,6 +25,8 @@ info:
     - POST /api/v1/sync-jobs, GET /api/v1/sync-jobs/{id}
     - GET /api/v1/calendar
     - GET /api/v1/academic-calendar
+    - POST /api/v1/files, GET and DELETE /api/v1/files/{id}
+    - GET /api/v1/files/{id}/content
 
     Endpoints described but not yet served:
     - GET /api/v1/semesters, GET /api/v1/courses, GET /api/v1/schedule
@@ -102,6 +104,8 @@ tags:
     description: Study calendar aggregation over lessons, assignments and personal todos.
   - name: Sync
     description: Persisted source synchronization jobs. Source adapters are owned by B/C/D.
+  - name: Files
+    description: Private file storage. Attached files are read only through authorized business routes.
   - name: Teaching
     description: Draft reads of saved semesters, shared courses and expanded lessons. Not implemented.
 
@@ -127,6 +131,8 @@ x-contract-status:
     - GET /api/v1/sync-jobs/{id}
     - GET /api/v1/calendar
     - GET /api/v1/academic-calendar
+    - POST /api/v1/files, GET and DELETE /api/v1/files/{id}
+    - GET /api/v1/files/{id}/content
   design-only:
     - GET /api/v1/semesters
     - GET /api/v1/courses
@@ -857,6 +863,178 @@ paths:
         '5XX':
           $ref: '#/components/responses/ServerError'
 
+  /api/v1/files:
+    post:
+      operationId: uploadFile
+      tags: [Files]
+      security:
+        - bearerAuth: []
+      summary: Upload one private file
+      description: |
+        Accepts exactly one multipart field named `file`, with a nonempty binary
+        body and filename. Unknown or repeated fields return 422 VALIDATION_FAILED.
+        Filenames contain at most 255 Unicode scalars and no control characters.
+        The configured file limit defaults to 10 MiB and cannot exceed 64 MiB.
+        Only this upload route allows an extra 64 KiB of multipart body overhead.
+        The file remains private to its uploader until attached to a business object.
+        Campus cookies and student reports must never be supplied to this API.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Stored private file metadata in the standard ApiResponse envelope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredFileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/FilePayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '503':
+          $ref: '#/components/responses/FileStorageUnavailable'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/files/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Stored file identifier.
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getFile
+      tags: [Files]
+      security:
+        - bearerAuth: []
+      summary: Read unattached file metadata as its uploader
+      description: |
+        Missing files and files invisible to the caller return 404 FILE_NOT_FOUND.
+        Once attached, direct reads return 404 even for the uploader. Business
+        consumers must use their authorized business route instead; query parameters
+        cannot broaden visibility. Business routes are not part of this contract.
+      responses:
+        '200':
+          description: Stored file metadata in the standard ApiResponse envelope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredFileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '503':
+          $ref: '#/components/responses/FileStorageUnavailable'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      operationId: deleteFile
+      tags: [Files]
+      security:
+        - bearerAuth: []
+      summary: Delete an unattached file as its uploader
+      description: |
+        Only the uploader may delete an unattached file. An attached file returns
+        409 FILE_IN_USE to its uploader. Other callers and missing files always
+        return 404 FILE_NOT_FOUND, including when a file is attached.
+      responses:
+        '204':
+          description: Deleted; no response body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+        '409':
+          $ref: '#/components/responses/FileInUse'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '503':
+          $ref: '#/components/responses/FileStorageUnavailable'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/files/{id}/content:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Stored file identifier.
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: downloadFile
+      tags: [Files]
+      security:
+        - bearerAuth: []
+      summary: Download unattached file bytes as its uploader
+      description: |
+        Missing, non-owned and attached files return 404 FILE_NOT_FOUND, including
+        attached files owned by the caller. After attachment, use an authorized
+        business route; no query parameter makes a file public. Stored media_type
+        is descriptive only; the response always uses safe octet-stream attachment
+        delivery, never an inline rendering of the uploaded media type.
+      responses:
+        '200':
+          description: Original bytes, not a JSON envelope.
+          headers:
+            Content-Disposition:
+              description: Attachment disposition with a safely encoded filename.
+              schema:
+                type: string
+                example: attachment; filename="download.bin"
+            X-Content-Type-Options:
+              description: Prevent MIME sniffing.
+              schema:
+                type: string
+                enum: [nosniff]
+            Cache-Control:
+              description: Do not cache private file bytes.
+              schema:
+                type: string
+                enum: ['private, no-store']
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '503':
+          $ref: '#/components/responses/FileStorageUnavailable'
+        '4XX':
+          $ref: '#/components/responses/ClientError'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
   /api/v1/semesters:
     get:
       operationId: listSemesters
@@ -1422,6 +1600,30 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
 
+    FileNotFound:
+      description: FILE_NOT_FOUND. The file is missing or not directly visible to this caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    FileInUse:
+      description: FILE_IN_USE. The uploader cannot directly delete a file attached to a business object.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    FilePayloadTooLarge:
+      description: PAYLOAD_TOO_LARGE. The configured file or upload body limit was exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    FileStorageUnavailable:
+      description: FILE_STORAGE_UNAVAILABLE or DATABASE_UNAVAILABLE. Private file storage or its metadata database is temporarily unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: The object does not exist or is not visible to the caller. Both cases use 404 so existence does not leak.
       content:
@@ -2135,6 +2337,42 @@ components:
           type: boolean
         show_in_calendar:
           type: boolean
+
+    StoredFile:
+      type: object
+      required: [id, uploader_id, original_name, size_bytes, media_type, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        uploader_id:
+          type: string
+          format: uuid
+        original_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[^\u0000-\u001F\u007F-\u009F]+$'
+          description: Original filename; at most 255 Unicode scalars, without control characters.
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+        media_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          pattern: 'Z$'
+          description: UTC RFC 3339 timestamp with a Z suffix.
+    StoredFileResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/StoredFile'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
 
     TodoResponse:
       type: object

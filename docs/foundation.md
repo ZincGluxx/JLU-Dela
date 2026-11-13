@@ -20,6 +20,10 @@ A02 已实现工作台会话生命周期（刷新、退出、当前用户、令�
 
 本地无短信供应商时，在运行 debug API 前设置 `DEV_SMS_FIXED_CODE_ENABLED=true`（PowerShell：`$env:DEV_SMS_FIXED_CODE_ENABLED='true'`），保持 `HTTP_HOST=127.0.0.1`。客户端请求手机号验证码后，用开发码 `114514` 登录，再在设置页设置账号；`GET /api/v1/me` 使用该应用访问令牌。该流程不发送短信，也不产生学生资格。不要在 release、Compose 或局域网监听中启用开发开关；这些场景未配置供应商时应看到 `SMS_UNAVAILABLE`。已有账号仍可使用原密码或维护者签发的邀请流程，不需要清库。学院权限测试使用隔离数据库夹具，不能在正常服务写入测试资格。
 
+### 公共文件接入
+
+B 的资料文件和 D 的社区图片接入[公共文件说明](public-files.md)。当前使用私有服务端目录，`FILE_STORAGE_DIR` 默认 `./data/files`，`FILE_MAX_BYTES` 默认 10 MiB；Compose 用 `filesdata` 持久化，不能依赖容器可写层。新增文件迁移将 schema 从 `8` 推进至 `9`，启动前照常执行迁移，不清库。文件与数据库须配套备份，现有 PostgreSQL 备份脚本不含文件内容。
+
 ## 1. 工具链基线
 
 | 工具              | 版本                                            | 位置                                    |

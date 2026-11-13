@@ -287,6 +287,10 @@ class ApiClient {
           return SourceSnapshot.fromJson(value);
         case 'SourceStatus':
           return SourceStatus.fromJson(value);
+        case 'StoredFile':
+          return StoredFile.fromJson(value);
+        case 'StoredFileResponse':
+          return StoredFileResponse.fromJson(value);
         case 'SyncJob':
           return SyncJob.fromJson(value);
         case 'SyncJobAccepted':

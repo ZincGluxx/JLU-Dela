@@ -24,7 +24,7 @@ Widget 通过 [`SessionScope.of(context)`](../clients/flutter/lib/core/auth/sess
 
 业务数据使用当前账号作用域；退出和切号后清理本模块私有内存状态。来源读取按现有已确认执行位置推进，来源失效不等于应用账号退出；失败保留上次成功内容。
 
-业务路由接入现有 [Rust router](../server/src/http.rs)，复用状态、错误响应和中间件。业务负责人编写迁移，A 协调聚合；只新增迁移，不改已发布历史。上游 academic 迁移为 schema 6，[手机号迁移](../server/migrations/20261113000000_phone_accounts.sql) 推进到 7，[学生报告迁移](../server/migrations/20261113010000_student_reports.sql) 推进到 8；最终 `service_meta.schema_version=8`，不是客户端 SQLite 版本。OpenAPI 变更通过工具生成客户端，不手改生成结果。
+业务路由接入现有 [Rust router](../server/src/http.rs)，复用状态、错误响应和中间件。业务负责人编写迁移，A 协调聚合；只新增迁移，不改已发布历史。上游 academic 迁移为 schema 6，[手机号迁移](../server/migrations/20261113000000_phone_accounts.sql) 推进到 7，[学生报告迁移](../server/migrations/20261113010000_student_reports.sql) 推进到 8；认证基线 `service_meta.schema_version=8`，本轮新增[文件迁移](../server/migrations/20261114000000_files.sql)推进到 `9`，不是客户端 SQLite 版本。OpenAPI 变更通过工具生成客户端，不手改生成结果。
 
 ## 成员协作
 
@@ -36,13 +36,15 @@ Widget 通过 [`SessionScope.of(context)`](../clients/flutter/lib/core/auth/sess
 | D      | 社区发布互动、地图与公共信息               | 对应用户流程                      |
 | E      | 邮箱、回放、笔记及摘要输入边界             | 对应学习流程                      |
 
-个人数据本地优先，授权备份不自动公开；社区发布、共享资料和地图在线保存与个人备份分开。文件及备份的具体契约由 A 与业务方确认，不因文档列出职责就添加占位成功接口。
+个人数据本地优先，授权备份不自动公开；社区发布、共享资料和地图在线保存与个人备份分开。公共文件已新增[最小接入说明](public-files.md)：B / D 先上传取得文件 ID，再在自己的业务事务中关联；权限在所属业务每次获取时检查，上传不等于发布。未接入业务不提供成功下载路由。备份机制继续按真实调用需要推进，不因文件可上传就宣称授权备份恢复已交付。
 
 ## 验证
 
 按实际改动运行相关本地检查，分别记录单元、夹具、数据库、真实来源和设备结果。用隔离测试身份推进权限测试，不将其放入生产。公共依赖未就绪时继续模块独立部分，并在[交付模板](team/B/08-handoff-template.md)列出提供者及所需最小能力。
 
 测试入口：[账号](../server/tests/phone_accounts.rs)、[报告与权限](../server/tests/student_reports.rs)、[迁移](../server/tests/migrations.rs)。使用 `integration` 特性与隔离 `DATABASE_URL`；数据库夹具不等于官方报告验收。契约先更新 OpenAPI，再运行 `contracts/tools` 的 `npm run verify`；其 Git 漂移检查以已提交产物为基准，应区分预期未提交生成差异与生成失败。
+
+文件增量及最终全量检查见[本地验证记录](operations/public-files-verification.md)，历史记录不重复作为新验收。
 
 ### 本轮主线复验（2026-11-13）
 

@@ -38,10 +38,34 @@ fn valid_configuration_applies_defaults() {
     assert_eq!(config.database.max_connections, 10);
     assert_eq!(config.request_timeout.as_secs(), 15);
     assert_eq!(config.max_body_bytes, 1_048_576);
+    assert_eq!(config.files.max_bytes, 10_485_760);
+    assert_eq!(config.files.dir, std::path::PathBuf::from("./data/files"));
     assert_eq!(config.build_id, "commit-abc123");
     assert_eq!(config.log_format, LogFormat::Pretty);
     assert_eq!(config.cors_allowed_origins.len(), 2);
     assert!(!config.dev_sms_fixed_code_enabled);
+}
+
+#[test]
+fn file_configuration_validates_bounds_without_creating_storage() {
+    for value in ["0", "67108865", "invalid"] {
+        assert!(
+            Config::from_variables(with("FILE_MAX_BYTES", value))
+                .unwrap_err()
+                .to_string()
+                .contains("FILE_MAX_BYTES")
+        );
+    }
+    for value in ["1", "67108864"] {
+        assert_eq!(
+            Config::from_variables(with("FILE_MAX_BYTES", value))
+                .unwrap()
+                .files
+                .max_bytes,
+            value.parse::<usize>().unwrap()
+        );
+    }
+    assert!(Config::from_variables(with("FILE_STORAGE_DIR", "")).is_err());
 }
 
 #[test]

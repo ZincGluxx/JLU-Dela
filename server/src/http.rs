@@ -52,6 +52,7 @@ pub fn router(state: AppState, config: &Config) -> Router {
             post(auth::handlers::verify_student_report),
         )
         .route("/api/v1/me", get(auth::me))
+        .merge(crate::files::router(state.files.max_bytes))
         .merge(crate::todos::router())
         .merge(crate::calendar::router())
         .route("/api/v1/sync-jobs", post(sync::create))
