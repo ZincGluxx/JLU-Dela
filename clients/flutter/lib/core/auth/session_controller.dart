@@ -8,22 +8,35 @@ import 'package:jlu_dela_api/api.dart';
 import '../api/api_failure.dart';
 import 'auth_gateway.dart';
 import 'refresh_token_store.dart';
+import 'profile_gateway.dart';
 import 'session_models.dart';
 
 class SessionController extends ChangeNotifier {
-  SessionController._(this._gateway, this._refreshTokenStore);
+  SessionController._(
+    this._gateway,
+    this._refreshTokenStore,
+    this.profileGateway,
+  );
 
   factory SessionController({
     required AuthGateway gateway,
     required RefreshTokenStore refreshTokenStore,
+    ProfileGateway? profileGateway,
   }) {
-    return SessionController._(gateway, refreshTokenStore);
+    return SessionController._(
+      gateway,
+      refreshTokenStore,
+      profileGateway ??
+          (gateway is ProfileGateway ? gateway as ProfileGateway : null),
+    );
   }
 
   static const remoteSignOutUnconfirmedMessage = '已从本机退出，但未能确认远端会话已撤销。';
   static const noRemoteSessionMessage = '当前没有可撤销的远端会话。';
 
   final AuthGateway _gateway;
+  final ProfileGateway? profileGateway;
+  int _userRefreshSerial = 0;
   final RefreshTokenStore _refreshTokenStore;
   final List<void Function()> _privateCacheClearers = [];
 
@@ -85,12 +98,127 @@ class SessionController extends ChangeNotifier {
       }
 
       _sessionRevision++;
+      _userRefreshSerial++;
       _accessToken = credentials.accessToken;
       _adoptUser(user);
       return true;
     });
 
     return committed ? SignInOutcome.signedIn : SignInOutcome.cancelled;
+  }
+
+  Future<bool> refreshCurrentUser({int? expectedRevision}) async {
+    final revision = expectedRevision ?? _sessionRevision;
+    final token = _accessToken;
+    if (revision != _sessionRevision || token == null || _disposed) {
+      return false;
+    }
+    final operation = ++_userRefreshSerial;
+    Me user;
+    try {
+      user = await _gateway.fetchMe(token);
+    } on ApiException catch (error) {
+      if (_disposed ||
+          revision != _sessionRevision ||
+          operation != _userRefreshSerial) {
+        return false;
+      }
+      if (error.code == 401 && _isRevokedCode(_apiErrorCode(error))) {
+        if (token == _accessToken) await invalidateSession();
+        return false;
+      }
+      if (error.code != 401 || _apiErrorCode(error) != 'TOKEN_EXPIRED') {
+        rethrow;
+      }
+      return await refreshSession() == SessionRefreshResult.refreshed &&
+          revision == _sessionRevision;
+    }
+    if (_disposed ||
+        revision != _sessionRevision ||
+        operation != _userRefreshSerial) {
+      return false;
+    }
+    _adoptUser(user);
+    return true;
+  }
+
+  Future<bool> updateAccount({
+    String? username,
+    String? displayName,
+    String? password,
+  }) async {
+    final gateway = profileGateway;
+    final token = _accessToken;
+    final revision = _sessionRevision;
+    if (gateway == null ||
+        token == null ||
+        _phase != SessionPhase.authenticated) {
+      return false;
+    }
+    final updated = await _runProfileRequest(
+      revision,
+      token,
+      (accessToken) => gateway.updateAccount(
+        accessToken: accessToken,
+        username: username,
+        displayName: displayName,
+        password: password,
+      ),
+    );
+    return updated && await refreshCurrentUser(expectedRevision: revision);
+  }
+
+  Future<bool> verifyStudentReport(String reportCode) async {
+    final gateway = profileGateway;
+    final token = _accessToken;
+    final revision = _sessionRevision;
+    if (gateway == null ||
+        token == null ||
+        _phase != SessionPhase.authenticated) {
+      return false;
+    }
+    final verified = await _runProfileRequest(
+      revision,
+      token,
+      (accessToken) => gateway.verifyStudentReport(
+        accessToken: accessToken,
+        reportCode: reportCode,
+      ),
+    );
+    return verified && await refreshCurrentUser(expectedRevision: revision);
+  }
+
+  Future<bool> _runProfileRequest(
+    int revision,
+    String token,
+    Future<void> Function(String) request,
+  ) async {
+    var usedToken = token;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        await request(usedToken);
+        return !_disposed && revision == _sessionRevision;
+      } on ApiException catch (error) {
+        if (_disposed || revision != _sessionRevision) return false;
+        final code = _apiErrorCode(error);
+        if (error.code == 401 && _isRevokedCode(code)) {
+          if (usedToken == _accessToken) await invalidateSession();
+          return false;
+        }
+        if (error.code != 401 || code != 'TOKEN_EXPIRED' || attempt > 0) {
+          rethrow;
+        }
+        if (usedToken == _accessToken &&
+            await refreshSession() != SessionRefreshResult.refreshed) {
+          return false;
+        }
+        if (_disposed || revision != _sessionRevision || _accessToken == null) {
+          return false;
+        }
+        usedToken = _accessToken!;
+      }
+    }
+    return false;
   }
 
   Future<SignOutResult> signOut() async {
@@ -195,6 +323,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<SessionRefreshResult> _refresh(int revision) async {
+    int? userOperation;
     String? refreshToken;
     try {
       refreshToken = await _readStoredToken();
@@ -236,14 +365,16 @@ class SessionController extends ChangeNotifier {
       if (!applied) {
         return SessionRefreshResult.cancelled;
       }
+      userOperation = ++_userRefreshSerial;
       final user = await _gateway.fetchMe(pair.accessToken);
-      if (revision != _sessionRevision) {
+      if (revision != _sessionRevision || userOperation != _userRefreshSerial) {
         return SessionRefreshResult.cancelled;
       }
       _adoptUser(user);
       return SessionRefreshResult.refreshed;
     } on ApiException catch (error) {
-      if (revision != _sessionRevision) {
+      if (revision != _sessionRevision ||
+          (userOperation != null && userOperation != _userRefreshSerial)) {
         return SessionRefreshResult.cancelled;
       }
       if (error.code == 401) {
@@ -259,25 +390,29 @@ class SessionController extends ChangeNotifier {
       _setUnavailable();
       return SessionRefreshResult.unavailable;
     } on http.ClientException {
-      if (revision != _sessionRevision) {
+      if (revision != _sessionRevision ||
+          (userOperation != null && userOperation != _userRefreshSerial)) {
         return SessionRefreshResult.cancelled;
       }
       _setUnavailable();
       return SessionRefreshResult.networkFailure;
     } on SocketException {
-      if (revision != _sessionRevision) {
+      if (revision != _sessionRevision ||
+          (userOperation != null && userOperation != _userRefreshSerial)) {
         return SessionRefreshResult.cancelled;
       }
       _setUnavailable();
       return SessionRefreshResult.networkFailure;
     } on TimeoutException {
-      if (revision != _sessionRevision) {
+      if (revision != _sessionRevision ||
+          (userOperation != null && userOperation != _userRefreshSerial)) {
         return SessionRefreshResult.cancelled;
       }
       _setUnavailable();
       return SessionRefreshResult.networkFailure;
     } on Exception {
-      if (revision != _sessionRevision) {
+      if (revision != _sessionRevision ||
+          (userOperation != null && userOperation != _userRefreshSerial)) {
         return SessionRefreshResult.cancelled;
       }
       _setUnavailable();

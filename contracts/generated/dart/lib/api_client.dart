@@ -247,6 +247,14 @@ class ApiClient {
           return MetaResponse.fromJson(value);
         case 'PaginationMeta':
           return PaginationMeta.fromJson(value);
+        case 'PhoneCode':
+          return PhoneCode.fromJson(value);
+        case 'PhoneCodeRequest':
+          return PhoneCodeRequest.fromJson(value);
+        case 'PhoneCodeResponse':
+          return PhoneCodeResponse.fromJson(value);
+        case 'PhoneLoginRequest':
+          return PhoneLoginRequest.fromJson(value);
         case 'ReadyResponse':
           return ReadyResponse.fromJson(value);
         case 'ReadyStatus':
@@ -305,8 +313,12 @@ class ApiClient {
           return TokenPair.fromJson(value);
         case 'TokenPairResponse':
           return TokenPairResponse.fromJson(value);
+        case 'UpdateAccountRequest':
+          return UpdateAccountRequest.fromJson(value);
         case 'UpdateTodoRequest':
           return UpdateTodoRequest.fromJson(value);
+        case 'VerifyStudentReportRequest':
+          return VerifyStudentReportRequest.fromJson(value);
         default:
           dynamic match;
           if (value is List && (match = _regList.firstMatch(targetType)?.group(1)) != null) {

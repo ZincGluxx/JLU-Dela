@@ -6,7 +6,7 @@ use axum::{
     http::{HeaderName, Method, StatusCode, header},
     middleware::{self, Next},
     response::Response,
-    routing::{get, post},
+    routing::{get, patch, post},
 };
 use tower_http::{
     cors::CorsLayer,
@@ -38,6 +38,19 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/refresh", post(auth::refresh))
         .route("/api/v1/auth/logout", post(auth::logout))
+        .route(
+            "/api/v1/auth/phone/code",
+            post(auth::handlers::send_phone_code),
+        )
+        .route(
+            "/api/v1/auth/phone/login",
+            post(auth::handlers::phone_login),
+        )
+        .route("/api/v1/me/account", patch(auth::handlers::update_account))
+        .route(
+            "/api/v1/me/student-verification",
+            post(auth::handlers::verify_student_report),
+        )
         .route("/api/v1/me", get(auth::me))
         .merge(crate::todos::router())
         .merge(crate::calendar::router())

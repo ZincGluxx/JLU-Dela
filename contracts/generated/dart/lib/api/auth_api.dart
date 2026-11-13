@@ -150,6 +150,63 @@ class AuthApi {
     return null;
   }
 
+  /// Exchange a phone code for an account session
+  ///
+  /// Creates or reuses the phone account. Phone login does not verify student identity. Invalid and expired codes use INVALID_SMS_CODE and SMS_CODE_EXPIRED respectively.
+  ///
+  /// Note: This method returns the HTTP [Response].
+  ///
+  /// Parameters:
+  ///
+  /// * [PhoneLoginRequest] phoneLoginRequest (required):
+  Future<Response> loginWithPhoneWithHttpInfo(PhoneLoginRequest phoneLoginRequest, { Future<void>? abortTrigger, }) async {
+    // ignore: prefer_const_declarations
+    final path = r'/api/v1/auth/phone/login';
+
+    // ignore: prefer_final_locals
+    Object? postBody = phoneLoginRequest;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    const contentTypes = <String>['application/json'];
+
+
+    return apiClient.invokeAPI(
+      path,
+      'POST',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+      abortTrigger: abortTrigger,
+    );
+  }
+
+  /// Exchange a phone code for an account session
+  ///
+  /// Creates or reuses the phone account. Phone login does not verify student identity. Invalid and expired codes use INVALID_SMS_CODE and SMS_CODE_EXPIRED respectively.
+  ///
+  /// Parameters:
+  ///
+  /// * [PhoneLoginRequest] phoneLoginRequest (required):
+  Future<TokenPairResponse?> loginWithPhone(PhoneLoginRequest phoneLoginRequest, { Future<void>? abortTrigger, }) async {
+    final response = await loginWithPhoneWithHttpInfo(phoneLoginRequest, abortTrigger: abortTrigger,);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'TokenPairResponse',) as TokenPairResponse;
+    
+    }
+    return null;
+  }
+
   /// Revoke the current session
   ///
   /// Revokes the session identified by the bearer token. The refresh token in the body must belong to the same session. After this call both tokens are invalid, other sessions of the same user stay usable, and campus source credentials are not affected unless their owner revokes them separately. 
@@ -251,6 +308,63 @@ class AuthApi {
     // FormatException when trying to decode an empty string.
     if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
       return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'TokenPairResponse',) as TokenPairResponse;
+    
+    }
+    return null;
+  }
+
+  /// Send a phone login code
+  ///
+  /// Prepares a phone login code. Real SMS mode returns dev_mode false and requires a configured provider; unavailable or failed delivery returns SMS_UNAVAILABLE or SMS_SEND_FAILED. DEV_SMS_FIXED_CODE_ENABLED=true enables a fixed code only in debug builds bound to loopback; release or non-loopback startup rejects this setting. Development mode returns dev_mode true without sending SMS. Never returns the code.
+  ///
+  /// Note: This method returns the HTTP [Response].
+  ///
+  /// Parameters:
+  ///
+  /// * [PhoneCodeRequest] phoneCodeRequest (required):
+  Future<Response> sendPhoneCodeWithHttpInfo(PhoneCodeRequest phoneCodeRequest, { Future<void>? abortTrigger, }) async {
+    // ignore: prefer_const_declarations
+    final path = r'/api/v1/auth/phone/code';
+
+    // ignore: prefer_final_locals
+    Object? postBody = phoneCodeRequest;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    const contentTypes = <String>['application/json'];
+
+
+    return apiClient.invokeAPI(
+      path,
+      'POST',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+      abortTrigger: abortTrigger,
+    );
+  }
+
+  /// Send a phone login code
+  ///
+  /// Prepares a phone login code. Real SMS mode returns dev_mode false and requires a configured provider; unavailable or failed delivery returns SMS_UNAVAILABLE or SMS_SEND_FAILED. DEV_SMS_FIXED_CODE_ENABLED=true enables a fixed code only in debug builds bound to loopback; release or non-loopback startup rejects this setting. Development mode returns dev_mode true without sending SMS. Never returns the code.
+  ///
+  /// Parameters:
+  ///
+  /// * [PhoneCodeRequest] phoneCodeRequest (required):
+  Future<PhoneCodeResponse?> sendPhoneCode(PhoneCodeRequest phoneCodeRequest, { Future<void>? abortTrigger, }) async {
+    final response = await sendPhoneCodeWithHttpInfo(phoneCodeRequest, abortTrigger: abortTrigger,);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'PhoneCodeResponse',) as PhoneCodeResponse;
     
     }
     return null;

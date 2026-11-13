@@ -21,7 +21,7 @@ use sqlx::PgPool;
 use time::Duration;
 use uuid::Uuid;
 
-const PASSWORD: &str = "correct horse battery staple";
+const PASSWORD: &str = "TestPassword123";
 
 async fn setup() -> (Config, PgPool) {
     let database_url = std::env::var("DATABASE_URL")
@@ -546,7 +546,7 @@ async fn activation_login_validation_and_content_type_are_enforced() {
         app.clone(),
         post_json(
             "/api/v1/auth/activate",
-            json!({ "invite_token": short_password_token, "password": "too-short" }),
+            json!({ "invite_token": short_password_token, "password": "Short1" }),
         ),
     )
     .await;
@@ -565,7 +565,7 @@ async fn activation_login_validation_and_content_type_are_enforced() {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body["error"]["fields"][0]["path"], "password");
-    assert_eq!(body["error"]["fields"][0]["code"], "matches_login");
+    assert_eq!(body["error"]["fields"][0]["code"], "too_long");
 
     let (status, _, body) = common::send(
         app.clone(),

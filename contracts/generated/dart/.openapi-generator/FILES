@@ -48,6 +48,10 @@ lib/model/me.dart
 lib/model/me_response.dart
 lib/model/meta_response.dart
 lib/model/pagination_meta.dart
+lib/model/phone_code.dart
+lib/model/phone_code_request.dart
+lib/model/phone_code_response.dart
+lib/model/phone_login_request.dart
 lib/model/ready_response.dart
 lib/model/ready_status.dart
 lib/model/refresh_request.dart
@@ -77,6 +81,8 @@ lib/model/todo_list_response.dart
 lib/model/todo_response.dart
 lib/model/token_pair.dart
 lib/model/token_pair_response.dart
+lib/model/update_account_request.dart
 lib/model/update_todo_request.dart
+lib/model/verify_student_report_request.dart
 lib/optional.dart
 pubspec.yaml

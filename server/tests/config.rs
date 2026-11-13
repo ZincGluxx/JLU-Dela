@@ -41,6 +41,7 @@ fn valid_configuration_applies_defaults() {
     assert_eq!(config.build_id, "commit-abc123");
     assert_eq!(config.log_format, LogFormat::Pretty);
     assert_eq!(config.cors_allowed_origins.len(), 2);
+    assert!(!config.dev_sms_fixed_code_enabled);
 }
 
 #[test]
@@ -75,6 +76,45 @@ fn database_debug_output_redacts_credentials_and_query() {
     assert!(!debug.contains("super-secret"));
     assert!(!debug.contains("sslmode"));
     assert!(debug.contains("db.internal:5432/jlu_dela"));
+}
+
+#[test]
+fn fixed_development_sms_requires_explicit_boolean_and_loopback() {
+    for host in ["0.0.0.0", "::", "192.168.1.2"] {
+        let mut values = with("HTTP_HOST", host);
+        values.push(("DEV_SMS_FIXED_CODE_ENABLED".into(), "true".into()));
+        let error = Config::from_variables(values).unwrap_err();
+        assert!(error.to_string().contains("requires loopback HTTP_HOST"));
+    }
+    assert!(Config::from_variables(with("DEV_SMS_FIXED_CODE_ENABLED", "1")).is_err());
+    for host in ["127.0.0.1", "::1"] {
+        let mut values = with("HTTP_HOST", host);
+        values.push(("DEV_SMS_FIXED_CODE_ENABLED".into(), "true".into()));
+        let config = Config::from_variables(values);
+        if cfg!(debug_assertions) {
+            assert!(config.unwrap().dev_sms_fixed_code_enabled);
+        } else {
+            assert!(
+                config
+                    .unwrap_err()
+                    .to_string()
+                    .contains("requires a debug build")
+            );
+        }
+    }
+}
+
+#[test]
+fn sender_selection_is_fail_closed_even_after_config_is_modified() {
+    let mut config = Config::from_variables(base()).unwrap();
+    assert!(!jlu_dela_api::auth::phone::configured_sender(&config).dev_mode());
+    config.dev_sms_fixed_code_enabled = true;
+    assert_eq!(
+        jlu_dela_api::auth::phone::configured_sender(&config).dev_mode(),
+        cfg!(debug_assertions)
+    );
+    config.host = "0.0.0.0".parse().unwrap();
+    assert!(!jlu_dela_api::auth::phone::configured_sender(&config).dev_mode());
 }
 
 #[test]

@@ -28,6 +28,8 @@ pub struct AuthenticatedSession {
     pub user_id: Uuid,
     pub display_name: String,
     pub timezone: String,
+    pub username: Option<String>,
+    pub password_set: bool,
     pub student_verified: bool,
     pub college: Option<College>,
 }
@@ -38,6 +40,8 @@ struct AuthRow {
     user_id: Uuid,
     display_name: String,
     timezone: String,
+    username: Option<String>,
+    password_set: bool,
     access_expires_at: OffsetDateTime,
     revoked_at: Option<OffsetDateTime>,
     disabled_at: Option<OffsetDateTime>,
@@ -175,6 +179,8 @@ pub async fn authenticate(
             s.user_id,
             u.display_name,
             u.timezone,
+            u.login AS username,
+            (u.password_hash IS NOT NULL) AS password_set,
             s.access_expires_at,
             s.revoked_at,
             u.disabled_at
@@ -200,14 +206,18 @@ pub async fn authenticate(
         return Err(AppError::TokenExpired);
     }
 
+    let identity = super::student::load_identity(pool, row.user_id)
+        .await
+        .map_err(|_| AppError::Internal)?;
     Ok(AuthenticatedSession {
         session_id: row.session_id,
         user_id: row.user_id,
         display_name: row.display_name,
         timezone: row.timezone,
-        // Populate only from server-validated student identity when a trusted source is integrated.
-        student_verified: false,
-        college: None,
+        username: row.username,
+        password_set: row.password_set,
+        student_verified: identity.student_verified,
+        college: identity.college,
     })
 }
 

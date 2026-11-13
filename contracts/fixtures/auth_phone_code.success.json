@@ -1,0 +1,10 @@
+{
+  "data": {
+    "expires_in": 300,
+    "retry_after": 60,
+    "dev_mode": false
+  },
+  "meta": {
+    "request_id": "fixture-phone-code-request"
+  }
+}

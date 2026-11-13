@@ -70,6 +70,10 @@ part 'model/me.dart';
 part 'model/me_response.dart';
 part 'model/meta_response.dart';
 part 'model/pagination_meta.dart';
+part 'model/phone_code.dart';
+part 'model/phone_code_request.dart';
+part 'model/phone_code_response.dart';
+part 'model/phone_login_request.dart';
 part 'model/ready_response.dart';
 part 'model/ready_status.dart';
 part 'model/refresh_request.dart';
@@ -99,7 +103,9 @@ part 'model/todo_list_response.dart';
 part 'model/todo_response.dart';
 part 'model/token_pair.dart';
 part 'model/token_pair_response.dart';
+part 'model/update_account_request.dart';
 part 'model/update_todo_request.dart';
+part 'model/verify_student_report_request.dart';
 
 
 /// An [ApiClient] instance that uses the default values obtained from
