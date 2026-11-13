@@ -316,7 +316,9 @@ LIMIT 1
       limit: 1,
     );
     final values = {
-      'id': existing.isEmpty ? summary.id : existing.first['id'] as String,
+      'id': existing.isEmpty
+          ? (summary.id.isEmpty ? _uuid.v4() : summary.id)
+          : existing.first['id'] as String,
       'user_id': userId,
       'account_id': summary.accountId,
       'folder_id': summary.folderId,
@@ -399,6 +401,32 @@ LIMIT 1
       whereArgs: [messageId, userId],
     );
     notifyListeners();
+  }
+
+  /// 清空一个文件夹的本地邮件缓存。
+  ///
+  /// 服务端 UIDVALIDITY 变化时 UID 空间整体重建，旧缓存全部作废；
+  /// 保留摘要会让界面把不同邮件显示成同一封。
+  Future<int> clearFolderMessages(String folderId) async {
+    final changed = await _database.delete(
+      'mail_messages',
+      where: 'user_id = ? AND folder_id = ?',
+      whereArgs: [userId, folderId],
+    );
+    if (changed > 0) {
+      notifyListeners();
+    }
+    return changed;
+  }
+
+  /// 文件夹里已缓存的最大 UID，用于增量同步的起点。
+  Future<int> highestUid(String folderId) async {
+    final rows = await _database.rawQuery(
+      'SELECT MAX(uid) AS uid FROM mail_messages WHERE user_id = ? AND folder_id = ?',
+      [userId, folderId],
+    );
+    final value = rows.isEmpty ? null : rows.first['uid'];
+    return value is int ? value : 0;
   }
 
   // ------------------------------------------------------------------ drafts
@@ -760,23 +788,4 @@ LIMIT 1
 
   static DateTime? _nullableDateTimeOf(Object? value) =>
       value is int ? _dateTimeOf(value) : null;
-}
-
-/// 文件夹同步快照。由 `MailGateway` 产出，不依赖任何邮件协议类型。
-class MailFolderSnapshot {
-  const MailFolderSnapshot({
-    required this.path,
-    required this.name,
-    this.specialUse,
-    this.uidValidity,
-    this.total,
-    this.unread,
-  });
-
-  final String path;
-  final String name;
-  final String? specialUse;
-  final String? uidValidity;
-  final int? total;
-  final int? unread;
 }

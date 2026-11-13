@@ -364,3 +364,22 @@ class MailException implements Exception {
   @override
   String toString() => 'MailException($code: $message)';
 }
+
+/// 文件夹同步快照。由 `MailGateway` 产出，不依赖任何邮件协议类型。
+class MailFolderSnapshot {
+  const MailFolderSnapshot({
+    required this.path,
+    required this.name,
+    this.specialUse,
+    this.uidValidity,
+    this.total,
+    this.unread,
+  });
+
+  final String path;
+  final String name;
+  final String? specialUse;
+  final String? uidValidity;
+  final int? total;
+  final int? unread;
+}
