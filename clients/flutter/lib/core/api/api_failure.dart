@@ -16,6 +16,7 @@ class ApiFailure implements Exception {
     this.statusCode,
     this.retryable = false,
     this.retryAfter,
+    this.current,
   });
 
   final ApiFailureKind kind;
@@ -25,6 +26,9 @@ class ApiFailure implements Exception {
   final int? statusCode;
   final bool retryable;
   final Duration? retryAfter;
+
+  /// The server's version of the todo, present only for a revision conflict.
+  final Todo? current;
 
   String get displayMessage {
     return switch (kind) {
@@ -90,6 +94,14 @@ ApiFailure apiFailureFromErrorBody(
     final response = ErrorResponse.fromJson(decoded);
     final detail = response?.error;
     if (detail != null) {
+      Todo? current;
+      if (detail.code == 'REVISION_CONFLICT') {
+        try {
+          current = RevisionConflictResponse.fromJson(decoded)?.error.current;
+        } catch (_) {
+          // A malformed conflict payload must not break error mapping.
+        }
+      }
       return ApiFailure(
         kind: ApiFailureKind.server,
         technicalMessage: detail.message,
@@ -98,6 +110,7 @@ ApiFailure apiFailureFromErrorBody(
         statusCode: statusCode,
         retryable: detail.retryable,
         retryAfter: retryAfter,
+        current: current,
       );
     }
   } on FormatException {
