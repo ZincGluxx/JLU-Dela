@@ -22,7 +22,7 @@ A02 已实现工作台会话生命周期（刷新、退出、当前用户、令�
 
 ### 公共文件接入
 
-B 的资料文件和 D 的社区图片接入[公共文件说明](public-files.md)。当前使用私有服务端目录，`FILE_STORAGE_DIR` 默认 `./data/files`，`FILE_MAX_BYTES` 默认 10 MiB；Compose 用 `filesdata` 持久化，不能依赖容器可写层。新增文件迁移将 schema 从 `8` 推进至 `9`，启动前照常执行迁移，不清库。文件与数据库须配套备份，现有 PostgreSQL 备份脚本不含文件内容。
+PR #39 已合入主线 `8f4f829`，B / D 复用[公共文件能力](public-files.md)和 `WorkbenchApi.files`，不重建存储或认证客户端；资料发布与社区业务仍由 B / D 实现。E 的邮件附件本地读取不强制上传，已有服务器文件仅在明确场景按原权限受控读取。当前使用私有服务端目录，`FILE_STORAGE_DIR` 默认 `./data/files`、`FILE_MAX_BYTES` 默认 10 MiB；Compose 用 `filesdata` 持久化。服务端文件迁移推进 schema 至 `9`，客户端邮箱迁移已用 `30–31`，二者分开管理；先迁移后启动，不清库。文件与数据库须配套备份，现有 PostgreSQL 备份脚本不含文件内容。
 
 ## 1. 工具链基线
 
@@ -127,15 +127,18 @@ npm run verify     # lint + generate + drift
 
 ## 5. 目录与 owner
 
+当前职责以[团队分工](team-development.md)为准；下表的旧目录条目不延续早期角色分配。E 负责邮箱、学在吉大、笔记和摘要业务，A 协调公共存储、文件、备份及迁移聚合，后续目录随真实功能新增，不预建空模块。
+
 | 目录                                                                                                                                                                                                                                                   | Owner   | 边界                                     |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | ---------------------------------------- |
 | `server/src/{config,db,error,http,health,json,meta,state,response,logging,auth}`、`server/src/{connections,sync}`（connections 计划；sync 已实现）、`migrations/`、`infra/`、`.github/workflows/foundation-ci.yml`、`contracts/`、`docs/foundation.md` | A       | 公共契约、身份权限、发布与合并           |
 | `server/src/connectors/{iedu,chaoxing,oa}`、`server/src/{teaching,assignments,notices,materials}`                                                                                                                                                      | B/C/D   | 各自校园来源与业务模块                   |
 | `clients/flutter/lib/features/{teaching,assignments,content,planner}`                                                                                                                                                                                  | B/C/D/E | 各自业务页面，先消费契约夹具             |
 | `clients/flutter/lib/{app,core,features/auth}`、`contracts/openapi.yaml`                                                                                                                                                                               | A       | 公共主题、路由入口、API 客户端与契约总审 |
-| `server/src/{todos,calendar}`、`clients/flutter/lib/features/planner`                                                                                                                                                                                  | E       | 待办、幂等、冲突与日历聚合               |
+| `clients/flutter/lib/features/mail/`；后续学在吉大、笔记与摘要业务                                                                                                                                                                                  | E       | 邮箱本地表、凭据适配、协议和附件业务；公共接入与 A 协调 |
+| `server/src/{todos,calendar}`、`clients/flutter/lib/features/planner`                                                                                                                                                                                  | 历史项  | 旧待办与日历交付，不是 E 本版分工        |
 
-具体任务映射见工作区的 `output/planning/JLU-Dela-Development-Plan.md`。该规划文档由用户维护，当前未纳入本 PR。
+本版任务范围见[完整计划](sources/开发完整内容.md)及 B—E 角色包；下文早期里程碑保留为历史记录，不作为当前完成清单。
 
 ## 6. 新模块如何接入
 

@@ -1,0 +1,11 @@
+services:
+  api:
+    volumes: !override
+      - type: bind
+        source: ${RESTORE_FILES_DIR:?set RESTORE_FILES_DIR to the new restored directory}
+        target: /var/lib/jlu-dela/files
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${RESTORE_DATABASE:?set RESTORE_DATABASE to the new restored database}?sslmode=disable
+  migrate:
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${RESTORE_DATABASE:?set RESTORE_DATABASE to the new restored database}?sslmode=disable

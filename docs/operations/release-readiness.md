@@ -1,6 +1,8 @@
 # A03 发布基础：缺项、备份恢复与回滚
 
-状态：staging 与生产均未部署。本机没有 `docker` 命令与 Docker daemon，没有 PostgreSQL 服务、`psql`/`pg_ctl`/`pg_dump`/`pg_restore`，也没有 staging 或生产主机访问权限。`infra/` 新增的三个脚本只做了本机语法检查与不依赖 Docker/PG 的参数分支冒烟，**没有连接任何真实服务器，也没有对真实 PostgreSQL 执行过备份或恢复**。缺失信息一律标为“未提供/待人工确认”，本文不猜测地址、容量或凭据。
+当前配套流程与实测以[数据库及文件恢复记录](paired-backup-verification.md)为准；下文 A03 状态及 §7 结果保留为早期记录，不代表当前机器状态。
+
+历史状态：staging 与生产均未部署。本机没有 `docker` 命令与 Docker daemon，没有 PostgreSQL 服务、`psql`/`pg_ctl`/`pg_dump`/`pg_restore`，也没有 staging 或生产主机访问权限。`infra/` 新增的三个脚本只做了本机语法检查与不依赖 Docker/PG 的参数分支冒烟，**没有连接任何真实服务器，也没有对真实 PostgreSQL 执行过备份或恢复**。缺失信息一律标为“未提供/待人工确认”，本文不猜测地址、容量或凭据。
 
 依据：`docs/foundation.md` §4（迁移顺序）、§8（当前限制）、§9（staging 缺项）、§10（验证命令）；规划文档 §8（部署、迁移与运维交接，位于工作区 `output/planning/`，未纳入本仓库）。
 
@@ -116,7 +118,11 @@ curl --fail --silent --show-error https://<staging-domain>/api/v1/meta   # 确�
 
 ## 5. 备份与恢复演练
 
-### 备份
+### 数据库与文件配套备份（当前）
+
+使用 [`infra/paired-backup.sh`](../../infra/paired-backup.sh) 与 [`infra/paired-restore.sh`](../../infra/paired-restore.sh)，具体维护窗口、原生及 Compose 命令、失败恢复服务和验收结果见[配套恢复记录](paired-backup-verification.md)。它复用下面的数据库导出 / 新库恢复逻辑；旧 PostgreSQL 单独脚本仍可使用，但不包含文件，也不保证数据库与附件的一致恢复点。
+
+### 仅 PostgreSQL（不含文件）
 
 ```sh
 cd infra

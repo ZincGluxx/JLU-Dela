@@ -1,19 +1,19 @@
 # 本地数据与离线工作台
 
-状态：公共层已落地。业务页面由各功能模块填充；设备端真实校园登录尚未实现，需要授权用户在学校网络下人工验证，当前不宣称任何来源已连接。
+状态：公共层及部分本地业务已落地，实际来源与设备验证范围见[工程说明](foundation.md)。PR #37 已加入 E 的邮箱本地数据与同步编排，尚无真实协议实现或邮箱页面；不因本地表和接口存在就宣称来源已连接。
 
 ## 数据归属
 
-- 业务数据只写本机 SQLite，服务器只负责工作台身份与后续云备份；第一批没有同步协议，业务页面不以服务器 API 作为正常读写路径。
+- 个人学习数据与未发布草稿本地优先，当前没有个人备份恢复协议。主动发布的共享资料、社区内容与公共地图按[完整计划](sources/开发完整内容.md)由服务端保存；已合入的[公共文件](public-files.md)不等于这些业务已实现，也不要求私人邮件附件先上传。
 - 数据库唯一入口为 `lib/core/storage/local_database.dart`，文件位于 `getApplicationSupportDirectory()/jlu_dela/dela.db`。页面与功能模块不得自行打开数据库。
 - 所有业务表带 `user_id`，查询必须同时带当前用户；退出或切换账号不删除磁盘数据，但不会把上一账号的数据显示给新账号。
 - SQLite 不保存刷新令牌、访问令牌、学校 Cookie、学号或密码。
 
 ## 版本与迁移
 
-- 迁移在单个事务内执行，数据库版本记在 `PRAGMA user_version`；中途失败回滚，不留下半套 schema。
-- 版本区间：1 CORE（`app_meta`、`local_identity`、`todos`、`course_offerings`、`source_snapshots`、`local_drafts`）；2–9 教务；10–19 学习通；20–29 内容；30–39 预留。
-- 聚合入口为 `lib/app/local_migrations.dart`，各模块只维护自己的 `*_migrations.dart`。迁移只新增表、列和索引，不改写已发布迁移。
+- 每项迁移在单个事务内执行，已应用版本写入迁移账本，最高版本记在 `PRAGMA user_version`；该项失败回滚，不删库重来。
+- 版本段：1 CORE；2–9 教务（已用 2–6）；10–19 学习通（已用 10）；20–29 内容缓存（已用 20–23）；30–39 由 E 协调邮箱、笔记与摘要。邮箱已用 [30、31](../clients/flutter/lib/features/mail/mail_migrations.dart)，并进入[聚合入口](../clients/flutter/lib/app/local_migrations.dart)，当前 SQLite 版本为 `31`，不是服务端 schema `9`。
+- [E 的笔记 PR #40](https://github.com/goya4140/JLU-Dela/pull/40) 已提出并使用迁移 `32`，截至 2026-11-14 提交本轮 PR 时尚未合入主线，不重复占用该版本。后续笔记或摘要迁移由 E 与 A 按届时实际账本确认，不把此前 32–33 / 34–35 提案当作已分配号段，不预建空迁移。个人笔记备份协议仍未交付，本轮运维备份不解除该依赖。各模块维护自己的 `*_migrations.dart`，不改写已发布迁移。
 - 数据库版本高于应用支持版本时拒绝打开并提示升级；不降级、不删库。
 
 ## 本地数据语义
@@ -49,7 +49,8 @@
 | CORE | `lib/core/{models,storage,source}`、`lib/app`、`lib/main.dart`、迁移聚合 | 公共模型、存储、来源接口、页面注册、离线判定 |
 | 教务 | `lib/features/teaching` | 学期、课次与校历迁移（2–9） |
 | 学习通 | `lib/features/assignments` | 作业与课程刷新范围迁移（10–19） |
-| 内容 | `lib/features/content` | 通知、附件与资料目录迁移（20–29） |
+| 内容缓存 | `lib/features/content` | OA 通知、附件与学习通资料目录（已用 20–23），不是共享资料发布或社区 |
+| 邮箱 / 笔记 / 摘要 | `lib/features/mail`（已存在）；笔记 / 摘要按实际功能新增 | E 主责；邮箱已用 30–31，后续与 A 协调，不预建空模块 |
 | 待办 / 日历 | `lib/features/planner` | 待办与日历视图 |
 
 - 功能目录只依赖 `lib/core`、`lib/app` 与生成客户端，不互相导入。
