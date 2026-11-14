@@ -6,6 +6,7 @@ lib/api/files_api.dart
 lib/api/health_api.dart
 lib/api/me_api.dart
 lib/api/meta_api.dart
+lib/api/personal_backup_api.dart
 lib/api/sync_api.dart
 lib/api/teaching_api.dart
 lib/api/todos_api.dart
@@ -26,6 +27,13 @@ lib/model/academic_period.dart
 lib/model/academic_periods_source.dart
 lib/model/activate_request.dart
 lib/model/assignment_item.dart
+lib/model/backup_conflict_response.dart
+lib/model/backup_conflict_response_error.dart
+lib/model/backup_note.dart
+lib/model/backup_receipt.dart
+lib/model/backup_receipt_response.dart
+lib/model/backup_snapshot.dart
+lib/model/backup_snapshot_response.dart
 lib/model/calendar_data.dart
 lib/model/calendar_item.dart
 lib/model/calendar_response.dart
@@ -35,6 +43,7 @@ lib/model/course_list_response.dart
 lib/model/course_offering.dart
 lib/model/create_sync_job_request.dart
 lib/model/create_todo_request.dart
+lib/model/delete_notes_backup_request.dart
 lib/model/error_detail.dart
 lib/model/error_field.dart
 lib/model/error_response.dart
@@ -53,6 +62,7 @@ lib/model/phone_code.dart
 lib/model/phone_code_request.dart
 lib/model/phone_code_response.dart
 lib/model/phone_login_request.dart
+lib/model/put_notes_backup_request.dart
 lib/model/ready_response.dart
 lib/model/ready_status.dart
 lib/model/refresh_request.dart

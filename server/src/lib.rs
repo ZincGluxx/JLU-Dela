@@ -10,6 +10,7 @@ pub mod http;
 pub mod json;
 pub mod logging;
 pub mod meta;
+pub mod personal_backup;
 pub mod response;
 pub mod state;
 pub mod sync;

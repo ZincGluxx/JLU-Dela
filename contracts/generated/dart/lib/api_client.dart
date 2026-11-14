@@ -201,6 +201,20 @@ class ApiClient {
           return ActivateRequest.fromJson(value);
         case 'AssignmentItem':
           return AssignmentItem.fromJson(value);
+        case 'BackupConflictResponse':
+          return BackupConflictResponse.fromJson(value);
+        case 'BackupConflictResponseError':
+          return BackupConflictResponseError.fromJson(value);
+        case 'BackupNote':
+          return BackupNote.fromJson(value);
+        case 'BackupReceipt':
+          return BackupReceipt.fromJson(value);
+        case 'BackupReceiptResponse':
+          return BackupReceiptResponse.fromJson(value);
+        case 'BackupSnapshot':
+          return BackupSnapshot.fromJson(value);
+        case 'BackupSnapshotResponse':
+          return BackupSnapshotResponse.fromJson(value);
         case 'CalendarData':
           return CalendarData.fromJson(value);
         case 'CalendarItem':
@@ -219,6 +233,8 @@ class ApiClient {
           return CreateSyncJobRequest.fromJson(value);
         case 'CreateTodoRequest':
           return CreateTodoRequest.fromJson(value);
+        case 'DeleteNotesBackupRequest':
+          return DeleteNotesBackupRequest.fromJson(value);
         case 'ErrorDetail':
           return ErrorDetail.fromJson(value);
         case 'ErrorField':
@@ -255,6 +271,8 @@ class ApiClient {
           return PhoneCodeResponse.fromJson(value);
         case 'PhoneLoginRequest':
           return PhoneLoginRequest.fromJson(value);
+        case 'PutNotesBackupRequest':
+          return PutNotesBackupRequest.fromJson(value);
         case 'ReadyResponse':
           return ReadyResponse.fromJson(value);
         case 'ReadyStatus':

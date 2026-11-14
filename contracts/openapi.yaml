@@ -27,6 +27,7 @@ info:
     - GET /api/v1/academic-calendar
     - POST /api/v1/files, GET and DELETE /api/v1/files/{id}
     - GET /api/v1/files/{id}/content
+    - GET, PUT and DELETE /api/v1/personal-backup/notes
 
     Endpoints described but not yet served:
     - GET /api/v1/semesters, GET /api/v1/courses, GET /api/v1/schedule
@@ -104,6 +105,8 @@ tags:
     description: Study calendar aggregation over lessons, assignments and personal todos.
   - name: Sync
     description: Persisted source synchronization jobs. Source adapters are owned by B/C/D.
+  - name: PersonalBackup
+    description: Explicitly selected, account-private note snapshots with version conflicts and idempotent writes.
   - name: Files
     description: Private file storage. Attached files are read only through authorized business routes.
   - name: Teaching
@@ -133,6 +136,7 @@ x-contract-status:
     - GET /api/v1/academic-calendar
     - POST /api/v1/files, GET and DELETE /api/v1/files/{id}
     - GET /api/v1/files/{id}/content
+    - GET, PUT and DELETE /api/v1/personal-backup/notes
   design-only:
     - GET /api/v1/semesters
     - GET /api/v1/courses
@@ -863,6 +867,110 @@ paths:
         '5XX':
           $ref: '#/components/responses/ServerError'
 
+  /api/v1/personal-backup/notes:
+    get:
+      operationId: getNotesBackup
+      tags: [PersonalBackup]
+      security: [{ bearerAuth: [] }]
+      summary: Read the current account's selected notes backup
+      description: |
+        Reading and login do not authorize upload. No backup returns revision 0,
+        deleted true, empty notes and null updated_at. A deletion retains only a
+        revision tombstone. Responses are private and no-store.
+      responses:
+        "200":
+          description: Current private snapshot, including an empty tombstone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupSnapshotResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "4XX":
+          $ref: "#/components/responses/ClientError"
+        "5XX":
+          $ref: "#/components/responses/ServerError"
+    put:
+      operationId: putNotesBackup
+      tags: [PersonalBackup]
+      security: [{ bearerAuth: [] }]
+      summary: Replace an explicitly selected notes snapshot using compare-and-swap
+      description: |
+        The client must obtain explicit upload consent and selected note IDs.
+        Ownership comes only from the current account. At most 100 notes and
+        524288 UTF-8 bytes of serialized notes are accepted. Note local revisions,
+        credentials, source sessions and report codes are not part of this schema.
+        A stable Idempotency-Key binds this exact request to its receipt without
+        retaining note text in the idempotency ledger. Retries return the original
+        receipt, not a claim that the cloud has not subsequently changed.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutNotesBackupRequest"
+      responses:
+        "200":
+          description: Receipt for this operation, containing no note text.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupReceiptResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: BACKUP_REVISION_CONFLICT includes error.current; IDEMPOTENCY_CONFLICT rejects changed retry bodies.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupConflictResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "4XX":
+          $ref: "#/components/responses/ClientError"
+        "5XX":
+          $ref: "#/components/responses/ServerError"
+    delete:
+      operationId: deleteNotesBackup
+      tags: [PersonalBackup]
+      security: [{ bearerAuth: [] }]
+      summary: Delete this account's cloud note content, retaining a revision tombstone
+      description: |
+        Does not delete local notes. Requires explicit confirmation and the current
+        revision. Stale writes cannot silently recreate deleted content. Operational
+        database backup retention is managed separately by the operator.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteNotesBackupRequest"
+      responses:
+        "200":
+          description: Deletion receipt without note text.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupReceiptResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Revision or idempotency conflict; no local data is removed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupConflictResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "4XX":
+          $ref: "#/components/responses/ClientError"
+        "5XX":
+          $ref: "#/components/responses/ServerError"
+
   /api/v1/files:
     post:
       operationId: uploadFile
@@ -1495,6 +1603,14 @@ components:
       description: Opaque meta.next_cursor from the previous page, bound to the caller, filters and ordering.
       schema:
         type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Stable UUID for the exact operation body, reused only for its retry.
+      schema:
+        type: string
+        format: uuid
     XRequestId:
       name: X-Request-Id
       in: header
@@ -1664,6 +1780,154 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    BackupNote:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          title,
+          body,
+          course_offering_id,
+          lesson_id,
+          replay_source,
+          replay_id,
+          replay_title,
+          position_ms,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 20000
+        course_offering_id:
+          type: string
+          nullable: true
+          maxLength: 300
+          description: Preserved local course reference; restore does not fabricate source courses.
+        lesson_id:
+          type: string
+          nullable: true
+          maxLength: 300
+        replay_source:
+          type: string
+          nullable: true
+          maxLength: 300
+        replay_id:
+          type: string
+          nullable: true
+          maxLength: 300
+        replay_title:
+          type: string
+          nullable: true
+          maxLength: 300
+        position_ms:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      description: Explicit note fields only. Replay source and ID must be paired; position requires that pair. Creation must not follow update time.
+    PutNotesBackupRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, notes]
+      properties:
+        expected_revision:
+          type: integer
+          minimum: 0
+        notes:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/BackupNote"
+    DeleteNotesBackupRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_revision]
+      properties:
+        expected_revision:
+          type: integer
+          minimum: 0
+    BackupSnapshot:
+      type: object
+      required: [revision, deleted, notes, updated_at]
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        deleted:
+          type: boolean
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/BackupNote"
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    BackupReceipt:
+      type: object
+      required: [revision, deleted, updated_at]
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        deleted:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+    BackupSnapshotResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BackupSnapshot"
+        meta:
+          $ref: "#/components/schemas/RequestIdMeta"
+    BackupReceiptResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BackupReceipt"
+        meta:
+          $ref: "#/components/schemas/RequestIdMeta"
+    BackupConflictResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id, retryable, fields]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: string
+            retryable:
+              type: boolean
+            fields:
+              type: array
+              items:
+                $ref: "#/components/schemas/ErrorField"
+            current:
+              $ref: "#/components/schemas/BackupSnapshot"
     RequestIdMeta:
       type: object
       required:

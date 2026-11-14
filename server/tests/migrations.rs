@@ -91,14 +91,14 @@ async fn schema_version(pool: &PgPool) -> String {
 }
 
 #[tokio::test]
-async fn complete_migration_of_an_empty_database_reaches_version_nine() {
+async fn complete_migration_of_an_empty_database_reaches_version_ten() {
     let database = TempDatabase::create().await;
     let pool = database.pool().await;
 
     jlu_dela_api::db::run_migrations(&pool)
         .await
         .expect("migrations apply to an empty database");
-    assert_eq!(schema_version(&pool).await, "9");
+    assert_eq!(schema_version(&pool).await, "10");
 
     let tables: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM information_schema.tables
@@ -180,7 +180,7 @@ async fn upgrading_from_version_four_keeps_existing_rows_and_adds_new_schema() {
     jlu_dela_api::db::run_migrations(&pool)
         .await
         .expect("full migration chain upgrades version four");
-    assert_eq!(schema_version(&pool).await, "9");
+    assert_eq!(schema_version(&pool).await, "10");
 
     let stored_login: String = sqlx::query_scalar("SELECT login FROM users WHERE id = $1")
         .bind(user_id)
