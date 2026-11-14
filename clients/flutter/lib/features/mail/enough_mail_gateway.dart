@@ -91,7 +91,26 @@ class EnoughMailGateway implements MailGateway {
     final imap = _requireImap();
     try {
       final mailboxes = await imap.listMailboxes(recursive: true);
-      return folderSnapshotsFrom(mailboxes);
+      final snapshots = <MailFolderSnapshot>[];
+      for (final mailbox in mailboxes) {
+        if (mailbox.isNotSelectable) {
+          continue;
+        }
+        // LIST 只回名字与 \Noselect 之类的标志，UIDVALIDITY 与邮件数是 STATUS
+        // 才有的：不补这一步，快照里的 uidValidity 永远是 null、总数永远是 0。
+        var withStatus = mailbox;
+        try {
+          withStatus = await imap.statusMailbox(mailbox, const [
+            enough.StatusFlags.messages,
+            enough.StatusFlags.uidValidity,
+            enough.StatusFlags.unseen,
+          ]);
+        } catch (_) {
+          // 单个文件夹查不到状态不该让整份目录失败，保留 LIST 已有字段。
+        }
+        snapshots.add(folderSnapshotFrom(withStatus));
+      }
+      return snapshots;
     } catch (error) {
       throw _mapError(error);
     }
