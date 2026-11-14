@@ -2,7 +2,7 @@
 
 ## 范围与恢复点
 
-2026-11-14 复查基线为 `upstream/main=3de0d8f754b451debae1b48f4f80ecd9c0174146`，GitHub API 返回相同 SHA；Git 拉取上游返回 403，不能声称本轮 fetch 成功。PR #42 的配套实现及 #41 已合并，本次在独立 `codex/paired-recovery-verification` worktree 补实际缺口，不重复开发，不改原工作区及 `AGENTS.md`。以下命令为当前流程，末节保留先前演练记录，不充当本次结果。
+2026-11-14 初查 `upstream/main=3de0d8f754b451debae1b48f4f80ecd9c0174146`，GitHub API 返回相同 SHA；最初 Git 拉取返回 403，之后访问恢复，实际 fetch 成功。期间上游合入笔记 PR #40，任务分支已 rebase 至最新 `c634c33d26d4722eda4e0b33aebbd239052078de`，未修改其 Flutter 代码。PR #42 的配套实现及 #41 已合并，本次在独立 `codex/paired-recovery-verification` worktree 补实际缺口，不重复开发，不改原工作区及 `AGENTS.md`。本次交付为 [Draft PR #44](https://github.com/goya4140/JLU-Dela/pull/44)，保持草稿，不合并、不部署。以下命令为当前流程，末节保留先前演练记录，不充当本次结果。
 
 [`paired-backup.sh`](../../infra/paired-backup.sh) 在维护窗口停止 API，等待停止命令完成后导出 PostgreSQL 并归档对应文件，最后恢复 API。窗口内维护者须禁止其他写入进程、直接 SQL 和迁移；脚本不能保证外部写入者的一致性。原生 stop hook 必须等待请求及进程退出，失败须返回非零，不能只是发送一个异步停止信号。本轮没有新增在线备份、WAL/PITR、调度或同步系统。
 
@@ -76,13 +76,16 @@ docker compose --env-file /isolated/recovery.env -f infra/compose.yaml \
 ## 本次复验（2026-11-14，Asia/Shanghai）
 
 - Windows x64 / Git Bash 5.3.15 / PostgreSQL 16.15；重新检查 Docker 29.9.3 与 Compose 5.7.1，`docker version` 因 `docker_engine` 管道不存在而失败。没有容器非 root 写卷或重建验收，未运行生产操作。
-- 从空目录初始化 `C:/Users/ZincG/JLU-Dela-recovery-verify-pg`（`127.0.0.1:55437`）及脚本回归集群 `C:/Users/ZincG/JLU-Dela-recovery-regression-pg`（`127.0.0.1:55438`），仅合成账号 `recovery_test`，不连接旧数据库。
+- 从空目录初始化 `C:/Users/ZincG/JLU-Dela-recovery-verify-pg`（`127.0.0.1:55437`）、脚本回归集群 `C:/Users/ZincG/JLU-Dela-recovery-regression-pg`（`127.0.0.1:55438`）及最终复跑集群 `C:/Users/ZincG/JLU-Dela-recovery-final-pg`（`127.0.0.1:55439`），仅合成账号 `recovery_test`，不连接旧数据库。
 - 修复前复现：使 `files.sha256` 与归档内容不一致并更新其外层摘要，旧脚本恢复了 `paired_preflight_repro` 及目标目录后才拒绝；本次新增预检后，相同回归在建库/建目标前拒绝，临时目录已清理。
-- `bash infra/test-paired-backup.sh` 在新回归集群通过：成功、停止/备份/启动失败、缺件、损坏 dump/归档、逐文件清单错配、错误 build、已存在或重叠目标，以及旧格式兼容。保留材料：Git Bash `/tmp/tmp.vf6XofJ6Yu`。
+- `bash infra/test-paired-backup.sh` 在新回归集群通过：成功、停止/备份/启动失败、缺件、损坏 dump/归档、逐文件清单错配、错误 build、已存在或重叠目标，以及旧格式兼容。格式化及纳入最新 main 后再从空集群完整复跑通过，最终保留材料：Git Bash `/tmp/tmp.cr9mms52wX`。
 - `bash infra/test-backup-compose.sh` 的 6 项纯桩测试通过：数据库错配或非法库名在维护前拒绝，匹配库可到达下一预检，无连接 URL/合成密码输出。它不是实际容器验收。
-- 显式执行现有 `cargo test --locked --features integration --test paired_restore -- --ignored --nocapture`，1 项通过；恢复库 `paired_restore_ac25790ab0264df09684b945db1bb4b8`，合成材料 `C:/Users/ZincG/AppData/Local/Temp/.tmp8pYMH8`。覆盖三账号、私人及两类业务关联、元信息和全部字节一致、同院/异院边界、恢复后密码登录，以及源库/源文件不变。测试专用业务夹具不是生产业务接口。
+- 显式执行现有 `cargo test --locked --features integration --test paired_restore -- --ignored --nocapture`，1 项通过；最新基线复跑恢复库 `paired_restore_a53d9c9c566640d7a80846bc79bde2e4`，合成材料 `C:/Users/ZincG/AppData/Local/Temp/.tmpC6L1pZ`。覆盖三账号、私人及两类业务关联、元信息和全部字节一致、同院/异院边界、恢复后密码登录，以及源库/源文件不变。测试专用业务夹具不是生产业务接口。
 - 本次相关文件/迁移/报告测试为 9 项通过，1 项真实报告外网测试忽略；未调用真实短信、报告或私人数据。没有修改 Rust、Flutter 或契约代码，未执行 Flutter/契约全量检查。
-- 当前已执行全部 shell `bash -n`、改动脚本 shfmt 3.12.0 格式化及 Compose 预检桩测试；HTTP 二进制演练及最终文档/配置检查继续进行，结果完成后补记。
+- `cargo build --locked --bins` 通过后，用当前源码构建的 API 二进制完成真实 HTTP 演练：源 `recovery_http_source` / `127.0.0.1:18087`，恢复目标 `recovery_http_restored` / `127.0.0.1:18088`。两个开发模式合成账号，停止并等待源 PID 退出、备份后重启源 API、恢复后另起 API；两端 ready 均为 schema 9，meta build 相同，账号及全部文件元信息相同，上传者内容 SHA-256 相同，其他账号的元信息/内容请求均 404。Windows 停止发生在无在途请求窗口，不冒称验证 Unix 优雅退出。
+- HTTP 文件 ID：`38b69198-6dcc-480c-aa8d-33d3cbcc178d`，SHA-256：`97829eb27209069acb9a333b75f31353505f4cfd40a4a3485866849b9b66f007`；bundle ID：`20261114T051914Z-1446`，版本为 `160015` / `16.15`。合成材料保留于 `C:/Users/ZincG/JLU-Dela-recovery-http-evidence`，执行器为源码外的 `C:/Users/ZincG/JLU-Dela-recovery-tools/http-recovery.ps1`；不提交 dump、令牌或运行日志。
+- 全部 shell `bash -n`、改动脚本 shfmt 3.12.0、Markdown Prettier 3.6.2、`git diff --check` 及改动文档本地链接检查通过。Compose base/dev/staging/restore 静态展开通过，并断言恢复 API 只挂新 bind 目录、API/migrate 指向新库。没有运行 shellcheck（未安装），也没有将静态展开当作容器验收。
+- HTTP API 日志经令牌、开发码、合成手机号及连接 URL 扫描未发现泄露。结束时仅停止本次两个 API 和三个 PostgreSQL 集群，测试端口均已关闭，合成数据库、bundle 和文件保留；未删库、未删卷、未触碰原工作区。
 
 ## 历史实测（2026-11-13，Asia/Shanghai）
 
@@ -108,16 +111,16 @@ $env:PGDATABASE='paired_backup_script_test'
 
 脚本测试会创建专用库，不删除库或已有目录；重复执行须另建隔离集群，不清理共享库来重跑。Rust 配套演练默认忽略，需显式执行，并保留合成 bundle 和新恢复库用于检查；它不依赖生产演示路由。
 
-| 检查 | 本轮结果 |
-| --- | --- |
+| 检查                                                 | 本轮结果                                                                                                                                                                     |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [配套恢复集成](../../server/tests/paired_restore.rs) | 1 项通过：3 合成账号、私人 / material / community_image 三文件；生产 router 上传、数据库及文件真正导出恢复，新库新目录快照相同；文件 ID、全部元信息、内容及 SHA-256 清单一致 |
-| 账号与私人权限 | 既有会话和恢复后密码登录通过；上传者私人读取成功、其他账号 404；关联后私人入口拒绝，不能绕过业务 |
-| 关联和学院权限 | 测试专用业务记录与 attach 同事务；用途及业务 ID 保留；同院允许、异院拒绝、错误用途/ID拒绝，在恢复前后相同；无生产业务假接口 |
-| 源数据不变 | 比较源库 users / sessions / reports / files / business / schema / migrations 与源目录全部字节，恢复及恢复库活动未改源数据 |
-| [脚本行为](../../infra/test-paired-backup.sh) | 成功路径；停止失败后恢复、备份阶段失败后恢复、启动失败明确告警且无成功清单；缺归档 / 不完整 / 校验损坏备份、错误 build、旧库、已有/重叠目录全部拒绝 |
-| 相关 Rust 检查 | 格式、全目标全特性 Clippy、二进制构建通过；文件 3、迁移 2、报告 4 项通过，1 项真实报告外网测试忽略；配套恢复显式执行 1 项通过 |
-| Shell / Compose | 全部 shell `bash -n`、local/dev/staging 及恢复覆盖配置展开通过；断言恢复 API 仅 bind 新目录，API/migrate 均指向新库；没有 shellcheck，未冒称执行 |
-| 文档 | 检查改动文档本地链接、Markdown 结构及 `git diff --check`，无 AGENTS / 迁移 / OpenAPI / Flutter 代码改动 |
+| 账号与私人权限                                       | 既有会话和恢复后密码登录通过；上传者私人读取成功、其他账号 404；关联后私人入口拒绝，不能绕过业务                                                                             |
+| 关联和学院权限                                       | 测试专用业务记录与 attach 同事务；用途及业务 ID 保留；同院允许、异院拒绝、错误用途/ID拒绝，在恢复前后相同；无生产业务假接口                                                  |
+| 源数据不变                                           | 比较源库 users / sessions / reports / files / business / schema / migrations 与源目录全部字节，恢复及恢复库活动未改源数据                                                    |
+| [脚本行为](../../infra/test-paired-backup.sh)        | 成功路径；停止失败后恢复、备份阶段失败后恢复、启动失败明确告警且无成功清单；缺归档 / 不完整 / 校验损坏备份、错误 build、旧库、已有/重叠目录全部拒绝                          |
+| 相关 Rust 检查                                       | 格式、全目标全特性 Clippy、二进制构建通过；文件 3、迁移 2、报告 4 项通过，1 项真实报告外网测试忽略；配套恢复显式执行 1 项通过                                                |
+| Shell / Compose                                      | 全部 shell `bash -n`、local/dev/staging 及恢复覆盖配置展开通过；断言恢复 API 仅 bind 新目录，API/migrate 均指向新库；没有 shellcheck，未冒称执行                             |
+| 文档                                                 | 检查改动文档本地链接、Markdown 结构及 `git diff --check`，无 AGENTS / 迁移 / OpenAPI / Flutter 代码改动                                                                      |
 
 另用实际 debug API 二进制完成 HTTP 演练：隔离源库 `paired_http_source3`、源端口 `18085`，两个开发模式合成手机号账号；上传 50 字节人工文本后停止该 PID 并等待退出，脚本导出数据库及文件，再启动源 API。恢复到 `paired_http_restored` 与新目录后启动端口 `18086` 的匹配 API；两端 ready 为 schema 9、相同账号及文件元信息一致，上传者下载正确、另一账号 404。文件 ID 为 `6cde15d2-0bfe-4d13-a7e4-2c146822e532`，SHA-256 为 `893b327b39129d4028da59018b2b0446a0afced62e2ed1d6f3b1af9645c4cf8c`。测试结束只停止本轮两个 API 进程及本轮 PostgreSQL 集群，未删库或目录；集群可由维护者用 `pg_ctl -D C:/Users/ZincG/JLU-Dela-paired-backup-pg -l C:/Users/ZincG/JLU-Dela-paired-backup-pg.log -o "-h 127.0.0.1 -p 55435" -w start` 重新检查。原生 Windows stop hook 在无在途请求的窗口等待指定 PID 退出；不把强停止视作 Unix 优雅退出已验收。
 
