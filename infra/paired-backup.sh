@@ -14,12 +14,30 @@ shift
 build='' mode='' files_dir='' stop_hook='' start_hook=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --app-build) build="${2:?}"; shift 2 ;;
-    --native) mode=native; files_dir="${2:?}"; shift 2 ;;
-    --stop-hook) stop_hook="${2:?}"; shift 2 ;;
-    --start-hook) start_hook="${2:?}"; shift 2 ;;
-    --compose) mode=compose; shift; backup_database "$@"; break ;;
-    *) usage ;;
+  --app-build)
+    build="${2:?}"
+    shift 2
+    ;;
+  --native)
+    mode=native
+    files_dir="${2:?}"
+    shift 2
+    ;;
+  --stop-hook)
+    stop_hook="${2:?}"
+    shift 2
+    ;;
+  --start-hook)
+    start_hook="${2:?}"
+    shift 2
+    ;;
+  --compose)
+    mode=compose
+    shift
+    backup_database "$@"
+    break
+    ;;
+  *) usage ;;
   esac
 done
 [[ "$build" =~ ^[a-zA-Z0-9._-]{1,128}$ ]] || backup_die 'application build must be a safe commit or build identifier'
@@ -36,6 +54,12 @@ elif [ "$mode" = compose ]; then
   [ -n "$api" ] || backup_die 'API must be running before the maintenance window'
   actual_build="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$api" | sed -n 's/^APP_BUILD_ID=//p')"
   [ "$actual_build" = "$build" ] || backup_die 'running API build does not match requested backup build'
+  api_database_url="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$api" | sed -n 's/^DATABASE_URL=//p')"
+  [[ "$api_database_url" =~ /([a-zA-Z0-9_]{1,63})(\?.*)?$ ]] || backup_die 'cannot identify a plain API database name'
+  api_database="${BASH_REMATCH[1]}"
+  unset api_database_url
+  source_database="$(pg_exec psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command='SELECT current_database()')"
+  [ "$api_database" = "$source_database" ] || backup_die 'API and PostgreSQL backup database differ; align the isolated stack configuration before backup'
   image="$(compose images -q postgres)"
   [ -n "$image" ] || backup_die 'PostgreSQL helper image missing'
   files_dir='compose:/var/lib/jlu-dela/files'
@@ -76,6 +100,9 @@ fi
 schema="$(pg_exec psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command="SELECT value FROM service_meta WHERE key='schema_version'")"
 source_database="$(pg_exec psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command='SELECT current_database()')"
 [[ "$schema" =~ ^[0-9]+$ ]] || backup_die 'schema version missing'
+postgres_version_num="$(pg_exec psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command='SHOW server_version_num')"
+pg_dump_version="$(pg_exec pg_dump --version | tr -d '\r' | sed -n 's/^pg_dump (PostgreSQL) \([0-9][0-9.]*\).*$/\1/p')"
+[[ "$postgres_version_num" =~ ^[0-9]{6}$ && "$pg_dump_version" =~ ^[0-9]+\.[0-9]+$ ]] || backup_die 'PostgreSQL version information missing'
 if [ "$mode" = native ]; then
   pg_exec psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command='SELECT id, size_bytes FROM files WHERE NOT deleting ORDER BY id' > "$bundle/file-rows.pending"
   while IFS='|' read -r id size; do
@@ -86,7 +113,7 @@ if [ "$mode" = native ]; then
   backup_inventory "$files_dir" "$bundle/files.sha256"
   tar --force-local --format=ustar -cf "$bundle/files.tar" -C "$files_dir" .
 else
-  pg_exec psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command='SELECT id, size_bytes FROM files WHERE NOT deleting ORDER BY id' | \
+  pg_exec psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command='SELECT id, size_bytes FROM files WHERE NOT deleting ORDER BY id' |
     docker run --rm -i --network none --volumes-from "$api:ro" --entrypoint bash "$image" -c '
       set -euo pipefail
       while IFS="|" read -r id size; do
@@ -96,7 +123,7 @@ else
     '
   bash "$script_dir/postgres-backup.sh" "$bundle" "$env_file" "$compose_file" "${compose_override:-}"
   docker run --rm --network none --volumes-from "$api:ro" --entrypoint tar "$image" --format=ustar -cf - -C /var/lib/jlu-dela/files . > "$bundle/files.tar"
-  docker run --rm -i --network none --volumes-from "$api:ro" --entrypoint bash "$image" -s <<INNER > "$bundle/files.sha256"
+  docker run --rm -i --network none --volumes-from "$api:ro" --entrypoint bash "$image" -s << INNER > "$bundle/files.sha256"
 $(declare -f backup_die backup_inventory)
 backup_inventory /var/lib/jlu-dela/files /dev/stdout
 INNER
@@ -106,8 +133,9 @@ dumps=("$bundle"/*.dump)
 [ "${#dumps[@]}" -eq 1 ] || backup_die 'database dump missing'
 mv -- "${dumps[0]}" "$bundle/database.dump"
 {
-  printf 'format=1\nbackup_id=%s-%s\nrecorded_at=%s\n' "$(date -u +%Y%m%dT%H%M%SZ)" "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'format=2\nbackup_id=%s-%s\nrecorded_at=%s\n' "$(date -u +%Y%m%dT%H%M%SZ)" "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'app_build=%s\nschema_version=%s\nsource_database=%s\nsource_files=%s\n' "$build" "$schema" "$source_database" "$files_dir"
+  printf 'postgres_version_num=%s\npg_dump_version=%s\n' "$postgres_version_num" "$pg_dump_version"
   printf 'database_sha256=%s\n' "$(sha256sum "$bundle/database.dump" | cut -d ' ' -f1)"
   printf 'archive_sha256=%s\n' "$(sha256sum "$bundle/files.tar" | cut -d ' ' -f1)"
   printf 'inventory_sha256=%s\n' "$(sha256sum "$bundle/files.sha256" | cut -d ' ' -f1)"
