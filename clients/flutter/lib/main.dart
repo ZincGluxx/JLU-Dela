@@ -16,6 +16,7 @@ import 'core/auth/account_gateway.dart';
 import 'core/auth/auth_gateway.dart';
 import 'core/auth/workbench_api.dart';
 import 'core/config/app_config.dart';
+import 'core/backup/backup_gateway.dart';
 import 'core/source/cookie_source_http_client.dart';
 import 'core/source/source_page_opener_impl.dart';
 import 'core/source/source_session.dart';
@@ -92,6 +93,8 @@ Future<void> main() async {
           campusLogin: campusLogin,
           browser: browser,
           academicCalendar: academicCalendar,
+          session: workbenchApi.session,
+          backupRemote: BackupGateway(workbenchApi.apiClient),
         ),
       ),
     );

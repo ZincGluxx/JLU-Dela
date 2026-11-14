@@ -4,9 +4,11 @@ import '../../app/theme.dart';
 import '../../core/api/diagnostics_service.dart';
 import '../../core/auth/session_controller.dart';
 import '../../core/auth/session_models.dart';
+import '../../core/backup/notes_backup_controller.dart';
 import '../diagnostics/diagnostics_page.dart';
 import 'source_connection_card.dart';
 import 'account_settings_form.dart';
+import 'notes_backup_card.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -16,6 +18,7 @@ class SettingsPage extends StatefulWidget {
     required this.glassEnabled,
     required this.onGlassEnabledChanged,
     this.sourceConnections,
+    this.notesBackup,
   });
 
   final DiagnosticsService diagnosticsService;
@@ -23,6 +26,7 @@ class SettingsPage extends StatefulWidget {
   final bool glassEnabled;
   final ValueChanged<bool> onGlassEnabledChanged;
   final SourceConnectionController? sourceConnections;
+  final NotesBackupController? notesBackup;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -103,6 +107,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 AppSpacing.md,
               ),
               child: SourceConnectionCard(controller: widget.sourceConnections),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
+              child: NotesBackupCard(controller: widget.notesBackup),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
