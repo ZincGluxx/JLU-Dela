@@ -53,6 +53,7 @@ pub fn router(state: AppState, config: &Config) -> Router {
         )
         .route("/api/v1/me", get(auth::me))
         .merge(crate::files::router(state.files.max_bytes))
+        .merge(crate::personal_backup::router())
         .merge(crate::todos::router())
         .merge(crate::calendar::router())
         .route("/api/v1/sync-jobs", post(sync::create))
@@ -65,6 +66,7 @@ pub fn router(state: AppState, config: &Config) -> Router {
         .allow_methods([
             Method::GET,
             Method::POST,
+            Method::PUT,
             Method::PATCH,
             Method::DELETE,
             Method::OPTIONS,

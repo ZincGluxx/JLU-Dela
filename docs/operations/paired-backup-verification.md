@@ -73,7 +73,13 @@ docker compose --env-file /isolated/recovery.env -f infra/compose.yaml \
 
 [`compose.restore.yaml`](../../infra/compose.restore.yaml) 将 API 与迁移指向新库，API bind mount 新文件目录，不触碰原 `filesdata`。恢复完成时 helper 配置 `10001:10001` 与 `700/600`，失败即退出。仍须在有 daemon 的环境检查非 root 写入及同 ID 内容可读：正常栈重建 API 保留原命名卷，恢复栈重建 API 保留新的 bind 目录和挂载。静态配置不证明这些行为。
 
-## 本次复验（2026-11-14，Asia/Shanghai）
+## A 收口环境核对（#44 合并后）
+
+2026-11-14，独立 worktree 基线 `4713408`。再次实际执行 `C:/Users/ZincG/.local-docker/docker/docker.exe version` 与 `info`，客户端 29.9.3 可用，但均因 `npipe:////./pipe/docker_engine` 不存在而退出 1；daemon 仍不可用。Compose 需使用该 CLI 的 `--config C:/Users/ZincG/.local-docker compose version`，实测 5.7.1。未安装、启动 daemon 或操作容器，非 root 写卷、重建持久化及容器新库/目录恢复仍未验收；静态配置和桩测试不替代它们。
+
+#44 的原生 PostgreSQL / HTTP 恢复路径未改，不重复执行。daemon 可用后按上文隔离 Compose 流程，依次检查 UID/GID `10001:10001` 上传成功、重建 API 后同 ID 字节可读、恢复到独立项目的新库/目录，以及原账号身份、元信息、SHA-256 和另一账号拒绝访问；只使用合成数据。配套恢复脚本未产生新代码改动，不另开运维实现 PR。
+
+## #44 复验（2026-11-14，Asia/Shanghai）
 
 - Windows x64 / Git Bash 5.3.15 / PostgreSQL 16.15；重新检查 Docker 29.9.3 与 Compose 5.7.1，`docker version` 因 `docker_engine` 管道不存在而失败。没有容器非 root 写卷或重建验收，未运行生产操作。
 - 从空目录初始化 `C:/Users/ZincG/JLU-Dela-recovery-verify-pg`（`127.0.0.1:55437`）、脚本回归集群 `C:/Users/ZincG/JLU-Dela-recovery-regression-pg`（`127.0.0.1:55438`）及最终复跑集群 `C:/Users/ZincG/JLU-Dela-recovery-final-pg`（`127.0.0.1:55439`），仅合成账号 `recovery_test`，不连接旧数据库。

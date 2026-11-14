@@ -139,6 +139,8 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
     _activeUserId = userId;
     if (userId != null) {
       _workbench = widget.workbenchBuilder(userId);
+      final backup = _workbench!.notesBackup;
+      if (backup != null) unawaited(backup.initialize());
     }
   }
 
@@ -201,6 +203,7 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
       AppDestination.settings: (context) => SettingsPage(
         diagnosticsService: widget.diagnosticsService,
         session: widget.session,
+        notesBackup: workbench?.notesBackup,
         glassEnabled: _glassEnabled,
         onGlassEnabledChanged: (value) {
           setState(() => _glassEnabled = value);

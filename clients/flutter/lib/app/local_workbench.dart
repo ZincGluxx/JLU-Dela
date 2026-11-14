@@ -1,4 +1,8 @@
 import '../core/academic/academic_calendar_service.dart';
+import '../core/auth/session_controller.dart';
+import '../core/backup/backup_gateway.dart';
+import '../core/backup/notes_backup_controller.dart';
+import '../features/notes/note_backup_adapter.dart';
 import '../core/source/campus_login.dart';
 import '../core/source/source_context.dart';
 import '../core/source/source_portal.dart';
@@ -19,14 +23,17 @@ class WorkbenchData {
     required this.teachingStore,
     required this.chaoxingStore,
     required this.contentStore,
+    this.notesBackup,
   });
 
   final LocalWorkspace workspace;
   final TeachingStore teachingStore;
   final ChaoxingStore chaoxingStore;
   final ContentStore contentStore;
+  final NotesBackupController? notesBackup;
 
   void dispose() {
+    notesBackup?.dispose();
     workspace.dispose();
   }
 }
@@ -40,6 +47,8 @@ WorkbenchData buildWorkbenchData({
   required SourcePageOpener browser,
   DateTime Function() now = DateTime.now,
   AcademicCalendarService? academicCalendar,
+  SessionController? session,
+  BackupRemote? backupRemote,
 }) {
   final source = SourceContext(
     sessions: sessions,
@@ -82,7 +91,20 @@ WorkbenchData buildWorkbenchData({
     source: source,
     academicCalendar: academicCalendar,
   );
+  final notes = NoteBackupAdapter(database, userId);
+  final notesBackup = session != null && backupRemote != null
+      ? NotesBackupController(
+          userId: userId,
+          session: session,
+          remote: backupRemote,
+          drafts: workspace.drafts,
+          listNotes: notes.listAll,
+          exportNotes: notes.exportSelected,
+          importNotes: notes.restore,
+        )
+      : null;
   return WorkbenchData(
+    notesBackup: notesBackup,
     workspace: workspace,
     teachingStore: teachingStore,
     chaoxingStore: chaoxingStore,
