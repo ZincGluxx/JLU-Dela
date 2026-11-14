@@ -288,4 +288,120 @@ void main() {
       expect((await alice.get(mine.id))!.title, '我的');
     });
   });
+
+  group('replay position', () {
+    test('updatePosition refuses a note that has no replay', () async {
+      final store = storeFor('user-a');
+      final note = await store.create(title: '独立笔记');
+
+      await expectLater(
+        store.updatePosition(note.id, revision: 1, positionMs: 12000),
+        throwsA(isA<NoteValidationException>()),
+      );
+
+      // 拒绝之后库内不能留下半成品：位置仍为空、版本没推进，
+      // 之后正常编辑这条笔记也不会被 _validatePosition 卡住。
+      final reloaded = (await store.get(note.id))!;
+      expect(reloaded.positionMs, isNull);
+      expect(reloaded.revision, 1);
+      reloaded.title = '还能改';
+      expect((await store.update(reloaded)).revision, 2);
+    });
+
+    test('updatePosition writes the offset for a replay note', () async {
+      final store = storeFor('user-a');
+      final note = await store.create(
+        title: '边看边记',
+        target: const NoteTarget(replaySource: 'ilearn', replayId: 'replay-1'),
+      );
+
+      final moved = await store.updatePosition(
+        note.id,
+        revision: 1,
+        positionMs: 754000,
+      );
+
+      expect(moved.positionMs, 754000);
+      expect(moved.revision, 2);
+      expect(moved.hasPosition, isTrue);
+    });
+
+    test('updatePosition still rejects a stale revision', () async {
+      final store = storeFor('user-a');
+      final note = await store.create(
+        title: '冲突',
+        target: const NoteTarget(replaySource: 'ilearn', replayId: 'replay-1'),
+      );
+      await store.updatePosition(note.id, revision: 1, positionMs: 1000);
+
+      await expectLater(
+        store.updatePosition(note.id, revision: 1, positionMs: 2000),
+        throwsA(
+          isA<NoteRevisionConflict>().having(
+            (e) => e.current.revision,
+            'revision',
+            2,
+          ),
+        ),
+      );
+    });
+
+    test('a half filled replay identity is refused on create', () async {
+      final store = storeFor('user-a');
+
+      await expectLater(
+        store.create(
+          title: '只有 id',
+          target: const NoteTarget(replayId: '1'),
+        ),
+        throwsA(isA<NoteValidationException>()),
+      );
+      await expectLater(
+        store.create(
+          title: '只有来源',
+          target: const NoteTarget(replaySource: 'ilearn'),
+        ),
+        throwsA(isA<NoteValidationException>()),
+      );
+      expect(await store.count(), 0);
+
+      // 只有 id 的笔记连时间位置也不该被接受。
+      await expectLater(
+        store.create(
+          title: '带位置',
+          target: const NoteTarget(replayId: '1'),
+          positionMs: 500,
+        ),
+        throwsA(isA<NoteValidationException>()),
+      );
+    });
+
+    test('a half filled replay identity is refused on update', () async {
+      final store = storeFor('user-a');
+      final note = await store.create(
+        title: '完整',
+        target: const NoteTarget(replaySource: 'ilearn', replayId: 'replay-1'),
+      );
+
+      final broken = (await store.get(note.id))!..replaySource = null;
+      await expectLater(
+        store.update(broken),
+        throwsA(isA<NoteValidationException>()),
+      );
+
+      final reloaded = (await store.get(note.id))!;
+      expect(reloaded.replaySource, 'ilearn');
+      expect(reloaded.revision, 1);
+      expect(reloaded.hasReplay, isTrue);
+    });
+
+    test('a note with only a replay id reports no replay', () async {
+      const target = NoteTarget(replayId: '1', replayTitle: '孤立回放');
+      expect(target.hasReplay, isFalse);
+      expect(target.hasPartialReplay, isTrue);
+      const complete = NoteTarget(replaySource: 'ilearn', replayId: '1');
+      expect(complete.hasReplay, isTrue);
+      expect(complete.hasPartialReplay, isFalse);
+    });
+  });
 }

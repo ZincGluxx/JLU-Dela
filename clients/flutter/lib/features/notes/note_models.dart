@@ -32,10 +32,22 @@ class NoteTarget {
   /// 回放显示名。与 [replayId] 分开，来源改名不改变归属。
   final String? replayTitle;
 
-  bool get hasReplay => replayId != null && replayId!.isNotEmpty;
+  /// 回放身份是否完整。
+  ///
+  /// 回放靠 [replaySource] + [replayId] 两个字段才能跨来源唯一定位：
+  /// 只有 id 没有来源时，调用方不知道该去哪个来源跳转，等于「保存成功但跳不回去」。
+  /// 所以两个字段都非空才算挂了回放。
+  bool get hasReplay => _isPresent(replaySource) && _isPresent(replayId);
+
+  /// 回放标识只填了一半（有来源没 id，或有 id 没来源）。
+  ///
+  /// 存储层据此在创建与更新边界拒绝，避免落库后无法复用。
+  bool get hasPartialReplay => _isPresent(replaySource) != _isPresent(replayId);
 
   bool get hasCourse => courseOfferingId != null;
 }
+
+bool _isPresent(String? value) => value != null && value.trim().isNotEmpty;
 
 /// 一条笔记。
 class Note {
@@ -90,7 +102,7 @@ class Note {
     replayTitle: replayTitle,
   );
 
-  bool get hasReplay => replayId != null && replayId!.isNotEmpty;
+  bool get hasReplay => target.hasReplay;
 
   /// 是否有可跳回的时间位置。界面据此决定是否显示「回到 12:34」。
   bool get hasPosition => hasReplay && positionMs != null;

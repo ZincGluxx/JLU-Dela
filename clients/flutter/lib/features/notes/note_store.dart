@@ -88,6 +88,7 @@ class NoteStore extends ChangeNotifier {
   }) async {
     final normalizedTitle = _validatedTitle(title);
     _validateBody(body);
+    _validateTarget(target);
     _validatePosition(target, positionMs);
     final timestamp = _now().toUtc();
     final note = Note(
@@ -120,6 +121,7 @@ class NoteStore extends ChangeNotifier {
     }
     final normalizedTitle = _validatedTitle(note.title);
     _validateBody(note.body);
+    _validateTarget(note.target);
     _validatePosition(note.target, note.positionMs);
     final timestamp = _now().toUtc();
     final updated = Note(
@@ -160,6 +162,15 @@ class NoteStore extends ChangeNotifier {
   }) async {
     if (positionMs < 0) {
       throw const NoteValidationException('时间位置不能为负数');
+    }
+    final current = await get(id);
+    if (current == null) {
+      throw NoteNotFoundException(id);
+    }
+    // 位置只有在挂了完整回放标识时才有意义。独立笔记若被写进 position_ms，
+    // 之后正常编辑会被 _validatePosition 拒绝，等于把这条笔记做成了改不动的状态。
+    if (!current.target.hasReplay) {
+      throw const NoteValidationException('没有回放的笔记不能记录时间位置');
     }
     final timestamp = _now().toUtc();
     final changed = await _database.update(
@@ -218,6 +229,16 @@ class NoteStore extends ChangeNotifier {
   void _validateBody(String body) {
     if (body.runes.length > NoteLimits.maxBodyLength) {
       throw const NoteValidationException('正文不能超过 20000 个字符');
+    }
+  }
+
+  /// 回放身份必须成对出现。
+  ///
+  /// 只给 id 不给来源时，界面知道「这条笔记挂了某个回放」，却不知道该去哪个来源
+  /// 跳转；只给来源不给 id 更没法定位。两者缺一都不许落库。
+  void _validateTarget(NoteTarget target) {
+    if (target.hasPartialReplay) {
+      throw const NoteValidationException('回放来源与回放标识必须成对提供');
     }
   }
 
