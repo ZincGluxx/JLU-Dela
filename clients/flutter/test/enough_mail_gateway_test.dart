@@ -58,6 +58,24 @@ String _mixedMessage() {
   ].join('\r\n');
 }
 
+/// 只有一个 PDF 附件的信：整封信就是附件，没有子部件。
+String _singlePartAttachmentMessage() {
+  final name = _encodedWord('报告.pdf');
+  return [
+    'From: teacher@mails.jlu.edu.cn',
+    'To: zhangsan@mails.jlu.edu.cn',
+    'Subject: ${_encodedWord('只有附件')}',
+    'Date: Thu, 5 Jun 2025 09:00:00 +0800',
+    'MIME-Version: 1.0',
+    'Content-Type: application/pdf; name="$name"',
+    'Content-Disposition: attachment; filename="$name"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    _base64('%PDF-1.4 假 PDF'),
+    '',
+  ].join('\r\n');
+}
+
 String _alternativeMessage() {
   return [
     'From: teacher@mails.jlu.edu.cn',
@@ -190,6 +208,24 @@ void main() {
       expect(body.bodyText, contains('本周五停课。'));
       expect(body.bodyHtml, contains('本周五停课。'));
       expect(body.attachments, isEmpty);
+    });
+
+    test('整封信就是一个附件时也要列出来', () {
+      final message = enough.MimeMessage.parseFromText(
+        _singlePartAttachmentMessage(),
+      );
+      // 协议库认为这是带附件的信，只看子部件会漏。
+      expect(message.hasAttachments(), isTrue);
+      expect(message.parts ?? const [], isEmpty);
+
+      final body = bodyFrom(message);
+      expect(body.attachments, hasLength(1));
+      final attachment = body.attachments.single;
+      expect(attachment.filename, '报告.pdf');
+      expect(attachment.part, '1');
+      expect(attachment.bytes, greaterThan(0));
+      expect(body.bodyText, isNull);
+      expect(body.isEmpty, isTrue);
     });
   });
 

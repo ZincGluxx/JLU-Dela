@@ -41,6 +41,11 @@ class EnoughMailGateway implements MailGateway {
   enough.ImapClient? _imap;
   enough.SmtpClient? _smtp;
 
+  /// 上一次成功投递的邮件与其 MIME 实体，供 [appendToSent] 复用同一个
+  /// Message-ID。只在内存里留一份，断线或换账号时随对象一起消失。
+  MailOutgoing? _lastSentOutgoing;
+  enough.MimeMessage? _lastSentMessage;
+
   @override
   Future<void> connect() async {
     if (_imap?.isLoggedIn ?? false) {
@@ -127,7 +132,9 @@ class EnoughMailGateway implements MailGateway {
     try {
       final mailbox = await imap.selectMailboxByPath(folderPath);
       // UID 不连续，按 sinceUid + limit 算上界会漏信：拉到最后一封再自己截断。
-      final result = await imap.fetchMessages(
+      // 必须用 uidFetchMessages：fetchMessages 发的是普通 FETCH，
+      // MessageSequence 的 isUidSequence 只影响渲染、不改命令。
+      final result = await imap.uidFetchMessages(
         enough.MessageSequence.fromRangeToLast(
           sinceUid < 0 ? 1 : sinceUid + 1,
           isUidSequence: true,
@@ -161,7 +168,8 @@ class EnoughMailGateway implements MailGateway {
     final imap = _requireImap();
     try {
       await imap.selectMailboxByPath(folderPath);
-      final result = await imap.fetchMessages(
+      // 按 UID 寻址，不能用 fetchMessages（那是普通 FETCH，按邮件序号取）。
+      final result = await imap.uidFetchMessages(
         enough.MessageSequence.fromId(uid, isUid: true),
         '(UID FLAGS BODY.PEEK[])',
       );
@@ -186,7 +194,7 @@ class EnoughMailGateway implements MailGateway {
       await imap.selectMailboxByPath(folderPath);
       // 整封下载后再按 part 取段：最省心也最可靠，后续可优化成
       // BODY.PEEK[<section>] 只取该段。
-      final result = await imap.fetchMessages(
+      final result = await imap.uidFetchMessages(
         enough.MessageSequence.fromId(uid, isUid: true),
         '(UID FLAGS BODY.PEEK[])',
       );
@@ -194,7 +202,7 @@ class EnoughMailGateway implements MailGateway {
       if (message == null) {
         throw const MailException(MailErrorCodes.protocol, '服务端没有该邮件');
       }
-      final bytes = message.getPart(part)?.decodeContentBinary();
+      final bytes = _attachmentPart(message, part)?.decodeContentBinary();
       if (bytes == null || bytes.isEmpty) {
         throw const MailException(
           MailErrorCodes.attachmentMissing,
@@ -221,6 +229,10 @@ class EnoughMailGateway implements MailGateway {
           response.message ?? '服务器拒绝发信',
         );
       }
+      // 留住实际投递出去的那一份：「已发送」副本必须沿用同一个 Message-ID，
+      // 否则收件人回复时按 In-Reply-To 归并回不到本地这封信。
+      _lastSentOutgoing = message;
+      _lastSentMessage = mimeMessage;
       return MailSendReceipt(
         messageId: mimeMessage.getHeaderValue('message-id'),
       );
@@ -239,8 +251,13 @@ class EnoughMailGateway implements MailGateway {
       return;
     }
     try {
+      // 沿用 send() 已经构建并投递的那份 MIME；重新构建会生成新的
+      // Message-ID，让「已发送」与对方收到的不是同一封信。
+      final mimeMessage = identical(message, _lastSentOutgoing)
+          ? _lastSentMessage
+          : null;
       await imap.appendMessage(
-        _buildMessage(message),
+        mimeMessage ?? _buildMessage(message),
         targetMailboxPath: folderPath,
       );
     } catch (error) {
@@ -448,7 +465,13 @@ MailHeader headerFrom(enough.MimeMessage message) {
 /// 把整封邮件映射成正文与附件清单。
 MailBody bodyFrom(enough.MimeMessage message) {
   final attachments = <MailAttachmentInfo>[];
-  _collectAttachments(message, '', attachments);
+  if (_isRootAttachment(message)) {
+    // 单部分邮件整体就是一个附件（例如只有一个 PDF 的信）：没有子部件，
+    // 只看子部件会当成「没有附件」，本地缓存就会把入口抹掉。
+    attachments.add(_attachmentInfoOf(message, '1'));
+  } else {
+    _collectAttachments(message, '', attachments);
+  }
   return MailBody(
     bodyText: message.decodeTextPlainPart(),
     bodyHtml: message.decodeTextHtmlPart(),
@@ -674,6 +697,38 @@ enough.MimeMessage? _messageWithUid(
     }
   }
   return null;
+}
+
+/// 整封信本身就是一个附件（单部分、带 `Content-Disposition: attachment`）。
+bool _isRootAttachment(enough.MimeMessage message) {
+  final parts = message.parts;
+  if (parts != null && parts.isNotEmpty) {
+    return false;
+  }
+  return message.getHeaderContentDisposition()?.disposition ==
+      enough.ContentDisposition.attachment;
+}
+
+/// 按 IMAP 段号取部件；单部分邮件整体即附件时段号就是 `1`，
+/// 而 `MimeMessage.getPart('1')` 在无子部件时返回 null，需要回落到根节点。
+enough.MimePart? _attachmentPart(enough.MimeMessage message, String fetchId) {
+  final direct = message.getPart(fetchId);
+  if (direct != null) {
+    return direct;
+  }
+  if (fetchId == '1' && _isRootAttachment(message)) {
+    return message;
+  }
+  return null;
+}
+
+MailAttachmentInfo _attachmentInfoOf(enough.MimePart part, String fetchId) {
+  return MailAttachmentInfo(
+    filename: part.decodeFileName() ?? '未命名附件',
+    bytes: part.decodeContentBinary()?.length,
+    part: fetchId,
+    contentId: _contentIdOf(part),
+  );
 }
 
 String? _nonEmpty(String? value) {
