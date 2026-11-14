@@ -78,13 +78,20 @@ backup_load_bundle() {
   declare -A record=()
   while IFS='=' read -r key value; do
     case "$key" in
-      format|backup_id|recorded_at|app_build|schema_version|source_database|source_files|database_sha256|archive_sha256|inventory_sha256) ;;
-      *) backup_die 'invalid backup manifest field' ;;
+    format | backup_id | recorded_at | app_build | schema_version | source_database | source_files | database_sha256 | archive_sha256 | inventory_sha256 | postgres_version_num | pg_dump_version) ;;
+    *) backup_die 'invalid backup manifest field' ;;
     esac
     [ -z "${record[$key]+present}" ] || backup_die 'duplicate backup manifest field'
     record[$key]="$value"
   done < "$bundle/manifest.env"
-  [ "${#record[@]}" -eq 10 ] && [ "${record[format]:-}" = 1 ] || backup_die 'invalid backup manifest'
+  case "${record[format]:-}" in
+  1) [ "${#record[@]}" -eq 10 ] || backup_die 'invalid backup manifest' ;;
+  2)
+    [ "${#record[@]}" -eq 12 ] || backup_die 'invalid backup manifest'
+    [[ "${record[postgres_version_num]:-}" =~ ^[0-9]{6}$ && "${record[pg_dump_version]:-}" =~ ^[0-9]+\.[0-9]+$ ]] || backup_die 'invalid PostgreSQL version information'
+    ;;
+  *) backup_die 'unsupported backup manifest format' ;;
+  esac
   [[ "${record[backup_id]}" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]] || backup_die 'invalid backup identifier'
   [[ "${record[recorded_at]}" =~ ^[0-9TZ:-]+$ ]] || backup_die 'invalid backup timestamp'
   [[ "${record[app_build]}" =~ ^[a-zA-Z0-9._-]{1,128}$ ]] || backup_die 'invalid application build'

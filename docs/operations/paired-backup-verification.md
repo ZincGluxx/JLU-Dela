@@ -2,7 +2,7 @@
 
 ## 范围与恢复点
 
-基线为 `upstream/main=8f4f829d79b83a30097c1e3d895ccac13713e0f7`，PR #37、#38、#39 均已合并。2026-11-14 提交前复查 main 未变化，E 新增待合并的 PR #40、#41；本轮不重复集成其代码。本轮使用独立 `codex/paired-backup-integration` worktree，未改根工作区或 `AGENTS.md`。本地验收完成后，按用户授权提交分支及面向 main 的 PR，不自动合并或部署。
+2026-11-14 复查基线为 `upstream/main=3de0d8f754b451debae1b48f4f80ecd9c0174146`，GitHub API 返回相同 SHA；Git 拉取上游返回 403，不能声称本轮 fetch 成功。PR #42 的配套实现及 #41 已合并，本次在独立 `codex/paired-recovery-verification` worktree 补实际缺口，不重复开发，不改原工作区及 `AGENTS.md`。以下命令为当前流程，末节保留先前演练记录，不充当本次结果。
 
 [`paired-backup.sh`](../../infra/paired-backup.sh) 在维护窗口停止 API，等待停止命令完成后导出 PostgreSQL 并归档对应文件，最后恢复 API。窗口内维护者须禁止其他写入进程、直接 SQL 和迁移；脚本不能保证外部写入者的一致性。原生 stop hook 必须等待请求及进程退出，失败须返回非零，不能只是发送一个异步停止信号。本轮没有新增在线备份、WAL/PITR、调度或同步系统。
 
@@ -11,7 +11,7 @@
 - `database.dump`：现有 `pg_dump --format=custom --no-owner --no-privileges` 逻辑导出，包含账号、文件元信息、业务关联及迁移账本，但不含附件字节。
 - `files.tar`：`FILE_STORAGE_DIR` 或 API 文件挂载中的全部 UUID 文件，包含可能尚无业务记录的内容，不自动 GC。
 - `files.sha256`：逐文件 SHA-256。
-- `manifest.env`：同一备份 ID、UTC 时间、应用 commit/build、schema、源数据库名与文件位置、上述三份文件的 SHA-256。不执行或 `source` 清单内容；缺项、重复项、校验不符即拒绝。
+- `manifest.env`：同一备份 ID、UTC 时间、应用 commit/build、schema、源数据库名与文件位置、上述三份文件的 SHA-256。新格式 `2` 另记录 PostgreSQL `server_version_num` 和 `pg_dump` 版本；仍支持旧格式 `1`，旧清单没有版本记录。不执行或 `source` 清单内容；缺项、重复项、校验不符即拒绝。
 
 清单只在导出、文件检查及 API 启动命令成功后发布；失败目录没有成功清单，不可用于恢复。退出及 INT/TERM 后尝试恢复 API；若恢复命令失败，明确输出 `API RESTART FAILED`，维护者须手工启动并检查 `/health/ready`。SIGKILL、主机断电不能执行退出处理，须按相同方式人工恢复。启动命令成功不代表健康检查成功。
 
@@ -35,13 +35,13 @@ bash infra/paired-restore.sh /isolated/backups/new-bundle synthetic_restored \
   /isolated/restored-files --app-build <同一commit或build> --native
 ```
 
-恢复先检查清单、三份校验和、归档条目、数据库及目录目标，再恢复新库和新目录；核对逐文件内容、schema 和数据库中非删除文件的大小。只接受 UUID 普通文件，不解包链接或越界路径。失败留下的新目标供排查，不自动删除，不得接流量或当作成功恢复复用；重新演练另取新名字。
+恢复先检查清单、三份校验和、归档条目、数据库及目录目标，并在目标父目录下新建私有临时目录解包，核对归档与逐文件清单；不匹配时不创建恢复库或目标目录，退出清理临时目录。预检需要额外一份文件快照的磁盘空间。随后恢复新库和新目录，再核对逐文件内容、schema 和数据库中非删除文件的大小。只接受 UUID 普通文件，不解包链接或越界路径。恢复阶段失败留下的新目标供排查，不自动删除，不得接流量或当作成功恢复复用；重新演练另取新名字。校验和用于识别缺失、损坏和错配，不是备份来源的密码学认证；只恢复受控可信备份。
 
 最后用匹配版本的 API 配置新数据库及 `FILE_STORAGE_DIR`，仅监听隔离 loopback 端口，启动后检查 `/health/ready`、`/api/v1/meta`、账号、私人及业务文件权限。不启动原服务来冒充恢复后的服务。脚本不自动部署或切换业务流量。
 
 ### Compose（本轮仅静态检查）
 
-备份使用当前 stack 的 API 挂载，停止 API 后通过只读 `--volumes-from` helper 取文件，不复制运行中的 PostgreSQL 数据目录：
+备份在停止 API 前检查运行中 API 的 build 与纯数据库名，后者必须匹配 PostgreSQL helper 的实际默认库；不匹配则拒绝，不输出连接 URL。停止后通过只读 `--volumes-from` helper 取文件，不复制运行中的 PostgreSQL 数据目录：
 
 ```sh
 bash infra/paired-backup.sh /isolated/backups/new-bundle \
@@ -69,9 +69,22 @@ docker compose --env-file /isolated/recovery.env -f infra/compose.yaml \
   -f infra/compose.restore.yaml up -d --no-build api caddy
 ```
 
+恢复栈再次备份前，须把其受控 env 的 `POSTGRES_DB` 改为实际恢复库，并在维护窗口内重建该隔离栈的 PostgreSQL 容器，使容器环境生效；保留 `pgdata`，不删除卷或数据库，仅修改 env 文件不足以生效。API、迁移、PostgreSQL helper 必须指向同一库，仍使用恢复覆盖文件挂载新文件目录。不要在源栈执行这些恢复栈操作。
+
 [`compose.restore.yaml`](../../infra/compose.restore.yaml) 将 API 与迁移指向新库，API bind mount 新文件目录，不触碰原 `filesdata`。恢复完成时 helper 配置 `10001:10001` 与 `700/600`，失败即退出。仍须在有 daemon 的环境检查非 root 写入及同 ID 内容可读：正常栈重建 API 保留原命名卷，恢复栈重建 API 保留新的 bind 目录和挂载。静态配置不证明这些行为。
 
-## 本轮实测（2026-11-13，Asia/Shanghai）
+## 本次复验（2026-11-14，Asia/Shanghai）
+
+- Windows x64 / Git Bash 5.3.15 / PostgreSQL 16.15；重新检查 Docker 29.9.3 与 Compose 5.7.1，`docker version` 因 `docker_engine` 管道不存在而失败。没有容器非 root 写卷或重建验收，未运行生产操作。
+- 从空目录初始化 `C:/Users/ZincG/JLU-Dela-recovery-verify-pg`（`127.0.0.1:55437`）及脚本回归集群 `C:/Users/ZincG/JLU-Dela-recovery-regression-pg`（`127.0.0.1:55438`），仅合成账号 `recovery_test`，不连接旧数据库。
+- 修复前复现：使 `files.sha256` 与归档内容不一致并更新其外层摘要，旧脚本恢复了 `paired_preflight_repro` 及目标目录后才拒绝；本次新增预检后，相同回归在建库/建目标前拒绝，临时目录已清理。
+- `bash infra/test-paired-backup.sh` 在新回归集群通过：成功、停止/备份/启动失败、缺件、损坏 dump/归档、逐文件清单错配、错误 build、已存在或重叠目标，以及旧格式兼容。保留材料：Git Bash `/tmp/tmp.vf6XofJ6Yu`。
+- `bash infra/test-backup-compose.sh` 的 6 项纯桩测试通过：数据库错配或非法库名在维护前拒绝，匹配库可到达下一预检，无连接 URL/合成密码输出。它不是实际容器验收。
+- 显式执行现有 `cargo test --locked --features integration --test paired_restore -- --ignored --nocapture`，1 项通过；恢复库 `paired_restore_ac25790ab0264df09684b945db1bb4b8`，合成材料 `C:/Users/ZincG/AppData/Local/Temp/.tmp8pYMH8`。覆盖三账号、私人及两类业务关联、元信息和全部字节一致、同院/异院边界、恢复后密码登录，以及源库/源文件不变。测试专用业务夹具不是生产业务接口。
+- 本次相关文件/迁移/报告测试为 9 项通过，1 项真实报告外网测试忽略；未调用真实短信、报告或私人数据。没有修改 Rust、Flutter 或契约代码，未执行 Flutter/契约全量检查。
+- 当前已执行全部 shell `bash -n`、改动脚本 shfmt 3.12.0 格式化及 Compose 预检桩测试；HTTP 二进制演练及最终文档/配置检查继续进行，结果完成后补记。
+
+## 历史实测（2026-11-13，Asia/Shanghai）
 
 Windows x64、Git Bash 5.3.15、PostgreSQL 16.15；新集群为 `C:/Users/ZincG/JLU-Dela-paired-backup-pg`，只监听 `127.0.0.1:55435`，合成账号 `paired_test`，不连接已有业务库。Docker CLI / Compose v5.7.1 可用，`docker version` 连接 `docker_engine` 管道失败，daemon 不可用；没有执行容器重建、非 root 卷写入或部署。
 
