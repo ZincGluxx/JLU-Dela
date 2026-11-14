@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:enough_mail/enough_mail.dart' as enough;
@@ -187,7 +188,7 @@ class EnoughMailGateway implements MailGateway {
       // BODY.PEEK[<section>] 只取该段。
       final result = await imap.fetchMessages(
         enough.MessageSequence.fromId(uid, isUid: true),
-        '(BODY.PEEK[])',
+        '(UID FLAGS BODY.PEEK[])',
       );
       final message = _messageWithUid(result.messages, uid);
       if (message == null) {
@@ -358,12 +359,6 @@ class EnoughMailGateway implements MailGateway {
         final part = builder.addBinary(
           attachment.bytes,
           _mediaTypeOf(attachment.contentType),
-          disposition: enough.ContentDispositionHeader.from(
-            attachment.inline
-                ? enough.ContentDisposition.inline
-                : enough.ContentDisposition.attachment,
-            filename: attachment.filename,
-          ),
         );
         final contentId = attachment.contentId;
         if (contentId != null && contentId.isNotEmpty) {
@@ -371,7 +366,40 @@ class EnoughMailGateway implements MailGateway {
         }
       }
     }
-    return builder.buildMimeMessage();
+    final built = builder.buildMimeMessage();
+    _rewriteAttachmentDisposition(built, message.attachments);
+    return built;
+  }
+
+  /// 重新写附件的 `Content-Disposition`。
+  /// [enough.MessageBuilder.buildMimeMessage] **之后**做：构建阶段会按
+  /// `addBinary` 里的 disposition 字段重渲染一遍头部，提前 setHeader 会被覆盖。
+  /// 协议库的 `renderField` 把参数值原样塞进引号，中文名会以裸 UTF-8 字节写进
+  /// 头部，收件端按 Latin-1 解析就成了乱码，所以这里自己写、非 ASCII 走 RFC 2231。
+  void _rewriteAttachmentDisposition(
+    enough.MimeMessage message,
+    List<MailOutgoingAttachment> attachments,
+  ) {
+    if (attachments.isEmpty) {
+      return;
+    }
+    final parts = message.allPartsFlat
+        .where((part) => part.getHeaderContentDisposition() != null)
+        .toList();
+    for (
+      var index = 0;
+      index < parts.length && index < attachments.length;
+      index++
+    ) {
+      final attachment = attachments[index];
+      parts[index].setHeader(
+        'Content-Disposition',
+        _contentDispositionValue(
+          attachment.filename,
+          inline: attachment.inline,
+        ),
+      );
+    }
   }
 }
 
@@ -578,6 +606,62 @@ enough.MediaType _mediaTypeOf(String contentType) {
   return text.isEmpty
       ? enough.MediaSubtype.applicationOctetStream.mediaType
       : enough.MediaType.fromText(text);
+}
+
+/// 拼 `Content-Disposition` 的值。
+///
+/// 纯 ASCII 文件名用普通的引号形式；含非 ASCII 字符时按 RFC 2231 写成
+/// `filename*=utf-8''%E6%8E%A2...`，否则收件端会按 Latin-1 解出乱码。
+String _contentDispositionValue(String filename, {required bool inline}) {
+  final kind = inline ? 'inline' : 'attachment';
+  final name = filename.trim();
+  if (name.isEmpty) {
+    return kind;
+  }
+  if (_isPlainHeaderAscii(name)) {
+    final escaped = name.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+    return '$kind; filename="$escaped"';
+  }
+  return "$kind; filename*=utf-8''${_percentEncodeAscii(name)}";
+}
+
+bool _isPlainHeaderAscii(String value) {
+  for (final unit in value.codeUnits) {
+    if (unit < 0x20 || unit > 0x7e) {
+      return false;
+    }
+  }
+  return true;
+}
+
+String _percentEncodeAscii(String value) {
+  final buffer = StringBuffer();
+  for (final byte in utf8.encode(value)) {
+    final isUnreserved =
+        (byte >= 0x30 && byte <= 0x39) ||
+        (byte >= 0x41 && byte <= 0x5a) ||
+        (byte >= 0x61 && byte <= 0x7a) ||
+        byte == 0x21 ||
+        byte == 0x23 ||
+        byte == 0x24 ||
+        byte == 0x26 ||
+        byte == 0x2b ||
+        byte == 0x2d ||
+        byte == 0x2e ||
+        byte == 0x5e ||
+        byte == 0x5f ||
+        byte == 0x60 ||
+        byte == 0x7c ||
+        byte == 0x7e;
+    if (isUnreserved) {
+      buffer.writeCharCode(byte);
+    } else {
+      buffer
+        ..write('%')
+        ..write(byte.toRadixString(16).toUpperCase().padLeft(2, '0'));
+    }
+  }
+  return buffer.toString();
 }
 
 enough.MimeMessage? _messageWithUid(
