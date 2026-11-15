@@ -381,7 +381,10 @@ class ChaoxingStore implements AssignmentQuery, ChaoxingAccess {
         ? AssignmentDueKind.unknown
         : assignmentDueKind(work);
     final dueDate = kind == AssignmentDueKind.dateOnly ? deadline?.date : null;
-    final timingText = (work.detailTiming ?? work.timing).trim();
+    final timingText =
+        kind == AssignmentDueKind.relative && work.timing.trim().isNotEmpty
+        ? work.timing.trim()
+        : (work.detailTiming ?? work.timing).trim();
     return [
       _assignmentId(offering, work),
       userId,

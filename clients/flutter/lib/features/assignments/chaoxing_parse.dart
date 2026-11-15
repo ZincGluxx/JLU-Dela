@@ -154,15 +154,6 @@ final RegExp _partialDeadline = RegExp(
   r'^(\d{1,2})[-/.月](\d{1,2})日?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$',
 );
 
-final RegExp _serverCurrentTime = RegExp(
-  r'''window\s*\[\s*["']currentTime["']\s*\]\s*=\s*["'](\d{13})["']''',
-);
-
-final RegExp _remainingCountdown = RegExp(
-  r'^(?:剩余\s*(\d+)\s*小时\s*(\d+)\s*分钟|(\d+)\s*hours?\s*(\d+)\s*minutes?\s+left)$',
-  caseSensitive: false,
-);
-
 const Set<String> _excludedClassNames = {
   'mark_table',
   'ans-cc',
@@ -173,18 +164,8 @@ const Set<String> _excludedClassNames = {
 /// 解析作业详情页的截止时间行；读不到可识别的时间时返回 null。
 ///
 /// 只输出「截止时间：…」原文，缺少年份时标记「年份待确认」，不推算日期。
-String? parseWorkDetailTiming(
-  String html, {
-  String listTiming = '',
-  Duration elapsed = Duration.zero,
-}) {
+String? parseWorkDetailTiming(String html) {
   final document = HtmlParser.parse(html);
-  final scriptText = document
-      .querySelectorAll('script')
-      .map((node) => node.text)
-      .join('\n');
-  final serverTime = _serverCurrentTime.firstMatch(scriptText);
-  final countdown = _remainingCountdown.firstMatch(_clean(listTiming));
   final candidates = document.querySelectorAll(
     '.infoHead p, .infoHead span, p, li, label, dd, dt, td, th, span, div',
   );
@@ -216,16 +197,6 @@ String? parseWorkDetailTiming(
           ? null
           : int.parse(partial.group(5)!);
       if (!_isPartialDateValid(month, day, hour, minute, second)) continue;
-      final year = _confirmYear(
-        serverTime: serverTime,
-        countdown: countdown,
-        month: month,
-        day: day,
-        hour: hour,
-        minute: minute,
-        second: second,
-        elapsed: elapsed,
-      );
       final monthText = month.toString().padLeft(2, '0');
       final dayText = day.toString().padLeft(2, '0');
       final hourText = hour.toString().padLeft(2, '0');
@@ -233,10 +204,7 @@ String? parseWorkDetailTiming(
       final secondText = second == null
           ? ''
           : ':${second.toString().padLeft(2, '0')}';
-      resolved =
-          '${year == null ? '' : '$year-'}$monthText-$dayText '
-          '$hourText:$minuteText$secondText'
-          '${year == null ? '（年份待确认）' : ''}';
+      resolved = '$monthText-$dayText $hourText:$minuteText$secondText（年份待确认）';
     } else if (_yearPrefix.hasMatch(deadline)) {
       resolved = deadline;
     } else {
@@ -264,42 +232,6 @@ bool _isPartialDateValid(
       value.hour == hour &&
       value.minute == minute &&
       value.second == normalizedSecond;
-}
-
-int? _confirmYear({
-  required RegExpMatch? serverTime,
-  required RegExpMatch? countdown,
-  required int month,
-  required int day,
-  required int hour,
-  required int minute,
-  required int? second,
-  required Duration elapsed,
-}) {
-  if (serverTime == null || countdown == null) return null;
-  final minutes =
-      int.parse(countdown.group(1) ?? countdown.group(3)!) * 60 +
-      int.parse(countdown.group(2) ?? countdown.group(4)!);
-  final expected =
-      int.parse(serverTime.group(1)!) +
-      minutes * Duration.millisecondsPerMinute;
-  final candidateYear = DateTime.fromMillisecondsSinceEpoch(
-    expected,
-    isUtc: true,
-  ).add(const Duration(hours: 8)).year;
-  final candidate = DateTime.tryParse(
-    '$candidateYear-${month.toString().padLeft(2, '0')}-'
-    '${day.toString().padLeft(2, '0')}T'
-    '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}:'
-    '${second == null ? '00' : second.toString().padLeft(2, '0')}+08:00',
-  );
-  if (candidate == null) return null;
-  final difference = (candidate.toUtc().millisecondsSinceEpoch - expected)
-      .abs();
-  return difference <=
-          Duration.millisecondsPerMinute * 2 + elapsed.inMilliseconds
-      ? candidateYear
-      : null;
 }
 
 bool _isInvisible(HtmlNode node) {

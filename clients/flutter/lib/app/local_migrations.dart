@@ -13,4 +13,5 @@ const List<LocalMigration> appLocalMigrations = [
   ...contentMigrations,
   ...mailMigrations,
   ...noteMigrations,
+  ...platformCourseBindingMigrations,
 ];

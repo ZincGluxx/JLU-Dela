@@ -25,6 +25,42 @@ String _courseUrl(String courseId) {
 
 void main() {
   test(
+    'partial detail dates retain relative text and observation time without inferring a year',
+    () async {
+      final observedAt = DateTime.utc(2026, 11, 7, 10);
+      final harness = await ChaoxingHarness.create(now: () => observedAt);
+      harness.http
+        ..on(baseUrl, entryPage())
+        ..on(entryUrl, coursesPage())
+        ..on(_courseUrl('100'), courseLandingPage())
+        ..on(
+          worksFrameUrl,
+          worksPage(
+            works: const [
+              (
+                id: 'relative',
+                title: '相对截止',
+                status: '未交',
+                timing: '剩余2小时0分钟',
+                fullDate: null,
+              ),
+            ],
+          ),
+        )
+        ..on(
+          'https://mooc1.chaoxing.com/mooc2/work/task?workId=relative&enc=fixture',
+          '<script>window["currentTime"] = "${observedAt.millisecondsSinceEpoch}";</script><p>截止时间：11-07 20:00</p>',
+        );
+      expect((await harness.store.refreshAll()).isSuccess, isTrue);
+      final assignment = (await harness.store.list()).single;
+      expect(assignment.dueKind, AssignmentDueKind.relative);
+      expect(assignment.dueAtUtc, isNull);
+      expect(assignment.dueDate, isNull);
+      expect(assignment.timingText, '剩余2小时0分钟');
+      expect(assignment.observedAtUtc, observedAt);
+    },
+  );
+  test(
     'refresh persists courses and works, keeps marks, and retains cache on failure',
     () async {
       final harness = await ChaoxingHarness.create(

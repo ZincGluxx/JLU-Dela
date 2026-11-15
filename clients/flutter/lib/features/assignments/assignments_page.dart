@@ -7,12 +7,14 @@ import '../../app/theme.dart';
 import '../../core/models/assignment.dart';
 import '../../core/models/course.dart';
 import '../../core/models/source.dart';
+import '../../core/models/school_time.dart';
 import '../../core/source/source.dart';
 import '../../core/storage/local_workspace.dart';
 import 'assignment_deadline.dart';
 import 'assignment_grouping.dart';
 import 'assignment_status.dart';
 import 'chaoxing_store.dart';
+import 'course_binding_store.dart';
 
 enum _BoardFilter { pending, all, done, ignored }
 
@@ -34,8 +36,33 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   final TextEditingController _query = TextEditingController();
   final TextEditingController _remark = TextEditingController();
   List<CourseOffering> _courses = const [];
+  List<CourseOffering> _teachingCourses = const [];
+  List<PlatformCourseBinding> _bindings = const [];
   List<Assignment> _assignments = const [];
+
+  CourseBindingStore get _bindingStore => CourseBindingStore(
+    widget.workspace.database,
+    widget.workspace.userId,
+    widget.workspace.courses,
+    now: widget.workspace.now,
+  );
+
+  String _bindingLabel(CourseOffering platform) {
+    for (final binding in _bindings) {
+      if (!binding.matchesPlatform(platform)) continue;
+      for (final course in _teachingCourses) {
+        if (binding.matchesTeaching(course)) {
+          return '教务：${course.name} · ${course.sourceRef.sourceScope}';
+        }
+      }
+      return '绑定的教务课程不在当前缓存 · ${binding.teachingCourse.sourceScope} · ${binding.teachingCourse.sourceId}';
+    }
+    return '未绑定教务课程';
+  }
+
   SourceSnapshot? _coursesSnapshot;
+  Map<String, SourceSnapshot> _assignmentSnapshots = const {};
+  bool _accessNeedsReconnect = false;
   ChaoxingRefreshReport? _report;
   _BoardFilter _filter = _BoardFilter.pending;
   String _courseId = '';
@@ -65,8 +92,17 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   }
 
   bool get _connected =>
-      widget.workspace.sessions.hasSession(SourceKind.chaoxing) ||
-      widget.store.hasSourceSession;
+      !_accessNeedsReconnect &&
+      !_courses
+          .where((course) => course.retained)
+          .any(
+            (course) =>
+                _assignmentSnapshots[course.id]?.lastErrorCode ==
+                SourceErrorCodes.sourceAuthRequired,
+          ) &&
+      _coursesSnapshot?.lastErrorCode != SourceErrorCodes.sourceAuthRequired &&
+      (widget.workspace.sessions.hasSession(SourceKind.chaoxing) ||
+          widget.store.hasSourceSession);
 
   String _courseName(String? courseOfferingId) {
     for (final course in _courses) {
@@ -93,10 +129,26 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
       final courses = await widget.store.listCourses();
       final assignments = await widget.store.list();
       final snapshot = await widget.store.coursesSnapshot();
+      final teachingCourses = await widget.workspace.courses.list(
+        source: SourceKind.jluIedu,
+      );
+      final bindings = await _bindingStore.list();
+      final assignmentSnapshots = <String, SourceSnapshot>{};
+      for (final course in courses) {
+        assignmentSnapshots[course.id] = await widget.store.courseSnapshot(
+          course.id,
+        );
+      }
       if (!mounted) return;
       setState(() {
         _courses = courses;
+        _teachingCourses = teachingCourses;
+        _bindings = bindings;
+        _assignmentSnapshots = assignmentSnapshots;
         _assignments = assignments;
+        if (_courseId.isNotEmpty && !courses.any((c) => c.id == _courseId)) {
+          _courseId = '';
+        }
         _coursesSnapshot = snapshot;
         _loading = false;
         _error = null;
@@ -122,6 +174,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
       if (!mounted) return;
       setState(() {
         _report = report;
+        _accessNeedsReconnect = report.requiresLogin;
         if (report.requiresLogin) {
           _notice = '学习通登录已失效，请重新登录学习通后刷新。';
         } else if (report.isSuccess) {
@@ -240,6 +293,81 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
     }
   }
 
+  Future<void> _editBinding(CourseOffering platform) async {
+    final candidates = (await widget.workspace.courses.list(
+      source: SourceKind.jluIedu,
+    )).where((course) => course.semesterId?.isNotEmpty ?? false).toList();
+    if (!mounted) return;
+    candidates.sort((a, b) {
+      final semester = b.sourceRef.sourceScope.compareTo(
+        a.sourceRef.sourceScope,
+      );
+      if (semester != 0) return semester;
+      final name = a.name.compareTo(b.name);
+      return name != 0
+          ? name
+          : a.sourceRef.sourceId.compareTo(b.sourceRef.sourceId);
+    });
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('绑定教务课程'),
+        content: SizedBox(
+          width: 420,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              Text(platform.name),
+              Text(_bindingLabel(platform)),
+              const SizedBox(height: AppSpacing.md),
+              if (candidates.isEmpty) const Text('还没有带学期的教务课程，请先在课表中获取对应学期。'),
+              for (final course in candidates)
+                ListTile(
+                  key: Key('binding-target-${course.id}'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(course.name),
+                  subtitle: Text(
+                    [
+                      course.sourceRef.sourceScope,
+                      if (course.teacher != null) course.teacher!,
+                      '课程 ID：${course.sourceRef.sourceId}',
+                    ].join(' · '),
+                  ),
+                  onTap: () => Navigator.of(context).pop(course.id),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          if (_bindings.any((binding) => binding.matchesPlatform(platform)))
+            TextButton(
+              key: const Key('course-unbind'),
+              onPressed: () => Navigator.of(context).pop(''),
+              child: const Text('解除绑定'),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || selected == null) return;
+    try {
+      if (selected.isEmpty) {
+        await _bindingStore.unbind(platform.sourceRef);
+      } else {
+        await _bindingStore.bind(
+          platformCourseId: platform.id,
+          teachingCourseId: selected,
+        );
+      }
+      await _load();
+    } on Object catch (error) {
+      if (mounted) _showMessage('保存课程绑定失败：$error');
+    }
+  }
+
   Future<void> _mark(Assignment assignment, {bool? read, bool? muted}) async {
     try {
       await widget.store.setMarks(assignment.id, read: read, muted: muted);
@@ -272,7 +400,12 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
         await _showSourceUri(sourceUri, message);
         return;
       }
-      setState(() => _error = '无法打开原网页：$message');
+      setState(() {
+        _error = '无法打开原网页：$message';
+        if (failure?.code == SourceErrorCodes.sourceAuthRequired) {
+          _accessNeedsReconnect = true;
+        }
+      });
     }
   }
 
@@ -287,6 +420,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(note),
+            const Text('此入口可能临时有效，需要学习通会话；请在原平台自行作答和提交。'),
             const SizedBox(height: AppSpacing.md),
             SelectableText(
               uri.toString(),
@@ -448,7 +582,14 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                 _AssignmentTile(
                   assignment: assignment,
                   courseName: _courseName(assignment.courseOfferingId),
+                  bindingLabel: _courses
+                      .where(
+                        (course) => course.id == assignment.courseOfferingId,
+                      )
+                      .map(_bindingLabel)
+                      .firstOrNull,
                   statusLabel: _statusLabel(assignment),
+                  snapshot: _assignmentSnapshots[assignment.courseOfferingId],
                   timeText: assignmentTimeText(assignment, _now),
                   overdue: workSection(assignment, _now) == WorkSection.overdue,
                   canOpen: _connected,
@@ -498,46 +639,72 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   Future<void> _showCourses() async {
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('学习通课程'),
-        content: SizedBox(
-          width: 420,
-          child: _courses.isEmpty
-              ? const Text('还没有课程缓存，请先连接学习通并刷新。')
-              : ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final course in _courses)
-                      ListTile(
-                        key: Key('course-row-${course.id}'),
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          (course.remark?.isNotEmpty ?? false)
-                              ? course.remark!
-                              : course.name,
+      builder: (context) => StatefulBuilder(
+        builder: (context, updateDialog) => AlertDialog(
+          title: const Text('学习通课程'),
+          content: SizedBox(
+            width: 420,
+            child: _courses.isEmpty
+                ? const Text('还没有课程缓存，请先连接学习通并刷新。')
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final course in _courses)
+                        Column(
+                          key: Key('course-row-${course.id}'),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(course.remark ?? course.name),
+                              subtitle: Text(
+                                [
+                                  course.name,
+                                  if (course.teacher != null) course.teacher!,
+                                  '来源 ID：${course.sourceRef.sourceId}',
+                                ].join(' · '),
+                              ),
+                              leading: Switch(
+                                key: Key('course-retained-${course.id}'),
+                                value: course.retained,
+                                onChanged: (value) async {
+                                  await _setRetained(course, value);
+                                  if (context.mounted) updateDialog(() {});
+                                },
+                              ),
+                              trailing: IconButton(
+                                key: Key('course-remark-${course.id}'),
+                                tooltip: '编辑备注名',
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: () async {
+                                  await _editRemark(course);
+                                  if (context.mounted) updateDialog(() {});
+                                },
+                              ),
+                            ),
+                            Text(_bindingLabel(course)),
+                            TextButton.icon(
+                              key: Key('course-binding-${course.id}'),
+                              onPressed: () async {
+                                await _editBinding(course);
+                                if (context.mounted) updateDialog(() {});
+                              },
+                              icon: const Icon(Icons.link_outlined),
+                              label: const Text('绑定教务课程'),
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                          ],
                         ),
-                        subtitle: Text(course.name),
-                        leading: Switch(
-                          key: Key('course-retained-${course.id}'),
-                          value: course.retained,
-                          onChanged: (value) => _setRetained(course, value),
-                        ),
-                        trailing: IconButton(
-                          key: Key('course-remark-${course.id}'),
-                          tooltip: '编辑备注名',
-                          icon: const Icon(Icons.edit_outlined),
-                          onPressed: () => _editRemark(course),
-                        ),
-                      ),
-                  ],
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('完成'),
+                    ],
+                  ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -591,7 +758,7 @@ class _SourceBar extends StatelessWidget {
     final lines = <String>[
       connected ? '学习通已连接（本次运行）' : '学习通未连接：请手动登录学习通来源',
       if (lastSuccess != null)
-        '上次成功：${lastSuccess.toLocal().toString().substring(0, 16)}',
+        '课程上次成功：${schoolDateOf(lastSuccess)} ${formatSchoolClock(lastSuccess)}（北京时间）',
       if (lastError != null) '上次失败：${snapshot!.lastErrorMessage ?? lastError}',
     ];
     return Container(
@@ -857,7 +1024,9 @@ class _AssignmentTile extends StatelessWidget {
   const _AssignmentTile({
     required this.assignment,
     required this.courseName,
+    required this.bindingLabel,
     required this.statusLabel,
+    required this.snapshot,
     required this.timeText,
     required this.overdue,
     required this.canOpen,
@@ -868,7 +1037,9 @@ class _AssignmentTile extends StatelessWidget {
 
   final Assignment assignment;
   final String courseName;
+  final String? bindingLabel;
   final String statusLabel;
+  final SourceSnapshot? snapshot;
   final String timeText;
   final bool overdue;
   final bool canOpen;
@@ -908,7 +1079,7 @@ class _AssignmentTile extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                statusLabel,
+                '平台：$statusLabel',
                 style: const TextStyle(color: AppTheme.muted, fontSize: 13),
               ),
             ],
@@ -936,6 +1107,17 @@ class _AssignmentTile extends StatelessWidget {
               if (assignment.mutedAtUtc != null) const _ChipLabel(label: '已忽略'),
             ],
           ),
+          if (bindingLabel != null)
+            Text(bindingLabel!, style: const TextStyle(color: AppTheme.muted)),
+          Text(
+            '来源获取：${schoolDateOf(assignment.observedAtUtc)} ${formatSchoolClock(assignment.observedAtUtc)}（北京时间）',
+            style: const TextStyle(color: AppTheme.muted),
+          ),
+          if (snapshot?.lastErrorCode != null)
+            Text(
+              '本次刷新失败，保留上次数据：${snapshot!.lastErrorMessage ?? snapshot!.lastErrorCode}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           const SizedBox(height: AppSpacing.sm),
           Wrap(
             spacing: AppSpacing.xs,
