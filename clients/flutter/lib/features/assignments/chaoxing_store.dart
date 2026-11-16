@@ -381,7 +381,11 @@ class ChaoxingStore implements AssignmentQuery, ChaoxingAccess {
         ? AssignmentDueKind.unknown
         : assignmentDueKind(work);
     final dueDate = kind == AssignmentDueKind.dateOnly ? deadline?.date : null;
-    final timingText = (work.detailTiming ?? work.timing).trim();
+    final usesListTiming =
+        kind == AssignmentDueKind.relative && work.timing.trim().isNotEmpty;
+    final timingText = usesListTiming
+        ? work.timing.trim()
+        : (work.detailTiming ?? work.timing).trim();
     return [
       _assignmentId(offering, work),
       userId,
@@ -397,7 +401,9 @@ class ChaoxingStore implements AssignmentQuery, ChaoxingAccess {
       dueAt,
       timingText.isEmpty ? null : timingText,
       work.observedAt?.toUtc().millisecondsSinceEpoch ?? updatedAt,
-      work.detailSyncedAt?.toUtc().millisecondsSinceEpoch,
+      usesListTiming
+          ? null
+          : work.detailSyncedAt?.toUtc().millisecondsSinceEpoch,
       updatedAt,
       updatedAt,
     ];
@@ -425,10 +431,14 @@ class ChaoxingStore implements AssignmentQuery, ChaoxingAccess {
           status:
               (row['source_status_text'] as String?) ??
               row['source_status'] as String,
-          detailTiming: row['detail_observed_at_utc'] == null
+          detailTiming:
+              row['due_kind'] == 'relative' ||
+                  row['detail_observed_at_utc'] == null
               ? null
               : row['timing_text'] as String?,
-          detailSyncedAt: row['detail_observed_at_utc'] == null
+          detailSyncedAt:
+              row['due_kind'] == 'relative' ||
+                  row['detail_observed_at_utc'] == null
               ? null
               : DateTime.fromMillisecondsSinceEpoch(
                   row['detail_observed_at_utc'] as int,

@@ -12,7 +12,7 @@
 ## 版本与迁移
 
 - 每项迁移在单个事务内执行，已应用版本写入迁移账本，最高版本记在 `PRAGMA user_version`；该项失败回滚，不删库重来。
-- 版本段：1 CORE；2–9 教务（已用 2–6）；10–19 学习通（已用 10）；20–29 内容缓存（已用 20–23）；30–39 由 E 协调邮箱、笔记与摘要。邮箱已用 [30、31](../clients/flutter/lib/features/mail/mail_migrations.dart)，并进入[聚合入口](../clients/flutter/lib/app/local_migrations.dart)，笔记已用 `32`，当前 SQLite 版本为 `32`，与服务端 schema `10` 分开管理。
+- 历史版本段：1 CORE；2–9 教务（已用 2–6）；10–19 学习通（已用 10）；20–29 内容缓存（已用 20–23）；邮箱已用 [30、31](../clients/flutter/lib/features/mail/mail_migrations.dart)，笔记已用 `32`。本分支新增 C 的[课程绑定迁移 33](../clients/flutter/lib/features/assignments/assignments_migrations.dart)，经[聚合入口](../clients/flutter/lib/app/local_migrations.dart)推进 SQLite 至 `33`，与服务端 schema `10` 分开管理。后续迁移核对实际全局顺序后递增，不向旧编号段补号。
 - [E 的笔记 PR #40](https://github.com/goya4140/JLU-Dela/pull/40) 及[邮箱凭据键 PR #41](https://github.com/goya4140/JLU-Dela/pull/41) 已合并。后续笔记或摘要迁移按实际账本协调，不预建空迁移。笔记导出/导入适配保留在 E 的目录，由 E 维护字段含义；A 维护公共授权、状态及同步流程。各模块维护自己的 `*_migrations.dart`，不改写已发布迁移。
 - 数据库版本高于应用支持版本时拒绝打开并提示升级；不降级、不删库。
 
@@ -31,6 +31,7 @@
 - 待办支持无截止、仅日期、精确时刻三态，颜色与日历开关为个人属性；写入以 `revision` 做乐观并发，冲突时返回当前行。三态不一致、跨用户更新在存储层直接拒绝。
 - 待办排序按绝对时刻归一：精确时刻用自己的 UTC 时间，仅日期取 Asia/Shanghai 当天 00:00，无日期排最后；同一时刻按标题与 id 稳定排序，不按截止类型分组。
 - 课程身份由 `(user_id, source, source_scope, source_id)` 唯一确定，绝不同名合并；来源快照完整时在同一事务内 upsert 并删除该 scope 下未出现的课程，部分读取不得标记为完整。课程备注由存储层统一 trim 并限制 1–100 字符。
+- C 的[平台课程绑定](../clients/flutter/lib/features/assignments/course_binding_store.dart)复用现有课程查找入口，按账号保存学习通来源范围/课程 ID、教务课程引用、来源范围/课程 ID、学期和创建/更新时间；一个平台课程当前绑定一门教务课程，可显式改绑/解除。课程快照删除不级联删除个人映射，目标缺失时提示缓存不可用，仅原来源身份及学期重新出现后恢复显示，不按名称替换。此映射没有接入笔记备份。
 - 草稿按 `(scope, key)` 保存表单状态；来源快照分别记录上次成功、上次尝试与错误，失败不清除旧成功时间，也不改业务表。
 - 精确时刻以 UTC 毫秒存储，校园日期以 `YYYY-MM-DD` 存储；展示固定按 Asia/Shanghai（UTC+8，无夏令时）换算。只有日期或相对时间的值不推算为精确时刻。
 

@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jlu_dela/app/local_workbench.dart';
 import 'package:jlu_dela/app/theme.dart';
 import 'package:jlu_dela/core/source/campus_login.dart';
+import 'package:jlu_dela/core/models/source.dart';
+import 'package:jlu_dela/core/source/source.dart';
 import 'package:jlu_dela/core/storage/local_workspace.dart';
 import 'package:jlu_dela/features/assignments/assignments_page.dart';
 import 'package:jlu_dela/features/assignments/chaoxing_store.dart';
@@ -68,6 +70,111 @@ Future<void> _dispose(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'successful course retry restores source controls unless another auth failure remains',
+    (tester) async {
+      final harness = await ChaoxingHarness.create();
+      configureSingleCourse(harness.http);
+      final fixture = await _fixture(harness);
+      await _pump(tester, fixture);
+      await tester.tap(find.byKey(const Key('assignments-refresh')));
+      await tester.pumpAndSettle();
+      final offering = (await fixture.store.listCourses()).single;
+      final assignment = (await fixture.store.list()).firstWhere(
+        (item) => item.title == '示例作业一',
+      );
+      harness.http.routes.clear();
+      harness.http
+        ..on(baseUrl, entryPage())
+        ..on(entryUrl, coursesPage())
+        ..on(
+          'https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=100&clazzid=200&enc=fixture',
+          loginPage(),
+        );
+      await tester.tap(find.byKey(const Key('assignments-refresh')));
+      await tester.pumpAndSettle();
+      expect(
+        (await fixture.store.courseSnapshot(offering.id)).lastErrorCode,
+        SourceErrorCodes.sourceAuthRequired,
+      );
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const Key('assignments-refresh')),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await fixture.workspace.sources.recordFailure(
+        SourceKind.chaoxing,
+        ChaoxingStore.coursesResource,
+        attemptedAt: DateTime.utc(2026, 11, 3, 3),
+        code: SourceErrorCodes.sourceAuthRequired,
+        message: '课程列表仍需重连',
+      );
+      harness.http.routes.clear();
+      configureSingleCourse(harness.http);
+      await tester.tap(find.widgetWithText(TextButton, '重试'));
+      await tester.pumpAndSettle();
+      expect(
+        (await fixture.store.courseSnapshot(offering.id)).lastErrorCode,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const Key('assignments-refresh')),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await fixture.workspace.sources.recordSuccess(
+        SourceKind.chaoxing,
+        ChaoxingStore.coursesResource,
+        observedAt: DateTime.utc(2026, 11, 3, 4),
+      );
+      await tester.tap(find.byKey(const Key('assignments-login')));
+      await tester.pumpAndSettle();
+      harness.http.routes.clear();
+      harness.http
+        ..on(baseUrl, entryPage())
+        ..on(entryUrl, coursesPage())
+        ..on(
+          'https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=100&clazzid=200&enc=fixture',
+          loginPage(),
+        );
+      await tester.tap(find.byKey(const Key('assignments-refresh')));
+      await tester.pumpAndSettle();
+      harness.http.routes.clear();
+      configureSingleCourse(harness.http);
+      await tester.tap(find.widgetWithText(TextButton, '重试'));
+      await tester.pumpAndSettle();
+      expect(find.text('已更新「${offering.name}」的作业。'), findsOneWidget);
+      expect(
+        (await fixture.store.courseSnapshot(offering.id)).lastErrorCode,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const Key('assignments-refresh')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<TextButton>(
+              find.byKey(Key('assignment-open-${assignment.id}')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await _dispose(tester);
+    },
+  );
   testWidgets('shows the disconnected source without fabricating data', (
     tester,
   ) async {

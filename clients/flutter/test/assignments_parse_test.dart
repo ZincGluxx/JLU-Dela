@@ -172,43 +172,27 @@ void main() {
       expect(parseChaoxingDeadline(timing!), isNull);
     });
 
-    test('confirms the year from server time plus the countdown', () {
-      final now = DateTime.parse('2026-11-07T18:00:00+08:00');
-      final html =
-          '''
+    test(
+      'server time does not promote a partial deadline to an exact year',
+      () {
+        final now = DateTime.parse('2026-11-07T18:00:00+08:00');
+        final html =
+            '''
         <script>window["currentTime"] = "${now.millisecondsSinceEpoch}";</script>
         <p>截止时间：11-07 20:00</p>
       ''';
-      expect(
-        parseWorkDetailTiming(html, listTiming: '剩余2小时0分钟'),
-        '截止时间：2026-11-07 20:00',
-      );
-    });
+        expect(parseWorkDetailTiming(html), '截止时间：11-07 20:00（年份待确认）');
+      },
+    );
 
-    test('confirms a year that rolls over into the next year', () {
+    test('does not infer a year across a year boundary', () {
       final now = DateTime.parse('2026-12-31T23:30:00+08:00');
       final html =
           '''
         <script>window["currentTime"] = "${now.millisecondsSinceEpoch}";</script>
         <p>截止时间：01-01 01:30</p>
       ''';
-      expect(
-        parseWorkDetailTiming(html, listTiming: '剩余2小时0分钟'),
-        '截止时间：2027-01-01 01:30',
-      );
-    });
-
-    test('does not confirm a year when the countdown contradicts it', () {
-      final now = DateTime.parse('2026-12-31T23:30:00+08:00');
-      final html =
-          '''
-        <script>window["currentTime"] = "${now.millisecondsSinceEpoch}";</script>
-        <p>截止时间：01-01 01:30</p>
-      ''';
-      expect(
-        parseWorkDetailTiming(html, listTiming: '剩余5小时0分钟'),
-        '截止时间：01-01 01:30（年份待确认）',
-      );
+      expect(parseWorkDetailTiming(html), '截止时间：01-01 01:30（年份待确认）');
     });
 
     test('ignores impossible partial dates and out-of-range times', () {

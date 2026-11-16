@@ -40,3 +40,23 @@ CREATE TABLE assignments(
     'CREATE INDEX assignments_user_course ON assignments(user_id, course_offering_id)',
   ]),
 ];
+
+const List<LocalMigration> platformCourseBindingMigrations = [
+  LocalMigration(33, [
+    '''
+CREATE TABLE platform_course_bindings(
+  user_id TEXT NOT NULL,
+  platform TEXT NOT NULL CHECK (platform = 'chaoxing'),
+  platform_scope TEXT NOT NULL,
+  platform_course_id TEXT NOT NULL,
+  teaching_course_offering_id TEXT NOT NULL,
+  teaching_scope TEXT NOT NULL,
+  teaching_course_id TEXT NOT NULL,
+  semester_id TEXT NOT NULL,
+  created_at_utc INTEGER NOT NULL,
+  updated_at_utc INTEGER NOT NULL,
+  PRIMARY KEY(user_id, platform, platform_scope, platform_course_id)
+)
+''',
+  ]),
+];

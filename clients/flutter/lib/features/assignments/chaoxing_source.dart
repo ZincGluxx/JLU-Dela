@@ -63,7 +63,6 @@ class ChaoxingSource {
 
   Future<List<ChaoxingWork>> fetchWorks(ChaoxingCourse course) async {
     final items = await fetchWorkItems(course);
-    final started = DateTime.now();
     final works = <ChaoxingWork>[];
     for (final item in items) {
       var work = item.work;
@@ -74,11 +73,7 @@ class ChaoxingSource {
             detailUri,
             timeout: const Duration(seconds: 12),
           );
-          final timing = parseWorkDetailTiming(
-            detail.body,
-            listTiming: work.timing,
-            elapsed: DateTime.now().difference(started),
-          );
+          final timing = parseWorkDetailTiming(detail.body);
           work = _withDetail(work, timing);
         } on Object catch (error) {
           if (error is SourceException &&
