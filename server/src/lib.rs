@@ -14,4 +14,5 @@ pub mod personal_backup;
 pub mod response;
 pub mod state;
 pub mod sync;
+pub mod teaching_backup;
 pub mod todos;

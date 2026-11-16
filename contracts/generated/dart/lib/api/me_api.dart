@@ -65,6 +65,55 @@ class MeApi {
     return null;
   }
 
+  /// Return the caller's management scopes
+  ///
+  /// Reads current server-side grants for the authenticated user only; an empty set is valid. Campus grants cover campus and every college; college grants cover only the exact trusted target college ID. Only trusted maintainers assign or revoke grants through the server CLI, independently of the assignee's student or college affiliation. Business handlers recheck grants in the database on each request; this response and access tokens are not authorization proofs. Protected business APIs return 403 MANAGEMENT_REQUIRED for a missing scope grant. No self-service grant, revoke or account management fields are accepted.
+  ///
+  /// Note: This method returns the HTTP [Response].
+  Future<Response> getMyManagementWithHttpInfo({ Future<void>? abortTrigger, }) async {
+    // ignore: prefer_const_declarations
+    final path = r'/api/v1/me/management';
+
+    // ignore: prefer_final_locals
+    Object? postBody;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    const contentTypes = <String>[];
+
+
+    return apiClient.invokeAPI(
+      path,
+      'GET',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+      abortTrigger: abortTrigger,
+    );
+  }
+
+  /// Return the caller's management scopes
+  ///
+  /// Reads current server-side grants for the authenticated user only; an empty set is valid. Campus grants cover campus and every college; college grants cover only the exact trusted target college ID. Only trusted maintainers assign or revoke grants through the server CLI, independently of the assignee's student or college affiliation. Business handlers recheck grants in the database on each request; this response and access tokens are not authorization proofs. Protected business APIs return 403 MANAGEMENT_REQUIRED for a missing scope grant. No self-service grant, revoke or account management fields are accepted.
+  Future<ManagementResponse?> getMyManagement({ Future<void>? abortTrigger, }) async {
+    final response = await getMyManagementWithHttpInfo(abortTrigger: abortTrigger,);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'ManagementResponse',) as ManagementResponse;
+    
+    }
+    return null;
+  }
+
   /// Update the current account
   ///
   /// Omitted fields keep their values. New usernames are not trimmed or lowercased. New passwords require 8-16 Unicode scalar values including ASCII lowercase, uppercase and a digit. Existing password login rules are unchanged. A duplicate username returns 409 USERNAME_TAKEN. Phone and student identity fields are not accepted.

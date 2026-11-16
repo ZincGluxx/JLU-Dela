@@ -3,6 +3,7 @@ pub mod extractor;
 pub mod handlers;
 pub mod invite;
 pub mod login;
+pub mod management;
 pub mod password;
 pub mod phone;
 pub mod session;

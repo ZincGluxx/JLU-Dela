@@ -43,6 +43,7 @@ pub enum AppError {
     StudentVerificationUnavailable,
     StudentRequired,
     CollegeRequired,
+    ManagementRequired,
     Internal,
 }
 
@@ -378,6 +379,14 @@ impl AppError {
                 StatusCode::FORBIDDEN,
                 "COLLEGE_REQUIRED",
                 "当前账号没有该学院的访问资格。".to_owned(),
+                false,
+                Vec::new(),
+                None,
+            ),
+            Self::ManagementRequired => (
+                StatusCode::FORBIDDEN,
+                "MANAGEMENT_REQUIRED",
+                "当前账号没有该范围的管理资格。".to_owned(),
                 false,
                 Vec::new(),
                 None,

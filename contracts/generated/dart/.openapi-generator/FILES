@@ -44,6 +44,7 @@ lib/model/course_offering.dart
 lib/model/create_sync_job_request.dart
 lib/model/create_todo_request.dart
 lib/model/delete_notes_backup_request.dart
+lib/model/delete_teaching_backup_request.dart
 lib/model/error_detail.dart
 lib/model/error_field.dart
 lib/model/error_response.dart
@@ -54,6 +55,8 @@ lib/model/live_response.dart
 lib/model/live_status.dart
 lib/model/login_request.dart
 lib/model/logout_request.dart
+lib/model/management_grants.dart
+lib/model/management_response.dart
 lib/model/me.dart
 lib/model/me_response.dart
 lib/model/meta_response.dart
@@ -63,6 +66,7 @@ lib/model/phone_code_request.dart
 lib/model/phone_code_response.dart
 lib/model/phone_login_request.dart
 lib/model/put_notes_backup_request.dart
+lib/model/put_teaching_backup_request.dart
 lib/model/ready_response.dart
 lib/model/ready_status.dart
 lib/model/refresh_request.dart
@@ -87,6 +91,20 @@ lib/model/sync_job_accepted_response.dart
 lib/model/sync_job_error.dart
 lib/model/sync_job_response.dart
 lib/model/sync_job_status.dart
+lib/model/teaching_backup_academic_completion.dart
+lib/model/teaching_backup_academic_group.dart
+lib/model/teaching_backup_academic_plan.dart
+lib/model/teaching_backup_conflict_response.dart
+lib/model/teaching_backup_conflict_response_error.dart
+lib/model/teaching_backup_course.dart
+lib/model/teaching_backup_course_preference.dart
+lib/model/teaching_backup_lesson.dart
+lib/model/teaching_backup_payload.dart
+lib/model/teaching_backup_period_time.dart
+lib/model/teaching_backup_snapshot.dart
+lib/model/teaching_backup_snapshot_response.dart
+lib/model/teaching_backup_source_ref.dart
+lib/model/teaching_backup_timetable.dart
 lib/model/teaching_source.dart
 lib/model/todo.dart
 lib/model/todo_item.dart

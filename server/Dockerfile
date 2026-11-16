@@ -26,6 +26,7 @@ RUN apt-get update \
 
 COPY --from=builder /build/target/release/jlu-dela-api /usr/local/bin/jlu-dela-api
 COPY --from=builder /build/target/release/migrate /usr/local/bin/migrate
+COPY --from=builder /build/target/release/management /usr/local/bin/management
 
 USER 10001:10001
 EXPOSE 8080

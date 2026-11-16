@@ -235,6 +235,8 @@ class ApiClient {
           return CreateTodoRequest.fromJson(value);
         case 'DeleteNotesBackupRequest':
           return DeleteNotesBackupRequest.fromJson(value);
+        case 'DeleteTeachingBackupRequest':
+          return DeleteTeachingBackupRequest.fromJson(value);
         case 'ErrorDetail':
           return ErrorDetail.fromJson(value);
         case 'ErrorField':
@@ -255,6 +257,10 @@ class ApiClient {
           return LoginRequest.fromJson(value);
         case 'LogoutRequest':
           return LogoutRequest.fromJson(value);
+        case 'ManagementGrants':
+          return ManagementGrants.fromJson(value);
+        case 'ManagementResponse':
+          return ManagementResponse.fromJson(value);
         case 'Me':
           return Me.fromJson(value);
         case 'MeResponse':
@@ -273,6 +279,8 @@ class ApiClient {
           return PhoneLoginRequest.fromJson(value);
         case 'PutNotesBackupRequest':
           return PutNotesBackupRequest.fromJson(value);
+        case 'PutTeachingBackupRequest':
+          return PutTeachingBackupRequest.fromJson(value);
         case 'ReadyResponse':
           return ReadyResponse.fromJson(value);
         case 'ReadyStatus':
@@ -321,6 +329,34 @@ class ApiClient {
           return SyncJobResponse.fromJson(value);
         case 'SyncJobStatus':
           return SyncJobStatusTypeTransformer().decode(value);
+        case 'TeachingBackupAcademicCompletion':
+          return TeachingBackupAcademicCompletion.fromJson(value);
+        case 'TeachingBackupAcademicGroup':
+          return TeachingBackupAcademicGroup.fromJson(value);
+        case 'TeachingBackupAcademicPlan':
+          return TeachingBackupAcademicPlan.fromJson(value);
+        case 'TeachingBackupConflictResponse':
+          return TeachingBackupConflictResponse.fromJson(value);
+        case 'TeachingBackupConflictResponseError':
+          return TeachingBackupConflictResponseError.fromJson(value);
+        case 'TeachingBackupCourse':
+          return TeachingBackupCourse.fromJson(value);
+        case 'TeachingBackupCoursePreference':
+          return TeachingBackupCoursePreference.fromJson(value);
+        case 'TeachingBackupLesson':
+          return TeachingBackupLesson.fromJson(value);
+        case 'TeachingBackupPayload':
+          return TeachingBackupPayload.fromJson(value);
+        case 'TeachingBackupPeriodTime':
+          return TeachingBackupPeriodTime.fromJson(value);
+        case 'TeachingBackupSnapshot':
+          return TeachingBackupSnapshot.fromJson(value);
+        case 'TeachingBackupSnapshotResponse':
+          return TeachingBackupSnapshotResponse.fromJson(value);
+        case 'TeachingBackupSourceRef':
+          return TeachingBackupSourceRef.fromJson(value);
+        case 'TeachingBackupTimetable':
+          return TeachingBackupTimetable.fromJson(value);
         case 'TeachingSource':
           return TeachingSourceTypeTransformer().decode(value);
         case 'Todo':

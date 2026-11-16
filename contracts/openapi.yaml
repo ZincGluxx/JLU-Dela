@@ -21,6 +21,7 @@ info:
     - POST /api/v1/auth/refresh
     - POST /api/v1/auth/logout
     - GET /api/v1/me
+    - GET /api/v1/me/management
     - GET /api/v1/todos, POST /api/v1/todos, PATCH and DELETE /api/v1/todos/{id}
     - POST /api/v1/sync-jobs, GET /api/v1/sync-jobs/{id}
     - GET /api/v1/calendar
@@ -28,6 +29,7 @@ info:
     - POST /api/v1/files, GET and DELETE /api/v1/files/{id}
     - GET /api/v1/files/{id}/content
     - GET, PUT and DELETE /api/v1/personal-backup/notes
+    - GET, PUT and DELETE /api/v1/personal-backup/teaching
 
     Endpoints described but not yet served:
     - GET /api/v1/semesters, GET /api/v1/courses, GET /api/v1/schedule
@@ -106,7 +108,7 @@ tags:
   - name: Sync
     description: Persisted source synchronization jobs. Source adapters are owned by B/C/D.
   - name: PersonalBackup
-    description: Explicitly selected, account-private note snapshots with version conflicts and idempotent writes.
+    description: Explicitly selected, separate account-private note and teaching snapshots with version conflicts and idempotent writes.
   - name: Files
     description: Private file storage. Attached files are read only through authorized business routes.
   - name: Teaching
@@ -126,6 +128,7 @@ x-contract-status:
     - POST /api/v1/auth/refresh
     - POST /api/v1/auth/logout
     - GET /api/v1/me
+    - GET /api/v1/me/management
     - GET /api/v1/todos
     - POST /api/v1/todos
     - PATCH /api/v1/todos/{id}
@@ -137,6 +140,7 @@ x-contract-status:
     - POST /api/v1/files, GET and DELETE /api/v1/files/{id}
     - GET /api/v1/files/{id}/content
     - GET, PUT and DELETE /api/v1/personal-backup/notes
+    - GET, PUT and DELETE /api/v1/personal-backup/teaching
   design-only:
     - GET /api/v1/semesters
     - GET /api/v1/courses
@@ -503,6 +507,32 @@ paths:
         '5XX':
           $ref: '#/components/responses/ServerError'
 
+
+  /api/v1/me/management:
+    get:
+      operationId: getMyManagement
+      tags: [Me]
+      summary: Return the caller's management scopes
+      description: Reads current server-side grants for the authenticated user only; an empty set is valid. Campus grants cover campus and every college; college grants cover only the exact trusted target college ID. Only trusted maintainers assign or revoke grants through the server CLI, independently of the assignee's student or college affiliation. Business handlers recheck grants in the database on each request; this response and access tokens are not authorization proofs. Protected business APIs return 403 MANAGEMENT_REQUIRED for a missing scope grant. No self-service grant, revoke or account management fields are accepted.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current management scopes, without caching.
+          headers:
+            Cache-Control:
+              description: Prevent storage of the caller's management scopes.
+              schema:
+                type: string
+                enum: ['private, no-store']
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagementResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
 
   /api/v1/me/account:
     patch:
@@ -964,6 +994,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BackupConflictResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "4XX":
+          $ref: "#/components/responses/ClientError"
+        "5XX":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/personal-backup/teaching:
+    get:
+      operationId: getTeachingBackup
+      tags: [PersonalBackup]
+      security: [{ bearerAuth: [] }]
+      summary: Read the current account's selected teaching backup
+      description: Reading does not authorize uploading. An absent backup returns revision 0, deleted true, payload null and updated_at null without inserting a row. Responses are private and no-store.
+      responses:
+        "200":
+          description: Current private teaching snapshot or revision tombstone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeachingBackupSnapshotResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "4XX":
+          $ref: "#/components/responses/ClientError"
+        "5XX":
+          $ref: "#/components/responses/ServerError"
+    put:
+      operationId: putTeachingBackup
+      tags: [PersonalBackup]
+      security: [{ bearerAuth: [] }]
+      summary: Replace explicitly selected teaching data using compare-and-swap
+      description: Requires explicit selection and upload consent. Ownership comes only from authentication. The serialized typed payload is limited to 524288 UTF-8 bytes. A UUID key binds the complete typed request to its original content-free receipt; retries never reapply it after a later change or deletion. Notes use a separate partition. No automatic upload or local restore is performed by this API.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutTeachingBackupRequest"
+      responses:
+        "200":
+          description: Original operation receipt without teaching content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupReceiptResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: TEACHING_BACKUP_REVISION_CONFLICT includes error.current without overwriting; IDEMPOTENCY_CONFLICT rejects a changed retry body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeachingBackupConflictResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "4XX":
+          $ref: "#/components/responses/ClientError"
+        "5XX":
+          $ref: "#/components/responses/ServerError"
+    delete:
+      operationId: deleteTeachingBackup
+      tags: [PersonalBackup]
+      security: [{ bearerAuth: [] }]
+      summary: Delete cloud teaching content and retain a revision tombstone
+      description: Requires explicit confirmation and the current revision. Sets the stored payload to SQL NULL without deleting local teaching data or notes. Stale writes cannot recreate the content; exact old retries only return their original receipt. Operational database backup retention is separate.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteTeachingBackupRequest"
+      responses:
+        "200":
+          description: Original deletion receipt without teaching content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupReceiptResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: TEACHING_BACKUP_REVISION_CONFLICT includes error.current; IDEMPOTENCY_CONFLICT rejects a changed retry body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeachingBackupConflictResponse"
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "4XX":
@@ -1780,6 +1901,374 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    TeachingBackupPayload:
+      type: object
+      additionalProperties: false
+      required: [format, format_version, exported_at_utc]
+      description: Explicit B exporter v1 whitelist. Omit unselected partitions, never send null. Timetables and period_times must appear together; timetables and course_preferences must be nonempty when present. At least one selection is required; successful empty courses, lessons and academic plans remain valid. Source references and semester keys must be unique within their collections. Limits apply in addition to the 524288-byte serialized typed payload cap.
+      properties:
+        format:
+          type: string
+          enum: [jlu_dela_teaching_backup]
+        format_version:
+          type: integer
+          enum: [1]
+        exported_at_utc:
+          type: string
+          format: date-time
+        timetables:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items:
+            $ref: "#/components/schemas/TeachingBackupTimetable"
+        period_times:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/TeachingBackupPeriodTime"
+        course_preferences:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items:
+            $ref: "#/components/schemas/TeachingBackupCoursePreference"
+        academic_completion:
+          $ref: "#/components/schemas/TeachingBackupAcademicCompletion"
+    TeachingBackupSourceRef:
+      type: object
+      additionalProperties: false
+      required: [source, source_scope, source_id]
+      description: Stable source identity only, never a local course or device UUID. source_id must contain a non-whitespace character.
+      properties:
+        source:
+          type: string
+          enum: [jlu_iedu]
+        source_scope:
+          type: string
+          pattern: '^[0-9]{4}-[0-9]{4}-[123]$'
+          minLength: 11
+          maxLength: 11
+        source_id:
+          type: string
+          minLength: 1
+          maxLength: 300
+    TeachingBackupTimetable:
+      type: object
+      additionalProperties: false
+      required: [semester_code, name, is_current, starts_on, total_weeks, observed_at_utc, courses, lessons]
+      description: Historical successful snapshot. Courses may have zero lessons after cancellation; every lesson course_ref must belong to this semester's courses. week_number cannot exceed known total_weeks. No timestamp is rewritten as a fresh school sync.
+      properties:
+        semester_code:
+          type: string
+          pattern: '^[0-9]{4}-[0-9]{4}-[123]$'
+          minLength: 11
+          maxLength: 11
+        name:
+          type: string
+          maxLength: 300
+        is_current:
+          type: boolean
+        starts_on:
+          type: string
+          format: date
+          pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+          description: A real calendar date in YYYY-MM-DD form.
+        total_weeks:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 104
+        observed_at_utc:
+          type: string
+          format: date-time
+        courses:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/TeachingBackupCourse"
+        lessons:
+          type: array
+          maxItems: 10000
+          items:
+            $ref: "#/components/schemas/TeachingBackupLesson"
+    TeachingBackupCourse:
+      type: object
+      additionalProperties: false
+      required: [course_ref, name, teacher]
+      properties:
+        course_ref:
+          $ref: "#/components/schemas/TeachingBackupSourceRef"
+        name:
+          type: string
+          maxLength: 300
+        teacher:
+          type: string
+          nullable: true
+          maxLength: 300
+    TeachingBackupLesson:
+      type: object
+      additionalProperties: false
+      required: [course_ref, title, starts_at_utc, ends_at_utc, location, period_start, period_end, weekday, week_number, note]
+      description: Start precedes end. Periods are both null or both positive with start <= end. Reference must match a course in this semester. No local lesson UUID is accepted.
+      properties:
+        course_ref:
+          $ref: "#/components/schemas/TeachingBackupSourceRef"
+        title:
+          type: string
+          maxLength: 300
+        starts_at_utc:
+          type: string
+          format: date-time
+        ends_at_utc:
+          type: string
+          format: date-time
+        location:
+          type: string
+          nullable: true
+          maxLength: 300
+        period_start:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 500
+        period_end:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 500
+        weekday:
+          type: integer
+          minimum: 1
+          maximum: 7
+        week_number:
+          type: integer
+          minimum: 1
+          maximum: 104
+        note:
+          type: string
+          nullable: true
+          maxLength: 2000
+    TeachingBackupPeriodTime:
+      type: object
+      additionalProperties: false
+      required: [campus, period, start_minute, end_minute, observed_at_utc]
+      description: The account-level latest catalog, not fabricated semester history. campus and period form a unique key. start_minute must precede end_minute.
+      properties:
+        campus:
+          type: string
+          maxLength: 100
+        period:
+          type: integer
+          minimum: 1
+          maximum: 500
+        start_minute:
+          type: integer
+          minimum: 0
+          maximum: 1439
+        end_minute:
+          type: integer
+          minimum: 1
+          maximum: 1440
+        observed_at_utc:
+          type: string
+          format: date-time
+    TeachingBackupCoursePreference:
+      type: object
+      additionalProperties: false
+      required: [course_ref, remark, retained]
+      properties:
+        course_ref:
+          $ref: "#/components/schemas/TeachingBackupSourceRef"
+        remark:
+          type: string
+          nullable: true
+          maxLength: 100
+        retained:
+          type: boolean
+    TeachingBackupAcademicCompletion:
+      type: object
+      additionalProperties: false
+      required: [selection_semester, current_semester, observed_at_utc, plans]
+      description: Whitelisted school completion snapshot, not a recalculated graduation decision. Semester display strings and all school credit statistics retain their original meaning. A successful empty plans list is allowed.
+      properties:
+        selection_semester:
+          type: string
+          maxLength: 100
+        current_semester:
+          type: string
+          maxLength: 100
+        observed_at_utc:
+          type: string
+          format: date-time
+        plans:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/TeachingBackupAcademicPlan"
+    TeachingBackupAcademicPlan:
+      type: object
+      additionalProperties: false
+      required: [id, name, study_type, calculated_at_school, required_credits, earned_credits, selected_credits, groups]
+      properties:
+        id:
+          type: string
+          maxLength: 300
+          description: School plan identifier, not a device-generated UUID.
+        name:
+          type: string
+          maxLength: 300
+        study_type:
+          type: string
+          nullable: true
+          maxLength: 100
+        calculated_at_school:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: Original school calculation text, not an RFC3339 timestamp or local export time.
+        required_credits:
+          type: string
+          nullable: true
+          maxLength: 100
+        earned_credits:
+          type: string
+          nullable: true
+          maxLength: 100
+        selected_credits:
+          type: string
+          nullable: true
+          maxLength: 100
+        groups:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/TeachingBackupAcademicGroup"
+    TeachingBackupAcademicGroup:
+      type: object
+      additionalProperties: false
+      required: [id, parent_id, name, kind, required_credits, earned_credits, selected_credits, course_nature, required_courses, earned_courses, required_groups, earned_groups, choice_groups]
+      properties:
+        id:
+          type: string
+          maxLength: 300
+        parent_id:
+          type: string
+          nullable: true
+          maxLength: 300
+        name:
+          type: string
+          maxLength: 300
+        kind:
+          type: string
+          maxLength: 100
+        required_credits:
+          type: string
+          maxLength: 100
+        earned_credits:
+          type: string
+          maxLength: 100
+        selected_credits:
+          type: string
+          maxLength: 100
+        course_nature:
+          type: string
+          nullable: true
+          maxLength: 100
+        required_courses:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000000
+        earned_courses:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000000
+        required_groups:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000000
+        earned_groups:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000000
+        choice_groups:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000000
+    PutTeachingBackupRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_revision, payload]
+      properties:
+        expected_revision:
+          type: integer
+          minimum: 0
+          maximum: 2147483646
+        payload:
+          $ref: "#/components/schemas/TeachingBackupPayload"
+    DeleteTeachingBackupRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_revision]
+      properties:
+        expected_revision:
+          type: integer
+          minimum: 0
+          maximum: 2147483646
+    TeachingBackupSnapshot:
+      type: object
+      required: [revision, deleted, payload, updated_at]
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        deleted:
+          type: boolean
+        payload:
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/TeachingBackupPayload"
+          nullable: true
+          description: Null if absent or deleted; omitted partitions stay omitted in a stored payload.
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    TeachingBackupSnapshotResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/TeachingBackupSnapshot"
+        meta:
+          $ref: "#/components/schemas/RequestIdMeta"
+    TeachingBackupConflictResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id, retryable, fields]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: string
+            retryable:
+              type: boolean
+            fields:
+              type: array
+              items:
+                $ref: "#/components/schemas/ErrorField"
+            current:
+              $ref: "#/components/schemas/TeachingBackupSnapshot"
     BackupNote:
       type: object
       additionalProperties: false
@@ -3239,6 +3728,31 @@ components:
           type: string
           minLength: 1
           description: College display name from the trusted identity source.
+
+    ManagementGrants:
+      type: object
+      additionalProperties: false
+      required: [campus, college_ids]
+      properties:
+        campus:
+          type: boolean
+          description: Whether the maintainer assigned campus-wide management.
+        college_ids:
+          type: array
+          uniqueItems: true
+          description: Exact trusted college IDs explicitly assigned by a maintainer, even when campus is true.
+          items:
+            type: string
+            minLength: 1
+
+    ManagementResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ManagementGrants'
+        meta:
+          $ref: '#/components/schemas/RequestIdMeta'
 
     Me:
       type: object

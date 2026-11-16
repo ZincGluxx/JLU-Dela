@@ -81,6 +81,71 @@ class PersonalBackupApi {
     return null;
   }
 
+  /// Delete cloud teaching content and retain a revision tombstone
+  ///
+  /// Requires explicit confirmation and the current revision. Sets the stored payload to SQL NULL without deleting local teaching data or notes. Stale writes cannot recreate the content; exact old retries only return their original receipt. Operational database backup retention is separate.
+  ///
+  /// Note: This method returns the HTTP [Response].
+  ///
+  /// Parameters:
+  ///
+  /// * [String] idempotencyKey (required):
+  ///   Stable UUID for the exact operation body, reused only for its retry.
+  ///
+  /// * [DeleteTeachingBackupRequest] deleteTeachingBackupRequest (required):
+  Future<Response> deleteTeachingBackupWithHttpInfo(String idempotencyKey, DeleteTeachingBackupRequest deleteTeachingBackupRequest, { Future<void>? abortTrigger, }) async {
+    // ignore: prefer_const_declarations
+    final path = r'/api/v1/personal-backup/teaching';
+
+    // ignore: prefer_final_locals
+    Object? postBody = deleteTeachingBackupRequest;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    headerParams[r'Idempotency-Key'] = parameterToString(idempotencyKey);
+
+    const contentTypes = <String>['application/json'];
+
+
+    return apiClient.invokeAPI(
+      path,
+      'DELETE',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+      abortTrigger: abortTrigger,
+    );
+  }
+
+  /// Delete cloud teaching content and retain a revision tombstone
+  ///
+  /// Requires explicit confirmation and the current revision. Sets the stored payload to SQL NULL without deleting local teaching data or notes. Stale writes cannot recreate the content; exact old retries only return their original receipt. Operational database backup retention is separate.
+  ///
+  /// Parameters:
+  ///
+  /// * [String] idempotencyKey (required):
+  ///   Stable UUID for the exact operation body, reused only for its retry.
+  ///
+  /// * [DeleteTeachingBackupRequest] deleteTeachingBackupRequest (required):
+  Future<BackupReceiptResponse?> deleteTeachingBackup(String idempotencyKey, DeleteTeachingBackupRequest deleteTeachingBackupRequest, { Future<void>? abortTrigger, }) async {
+    final response = await deleteTeachingBackupWithHttpInfo(idempotencyKey, deleteTeachingBackupRequest, abortTrigger: abortTrigger,);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'BackupReceiptResponse',) as BackupReceiptResponse;
+    
+    }
+    return null;
+  }
+
   /// Read the current account's selected notes backup
   ///
   /// Reading and login do not authorize upload. No backup returns revision 0, deleted true, empty notes and null updated_at. A deletion retains only a revision tombstone. Responses are private and no-store. 
@@ -125,6 +190,55 @@ class PersonalBackupApi {
     // FormatException when trying to decode an empty string.
     if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
       return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'BackupSnapshotResponse',) as BackupSnapshotResponse;
+    
+    }
+    return null;
+  }
+
+  /// Read the current account's selected teaching backup
+  ///
+  /// Reading does not authorize uploading. An absent backup returns revision 0, deleted true, payload null and updated_at null without inserting a row. Responses are private and no-store.
+  ///
+  /// Note: This method returns the HTTP [Response].
+  Future<Response> getTeachingBackupWithHttpInfo({ Future<void>? abortTrigger, }) async {
+    // ignore: prefer_const_declarations
+    final path = r'/api/v1/personal-backup/teaching';
+
+    // ignore: prefer_final_locals
+    Object? postBody;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    const contentTypes = <String>[];
+
+
+    return apiClient.invokeAPI(
+      path,
+      'GET',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+      abortTrigger: abortTrigger,
+    );
+  }
+
+  /// Read the current account's selected teaching backup
+  ///
+  /// Reading does not authorize uploading. An absent backup returns revision 0, deleted true, payload null and updated_at null without inserting a row. Responses are private and no-store.
+  Future<TeachingBackupSnapshotResponse?> getTeachingBackup({ Future<void>? abortTrigger, }) async {
+    final response = await getTeachingBackupWithHttpInfo(abortTrigger: abortTrigger,);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'TeachingBackupSnapshotResponse',) as TeachingBackupSnapshotResponse;
     
     }
     return null;
@@ -182,6 +296,71 @@ class PersonalBackupApi {
   /// * [PutNotesBackupRequest] putNotesBackupRequest (required):
   Future<BackupReceiptResponse?> putNotesBackup(String idempotencyKey, PutNotesBackupRequest putNotesBackupRequest, { Future<void>? abortTrigger, }) async {
     final response = await putNotesBackupWithHttpInfo(idempotencyKey, putNotesBackupRequest, abortTrigger: abortTrigger,);
+    if (response.statusCode >= HttpStatus.badRequest) {
+      throw ApiException(response.statusCode, await _decodeBodyBytes(response));
+    }
+    // When a remote server returns no body with a status of 204, we shall not decode it.
+    // At the time of writing this, `dart:convert` will throw an "Unexpected end of input"
+    // FormatException when trying to decode an empty string.
+    if (response.body.isNotEmpty && response.statusCode != HttpStatus.noContent) {
+      return await apiClient.deserializeAsync(await _decodeBodyBytes(response), 'BackupReceiptResponse',) as BackupReceiptResponse;
+    
+    }
+    return null;
+  }
+
+  /// Replace explicitly selected teaching data using compare-and-swap
+  ///
+  /// Requires explicit selection and upload consent. Ownership comes only from authentication. The serialized typed payload is limited to 524288 UTF-8 bytes. A UUID key binds the complete typed request to its original content-free receipt; retries never reapply it after a later change or deletion. Notes use a separate partition. No automatic upload or local restore is performed by this API.
+  ///
+  /// Note: This method returns the HTTP [Response].
+  ///
+  /// Parameters:
+  ///
+  /// * [String] idempotencyKey (required):
+  ///   Stable UUID for the exact operation body, reused only for its retry.
+  ///
+  /// * [PutTeachingBackupRequest] putTeachingBackupRequest (required):
+  Future<Response> putTeachingBackupWithHttpInfo(String idempotencyKey, PutTeachingBackupRequest putTeachingBackupRequest, { Future<void>? abortTrigger, }) async {
+    // ignore: prefer_const_declarations
+    final path = r'/api/v1/personal-backup/teaching';
+
+    // ignore: prefer_final_locals
+    Object? postBody = putTeachingBackupRequest;
+
+    final queryParams = <QueryParam>[];
+    final headerParams = <String, String>{};
+    final formParams = <String, String>{};
+
+    headerParams[r'Idempotency-Key'] = parameterToString(idempotencyKey);
+
+    const contentTypes = <String>['application/json'];
+
+
+    return apiClient.invokeAPI(
+      path,
+      'PUT',
+      queryParams,
+      postBody,
+      headerParams,
+      formParams,
+      contentTypes.isEmpty ? null : contentTypes.first,
+      abortTrigger: abortTrigger,
+    );
+  }
+
+  /// Replace explicitly selected teaching data using compare-and-swap
+  ///
+  /// Requires explicit selection and upload consent. Ownership comes only from authentication. The serialized typed payload is limited to 524288 UTF-8 bytes. A UUID key binds the complete typed request to its original content-free receipt; retries never reapply it after a later change or deletion. Notes use a separate partition. No automatic upload or local restore is performed by this API.
+  ///
+  /// Parameters:
+  ///
+  /// * [String] idempotencyKey (required):
+  ///   Stable UUID for the exact operation body, reused only for its retry.
+  ///
+  /// * [PutTeachingBackupRequest] putTeachingBackupRequest (required):
+  Future<BackupReceiptResponse?> putTeachingBackup(String idempotencyKey, PutTeachingBackupRequest putTeachingBackupRequest, { Future<void>? abortTrigger, }) async {
+    final response = await putTeachingBackupWithHttpInfo(idempotencyKey, putTeachingBackupRequest, abortTrigger: abortTrigger,);
     if (response.statusCode >= HttpStatus.badRequest) {
       throw ApiException(response.statusCode, await _decodeBodyBytes(response));
     }
