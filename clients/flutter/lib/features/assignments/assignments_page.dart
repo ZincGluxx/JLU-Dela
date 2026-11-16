@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/theme.dart';
+import '../../core/auth/session_models.dart';
+import '../../core/auth/session_scope.dart';
 import '../../core/models/assignment.dart';
 import '../../core/models/course.dart';
 import '../../core/models/source.dart';
@@ -259,10 +261,53 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
     }
   }
 
+  Future<T?> _showPrivateDialog<T>({required WidgetBuilder builder}) async {
+    final session = context
+        .findAncestorWidgetOfExactType<SessionScope>()
+        ?.notifier;
+    final revision = session?.sessionRevision;
+    var invalidated = false;
+    bool isCurrent() {
+      if (!mounted ||
+          (session != null &&
+              (session.sessionRevision != revision ||
+                  session.phase == SessionPhase.signedOut ||
+                  (session.currentUser != null &&
+                      session.currentUser!.id != widget.workspace.userId)))) {
+        invalidated = true;
+      }
+      return !invalidated;
+    }
+
+    final result = await showDialog<T>(
+      context: context,
+      builder: (context) {
+        Widget content(BuildContext context) => isCurrent()
+            ? builder(context)
+            : AlertDialog(
+                title: const Text('账号已变化'),
+                content: const Text('已清除本次课程操作，请返回当前账号的工作台。'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              );
+        return session == null
+            ? content(context)
+            : ListenableBuilder(
+                listenable: session,
+                builder: (context, _) => content(context),
+              );
+      },
+    );
+    return isCurrent() ? result : null;
+  }
+
   Future<void> _editRemark(CourseOffering course) async {
     _remark.text = course.remark ?? '';
-    final value = await showDialog<String>(
-      context: context,
+    final value = await _showPrivateDialog<String>(
       builder: (context) => AlertDialog(
         title: const Text('课程备注名'),
         content: TextField(
@@ -308,8 +353,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
           ? name
           : a.sourceRef.sourceId.compareTo(b.sourceRef.sourceId);
     });
-    final selected = await showDialog<String>(
-      context: context,
+    final selected = await _showPrivateDialog<String>(
       builder: (context) => AlertDialog(
         title: const Text('绑定教务课程'),
         content: SizedBox(
@@ -411,8 +455,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
 
   /// 来源浏览器尚未接入时，至少给出已校验的地址并允许复制。
   Future<void> _showSourceUri(Uri uri, String note) {
-    return showDialog<void>(
-      context: context,
+    return _showPrivateDialog<void>(
       builder: (context) => AlertDialog(
         title: const Text('学习通原网页'),
         content: Column(
@@ -637,8 +680,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   }
 
   Future<void> _showCourses() async {
-    await showDialog<void>(
-      context: context,
+    await _showPrivateDialog<void>(
       builder: (context) => StatefulBuilder(
         builder: (context, updateDialog) => AlertDialog(
           title: const Text('学习通课程'),

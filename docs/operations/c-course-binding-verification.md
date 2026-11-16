@@ -53,6 +53,19 @@ Windows 构建出现既有 WebView 插件 CMake CMP0175 警告，未修改插件
 
 本机 `flutter pub get` 将基线锁文件中要求 Dart 3.13 的五个传递依赖解析为 Flutter 3.44.8 自带兼容版本（matcher 0.12.19、meta 1.18.0、petitparser 7.0.2、test_api 0.7.11、vector_math 2.2.0）。验证使用该本机解析，随后恢复锁文件，不将工具链差异混入 C 业务；锁文件与声明基线不一致需由公共工程单独处理，不宣称严格 frozen-lock 验收。
 
+## PR #46 评论修复（2026-11-16）
+
+针对[退出后弹窗残留旧课程的 P2 评论](https://github.com/goya4140/JLU-Dela/pull/46#issuecomment-6896884316)，先用真实 `JluDelaApp`、`SessionController` 和合成课程复现：退出后在包含隐藏路由的 Widget 树中仍能找到 5 个旧账号私人文本节点，回归失败。
+
+作业页面现统一约束管理课程、课程绑定、备注和来源链接回退弹窗：复用公共 SessionScope 的同一控制器，记录打开时的会话代次。退出、撤销、切号或会话代次变化后，弹窗改为无私人信息且仅可关闭的失效提示；旧结果返回 null，不能继续绑定或保存。上层和下层各自监听，逐层关闭不会重新暴露旧课程。同账号仅网络不可用不视为账号变化，离线本地绑定继续可用。没有修改公共会话状态机、身份方案、数据库迁移或凭据处理。
+
+本轮检查：
+
+- [会话弹窗回归](../../clients/flutter/test/assignments_dialog_session_test.dart)新增 7 项通过，覆盖管理/绑定/备注退出、会话撤销、直接切号、同账号退出再登录，以及同账号断网后继续本地绑定；检查含 offstage 下层路由、私人文本、课程操作入口和磁盘内容保留。
+- 本轮改动 3 个 Dart 文件格式检查无变化；`flutter analyze --no-pub` 无问题；全量 `flutter test --no-pub --reporter expanded` **793 通过、3 条条件跳过**，条件及本机依赖解析限制同上。
+- `flutter test --no-pub integration_test/course_binding_test.dart -d windows` **8 项通过**：7 项会话弹窗回归加原完整流程，Windows Debug 逻辑视口 1264×681。真实应用壳/控制器和 SQLite，身份网关及学校来源仍为合成替身；不代表真实学校登录或原生网页内容验收。既有 CMake CMP0175 警告仍存在。
+- [E 的消费者评论](https://github.com/goya4140/JLU-Dela/pull/46#issuecomment-6904854129)确认迁移 33、截止四态和无日期日历承接无阻塞，本轮没有为该评论扩展改动。
+
 ## 两个平台的实际范围
 
 | 平台 | 真实来源 | 替身覆盖 | 目标设备 |
