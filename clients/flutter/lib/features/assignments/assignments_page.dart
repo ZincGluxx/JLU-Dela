@@ -208,6 +208,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
           setState(() => _notice = '重试失败：${resultFailure.message}');
         case SourceSuccess():
           setState(() {
+            _accessNeedsReconnect = false;
             _report = ChaoxingRefreshReport(
               courseFailures: [
                 for (final item

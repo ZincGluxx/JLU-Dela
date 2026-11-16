@@ -66,6 +66,16 @@ Windows 构建出现既有 WebView 插件 CMake CMP0175 警告，未修改插件
 - `flutter test --no-pub integration_test/course_binding_test.dart -d windows` **8 项通过**：7 项会话弹窗回归加原完整流程，Windows Debug 逻辑视口 1264×681。真实应用壳/控制器和 SQLite，身份网关及学校来源仍为合成替身；不代表真实学校登录或原生网页内容验收。既有 CMake CMP0175 警告仍存在。
 - [E 的消费者评论](https://github.com/goya4140/JLU-Dela/pull/46#issuecomment-6904854129)确认迁移 33、截止四态和无日期日历承接无阻塞，本轮没有为该评论扩展改动。
 
+## PR #46 复审修复（2026-11-16）
+
+复审指出的[重试成功仍锁定连接](https://github.com/goya4140/JLU-Dela/pull/46#discussion_r4581985165)和[相对时间被当作详情复用](https://github.com/goya4140/JLU-Dela/pull/46#discussion_r4581985170)均先新增回归复现：前者成功提示及快照已恢复但刷新按钮仍为 null，后者三天后空列表时间＋详情 503 仍返回旧“剩余2小时0分钟”。
+
+- 单课程重试成功后解除内存重连锁存，连接状态继续受当前会话、课程列表及保留课程的认证错误约束；不因一门课程成功忽略剩余持久化认证错误。
+- 当前表只保存一份展示时间，不新增详情缓存列或迁移。展示列表相对时间时不写详情时间标记；下一次无法获取时间则回到未知提示，不将旧倒计时当新采集。已有被误标记的 relative 缓存也不再恢复为 detailTiming。精确/仅日期详情与无年份详情原有复用逻辑保持不变；停止推算缺失年份的设计不变。
+- 新增 3 项回归：成功重试恢复按钮且剩余课程列表认证失败仍禁用；新写入和旧错误详情标记两种 SQLite 行的两次刷新采集时间隔离。旧标记由合成 SQL 在测试中构造，不改真实用户缓存或已发布迁移。
+- 本轮 4 个 Dart 文件格式检查无变化；`flutter analyze --no-pub` 无问题；全量 `flutter test --no-pub --reporter expanded` **796 通过、3 条条件跳过**。依赖解析及跳过条件同前，不宣称 frozen-lock 验收。
+- Windows Debug `flutter test --no-pub integration_test/course_binding_test.dart -d windows` **8 项通过**，逻辑视口 1264×681；是原完整流程与账号弹窗隔离回归，两条本轮针对性行为由 Widget/真实 SQLite 测试覆盖，未另宣称原生平台专属覆盖。既有 CMake CMP0175 警告及真实来源未验收边界不变。
+
 ## 两个平台的实际范围
 
 | 平台 | 真实来源 | 替身覆盖 | 目标设备 |

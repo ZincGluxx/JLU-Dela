@@ -24,6 +24,74 @@ String _courseUrl(String courseId) {
 }
 
 void main() {
+  for (final legacyDetailMarker in [false, true]) {
+    test(
+      'relative hint never receives a later collection time, legacy detail marker: $legacyDetailMarker',
+      () async {
+        var observedAt = DateTime.utc(2026, 11, 5, 12);
+        final harness = await ChaoxingHarness.create(now: () => observedAt);
+        void configure(String timing, {bool detailFailure = false}) {
+          harness.http.routes.clear();
+          harness.http
+            ..on(baseUrl, entryPage())
+            ..on(entryUrl, coursesPage())
+            ..on(_courseUrl('100'), courseLandingPage())
+            ..on(
+              worksFrameUrl,
+              worksPage(
+                works: [
+                  (
+                    id: 'relative',
+                    title: '相对截止',
+                    status: '未交',
+                    timing: timing,
+                    fullDate: null,
+                  ),
+                ],
+              ),
+            )
+            ..on(
+              'https://mooc1.chaoxing.com/mooc2/work/task?workId=relative&enc=fixture',
+              '<p>截止时间：11-07 20:00</p>',
+              statusCode: detailFailure ? 503 : 200,
+            );
+        }
+
+        configure('剩余2小时0分钟');
+        expect((await harness.store.refreshAll()).isSuccess, isTrue);
+        var assignment = (await harness.store.list()).single;
+        expect(assignment.dueKind, AssignmentDueKind.relative);
+        expect(assignment.timingText, '剩余2小时0分钟');
+        expect(assignment.observedAtUtc, observedAt);
+        final row = (await harness.database.database.query(
+          'assignments',
+        )).single;
+        expect(row['detail_observed_at_utc'], isNull);
+        if (legacyDetailMarker) {
+          await harness.database.database.update(
+            'assignments',
+            {'detail_observed_at_utc': observedAt.millisecondsSinceEpoch},
+            where: 'id = ? AND user_id = ?',
+            whereArgs: [assignment.id, 'user-a'],
+          );
+        }
+        observedAt = observedAt.add(const Duration(days: 3));
+        configure('', detailFailure: true);
+        expect((await harness.store.refreshAll()).isSuccess, isTrue);
+        assignment = (await harness.store.list()).single;
+        expect(assignment.timingText, isNot(contains('剩余2小时0分钟')));
+        expect(assignment.dueKind, AssignmentDueKind.unknown);
+        expect(assignment.observedAtUtc, observedAt);
+        expect(assignment.dueAtUtc, isNull);
+        expect(
+          (await harness.database.database.query(
+            'assignments',
+          )).single['detail_observed_at_utc'],
+          isNull,
+        );
+      },
+    );
+  }
   test(
     'partial detail dates retain relative text and observation time without inferring a year',
     () async {
