@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/source.dart';
+import '../auth/session_scope.dart';
 import 'campus_source_policy.dart';
 import 'source_session.dart';
 import 'source_web_view.dart';
@@ -20,6 +21,7 @@ Future<SourceLoginCapture?> showSourceLoginDialog(
   final endpoints = CampusSourceEndpoints.forSource(source);
   return showDialog<SourceLoginCapture>(
     context: context,
+    useRootNavigator: false,
     barrierDismissible: false,
     builder: (context) => _SourceLoginDialog(
       source: source,
@@ -61,6 +63,10 @@ class _SourceLoginDialogState extends State<_SourceLoginDialog> {
       _reading = true;
       _message = null;
     });
+    final session = context
+        .findAncestorWidgetOfExactType<SessionScope>()
+        ?.notifier;
+    final revision = session?.sessionRevision;
     try {
       final cookies = await controller.readCookies({
         ...widget.endpoints.cookieUris,
@@ -68,7 +74,7 @@ class _SourceLoginDialogState extends State<_SourceLoginDialog> {
         widget.endpoints.probeUri,
         ?_currentUri,
       });
-      if (!mounted) {
+      if (!mounted || session?.sessionRevision != revision) {
         return;
       }
       if (cookies.isEmpty) {

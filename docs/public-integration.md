@@ -24,7 +24,7 @@ Widget 通过 [`SessionScope.of(context)`](../clients/flutter/lib/core/auth/sess
 
 业务数据使用当前账号作用域；退出和切号后清理本模块私有内存状态。来源读取按现有已确认执行位置推进，来源失效不等于应用账号退出；失败保留上次成功内容。
 
-业务路由接入现有 [Rust router](../server/src/http.rs)，复用状态、错误响应和中间件。业务负责人编写迁移，A 协调聚合；只新增迁移，不改已发布历史。上游 academic 迁移为 schema 6，[手机号迁移](../server/migrations/20261113000000_phone_accounts.sql) 推进到 7，[学生报告迁移](../server/migrations/20261113010000_student_reports.sql) 推进到 8；已合入的[文件迁移](../server/migrations/20261114000000_files.sql)将 `service_meta.schema_version` 从 `8` 推进到 `9`；本次[个人快照迁移](../server/migrations/20261114010000_personal_backups.sql)推进至 `10`，与客户端 SQLite 当前版本 `32` 分开管理。OpenAPI 变更通过工具生成客户端，不手改生成结果。
+业务路由接入现有 [Rust router](../server/src/http.rs)，复用状态、错误响应和中间件。业务负责人编写迁移，A 协调聚合；只新增迁移，不改已发布历史。上游 academic 迁移为 schema 6，[手机号迁移](../server/migrations/20261113000000_phone_accounts.sql) 推进到 7，[学生报告迁移](../server/migrations/20261113010000_student_reports.sql) 推进到 8；已合入的[文件迁移](../server/migrations/20261114000000_files.sql)将 `service_meta.schema_version` 从 `8` 推进到 `9`；本次[个人快照迁移](../server/migrations/20261114010000_personal_backups.sql)推进至 `10`，与客户端 SQLite 当前版本 `33`（PR #46 已合入课程绑定）分开管理。OpenAPI 变更通过工具生成客户端，不手改生成结果。
 
 ## 成员协作
 

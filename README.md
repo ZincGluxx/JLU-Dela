@@ -31,7 +31,7 @@
 
 在本仓库开发会话中发送 **“我是B”“我是C”“我是D”或“我是E”**，Agent 应读取[团队认领入口](docs/team/README.md)和对应角色文档，检查实际进度，再直接推进首项未完成的任务。各角色负责自己的客户端、必要服务端、数据和测试；已有实现继续复用，公共依赖按实际合入状态接入。
 
-本版功能方向见[开发完整计划](docs/sources/开发完整内容.md)，角色边界见[团队开发分工](docs/team-development.md)。Flutter 设置已接入[选定笔记的手动备份与恢复](docs/local-data.md#个人笔记备份)，默认关闭；这不代表网课来源、笔记编辑页面或其他个人数据类型已完成。Flutter 本地验证版新增[学习通课程绑定教务课程及学期](docs/operations/c-course-binding-verification.md)，作业显示绑定与来源获取状态；Windows 合成来源流程已通过，真实学习通、智慧树和平台数据备份尚未验收。下文旧版产品和安装包说明保留其原有适用范围，不将新计划当作已交付能力。
+本版功能方向见[开发完整计划](docs/sources/开发完整内容.md)，角色边界见[团队开发分工](docs/team-development.md)。Flutter 设置已接入[选定笔记的手动备份与恢复](docs/local-data.md#个人笔记备份)，默认关闭；这不代表网课来源、笔记编辑页面或其他个人数据类型已完成。Flutter 本地验证版新增[学习通课程绑定教务课程及学期](docs/operations/c-course-binding-verification.md)，作业显示绑定与来源获取状态；支持从教务课次或管理课程进入[对应学习通私人资料目录](docs/operations/c-bound-materials-verification.md)，逐层浏览并在当前来源会话中打开资料入口。Windows 合成来源流程已通过，真实学习通、智慧树和平台数据备份尚未验收。下文旧版产品和安装包说明保留其原有适用范围，不将新计划当作已交付能力。
 
 ## 从「今天学什么」开始
 

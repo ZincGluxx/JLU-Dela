@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
+import '../../core/auth/session_models.dart';
+import '../../core/auth/session_scope.dart';
 import '../../core/models/course.dart';
 import '../../core/models/material.dart' as domain;
 import '../../core/models/source.dart';
 import '../../core/source/source.dart';
+import '../../core/source/source_executor.dart';
 import '../../core/storage/local_workspace.dart';
 import 'content_access_dialog.dart';
 import 'content_store.dart';
@@ -16,10 +19,16 @@ class MaterialsPage extends StatefulWidget {
     super.key,
     required this.workspace,
     required this.store,
+    this.initialCourseId,
+    this.loadCourseBindings,
+    this.loadCourseScope,
   });
 
   final LocalWorkspace workspace;
   final ContentStore store;
+  final String? initialCourseId;
+  final Future<Map<String, String>> Function()? loadCourseBindings;
+  final Future<List<String>> Function()? loadCourseScope;
 
   @override
   State<MaterialsPage> createState() => _MaterialsPageState();
@@ -37,7 +46,11 @@ class _MaterialsPageState extends State<MaterialsPage> {
   String? _sourceMessage;
   int _request = 0;
 
+  bool _needsReconnect = false;
+  Map<String, String> _bindings = const {};
+
   bool get _hasChaoxingSession =>
+      !_needsReconnect &&
       widget.workspace.sessions.hasSession(SourceKind.chaoxing);
 
   CourseOffering? get _course {
@@ -67,6 +80,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
       _snapshot = null;
       _error = null;
       _sourceMessage = null;
+      _needsReconnect = false;
+      _refreshing = false;
+      _bindings = const {};
       unawaited(_loadCourses());
     }
   }
@@ -77,16 +93,23 @@ class _MaterialsPageState extends State<MaterialsPage> {
       _loading = true;
     });
     try {
-      final courses = await widget.store.materialCourses();
+      final available = await widget.store.materialCourses();
+      final scope = await widget.loadCourseScope?.call();
+      final courses = scope == null
+          ? available
+          : available.where((course) => scope.contains(course.id)).toList();
+      final bindings =
+          await widget.loadCourseBindings?.call() ?? const <String, String>{};
       if (!mounted || request != _request) {
         return;
       }
-      var selected = _courseId;
+      var selected = _courseId ?? widget.initialCourseId;
       if (selected == null || !courses.any((course) => course.id == selected)) {
         selected = _preferredCourse(courses)?.id;
       }
       setState(() {
         _courses = courses;
+        _bindings = bindings;
         _courseId = selected;
         _path = const <domain.Material>[];
         _materials = const <domain.Material>[];
@@ -132,14 +155,16 @@ class _MaterialsPageState extends State<MaterialsPage> {
       _loading = true;
       _error = null;
     });
+    final store = widget.store;
+    final parentId = _folder?.id;
     try {
-      final materials = await widget.store.loadMaterials(
+      final materials = await store.loadMaterials(
         course.id,
-        parentId: _folder?.id,
+        parentId: parentId,
       );
-      final snapshot = await widget.store.materialSnapshot(
+      final snapshot = await store.materialSnapshot(
         course.id,
-        parentId: _folder?.id,
+        parentId: parentId,
       );
       if (!mounted || request != _request) {
         return;
@@ -147,6 +172,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
       setState(() {
         _materials = materials;
         _snapshot = snapshot;
+        if (snapshot.lastErrorCode == SourceErrorCodes.sourceAuthRequired) {
+          _needsReconnect = true;
+        }
         _loading = false;
       });
     } catch (error) {
@@ -165,36 +193,35 @@ class _MaterialsPageState extends State<MaterialsPage> {
     if (course == null) {
       return;
     }
+    final request = ++_request;
+    final workspace = widget.workspace;
+    final store = widget.store;
+    final folder = _folder;
     setState(() {
       _refreshing = true;
       _error = null;
     });
     try {
-      final result = await widget.store.refreshMaterialChildren(
-        widget.workspace,
+      final result = await store.refreshMaterialChildren(
+        workspace,
         course,
-        parent: _folder,
+        parent: folder,
       );
-      if (!mounted) {
-        return;
-      }
-      if (result is SourceFailed<MaterialRefreshSummary>) {
-        setState(() {
-          _error = _failureText(result.failure);
-        });
+      if (!mounted || request != _request) return;
+      if (result is SourceSuccess<MaterialRefreshSummary>) {
+        _needsReconnect = false;
+      } else if (result is SourceFailed<MaterialRefreshSummary> &&
+          result.failure.code == SourceErrorCodes.sourceAuthRequired) {
+        _needsReconnect = true;
       }
       await _loadChildren();
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          _error = _errorText(error);
-        });
+      if (mounted && widget.workspace == workspace) {
+        setState(() => _error = _errorText(error));
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _refreshing = false;
-        });
+      if (mounted && widget.workspace == workspace) {
+        setState(() => _refreshing = false);
       }
     }
   }
@@ -204,21 +231,23 @@ class _MaterialsPageState extends State<MaterialsPage> {
       _sourceMessage = null;
       _error = null;
     });
+    final workspace = widget.workspace;
     try {
-      final result = await widget.workspace.campusLogin.connect(
+      final result = await workspace.campusLogin.connect(
         context,
         SourceKind.chaoxing,
       );
-      if (!mounted) {
+      if (!mounted || workspace != widget.workspace) {
         return;
       }
       setState(() {
+        if (result.connected) _needsReconnect = false;
         _sourceMessage = result.connected
             ? '学习通已连接'
             : (result.message ?? '学习通未连接');
       });
     } catch (error) {
-      if (mounted) {
+      if (mounted && workspace == widget.workspace) {
         setState(() {
           _error = _errorText(error);
         });
@@ -273,17 +302,23 @@ class _MaterialsPageState extends State<MaterialsPage> {
   }
 
   Future<void> _accessMaterial(domain.Material material) async {
-    setState(() {
-      _error = null;
-    });
+    final request = _request;
+    final workspace = widget.workspace;
+    final session = context
+        .findAncestorWidgetOfExactType<SessionScope>()
+        ?.notifier;
+    final revision = session?.sessionRevision;
+    bool isCurrent() =>
+        mounted &&
+        workspace == widget.workspace &&
+        request == _request &&
+        (session == null ||
+            (session.sessionRevision == revision &&
+                session.phase != SessionPhase.signedOut));
+    setState(() => _error = null);
     try {
-      final access = await widget.store.accessMaterial(
-        widget.workspace,
-        material.id,
-      );
-      if (!mounted) {
-        return;
-      }
+      final access = await widget.store.accessMaterial(workspace, material.id);
+      if (!mounted || !isCurrent()) return;
       await ContentAccessDialog.show(
         context,
         access: access,
@@ -297,15 +332,19 @@ class _MaterialsPageState extends State<MaterialsPage> {
         ),
       );
     } on ContentAccessException catch (error) {
-      if (mounted) {
+      if (isCurrent()) {
         setState(() {
           _error = error.message;
         });
       }
-    } on SourceException catch (error) {
-      if (mounted) {
+    } on Exception catch (error) {
+      if (isCurrent()) {
+        final failure = sourceFailureOf(error, source: SourceKind.chaoxing);
         setState(() {
-          _error = _failureText(error.failure);
+          if (failure.code == SourceErrorCodes.sourceAuthRequired) {
+            _needsReconnect = true;
+          }
+          _error = _failureText(failure);
         });
       }
     }
@@ -336,6 +375,15 @@ class _MaterialsPageState extends State<MaterialsPage> {
                 ],
                 const SizedBox(height: AppSpacing.md),
                 _buildCourseSelector(context),
+                if (_course != null) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    '学习通 · ${_course!.name} · 来源 ID：${_course!.sourceRef.sourceId}\n'
+                    '${_bindings[_courseId]?.isNotEmpty == true ? _bindings[_courseId] : '未绑定教务课程'}',
+                    key: const Key('materials-course-binding'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.md),
                 _buildBreadcrumb(context),
                 const SizedBox(height: AppSpacing.sm),
@@ -355,7 +403,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
         Text('课程资料', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: AppSpacing.xs),
         Text(
-          '学习通 · 课程资料目录 · 只显示本机已缓存内容',
+          '学习通 · 私人资料 · 仅显示已读取内容，不代表完整目录',
           style: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(color: AppTheme.muted),
@@ -415,7 +463,11 @@ class _MaterialsPageState extends State<MaterialsPage> {
             ),
             if (_courses.isEmpty) ...[
               const SizedBox(height: AppSpacing.xs),
-              const Text('尚未同步学习通课程。课程由学习通作业页同步，同步后这里会显示资料目录。'),
+              Text(
+                widget.loadCourseScope == null
+                    ? '尚未同步学习通课程。课程由学习通作业页同步，同步后这里会显示资料目录。'
+                    : '该教务课程暂无可用的学习通绑定。请在作业页管理课程中绑定课程及学期。',
+              ),
             ],
             if (!connected) ...[
               const SizedBox(height: AppSpacing.xs),
@@ -530,7 +582,12 @@ class _MaterialsPageState extends State<MaterialsPage> {
 
   Widget _buildList(BuildContext context) {
     if (_course == null) {
-      return _emptyCard(context, '尚未同步学习通课程，暂时没有可浏览的资料目录。');
+      return _emptyCard(
+        context,
+        widget.loadCourseScope == null
+            ? '尚未同步学习通课程，暂时没有可浏览的资料目录。'
+            : '没有匹配该教务来源标识和学期的学习通课程。',
+      );
     }
     if (_loading) {
       return const Padding(

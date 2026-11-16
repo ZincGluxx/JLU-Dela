@@ -29,6 +29,31 @@ void main() {
       );
     });
 
+    test(
+      'allows the material download host without allowing arbitrary hosts',
+      () {
+        final download = Uri.parse(
+          'https://download.chaoxing.com/coursedata/downloadData?dataId=file-1',
+        );
+        expect(isAllowedSourceUri(download), isTrue);
+        expect(sourceForAllowedUri(download), SourceKind.chaoxing);
+        expect(
+          sourceAuthGroup(sourceForAllowedUri(download)!),
+          SourceAuthGroup.chaoxing,
+        );
+        for (final value in [
+          'https://evil.example/coursedata/downloadData?dataId=file-1',
+          'https://download.chaoxing.com.evil.example/coursedata/downloadData',
+          'https://unlisted.chaoxing.com/coursedata/downloadData',
+          'https://download.chaoxing.com@evil.example/coursedata/downloadData',
+          'http://download.chaoxing.com/coursedata/downloadData',
+          'https://download.chaoxing.com:8443/coursedata/downloadData',
+        ]) {
+          expect(isAllowedSourceUri(Uri.parse(value)), isFalse, reason: value);
+        }
+      },
+    );
+
     test('maps allowlisted hosts to source kinds and auth groups', () {
       expect(
         sourceForAllowedUri(Uri.parse('https://iedu.jlu.edu.cn/')),
@@ -48,6 +73,7 @@ void main() {
         'mooc1.chaoxing.com',
         'mooc1-1.chaoxing.com',
         'mooc2-ans.chaoxing.com',
+        'download.chaoxing.com',
       ]) {
         expect(
           sourceForAllowedUri(Uri.parse('https://$host/')),

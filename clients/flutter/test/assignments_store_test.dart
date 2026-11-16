@@ -605,6 +605,38 @@ void main() {
   });
 
   test(
+    'root material access does not read an unrelated failing folder',
+    () async {
+      final harness = await ChaoxingHarness.create();
+      configureSingleCourse(harness.http);
+      harness.http
+        ..on(materialsFrameUrl, materialListPage())
+        ..onWhere(
+          (uri) => uri.queryParameters['dataId'] == 'folder-1',
+          'folder unavailable',
+          statusCode: 503,
+        );
+      expect((await harness.store.refreshAll()).isSuccess, isTrue);
+      final course = (await harness.store.listCourses()).single;
+
+      final access = await harness.store.accessMaterial(
+        courseOfferingId: course.id,
+        sourceId: 'file-1',
+      );
+
+      expect(access.uri.host, 'download.chaoxing.com');
+      expect(access.uri.queryParameters['dataId'], 'file-1');
+      expect(access.filename, '讲义.pdf');
+      expect(
+        harness.http.requests.where(
+          (uri) => uri.queryParameters['dataId'] == 'folder-1',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
     'material ids map to source children and verified download entries',
     () async {
       final harness = await ChaoxingHarness.create();
@@ -636,7 +668,7 @@ void main() {
         courseOfferingId: courseOffering.id,
       );
       expect(children.page, 1);
-      expect(children.totalPages, 1);
+      expect(children.totalPages, isNull);
       expect(children.entries, hasLength(2));
       final folder = children.entries.firstWhere(
         (item) => item.kind == MaterialKind.folder,

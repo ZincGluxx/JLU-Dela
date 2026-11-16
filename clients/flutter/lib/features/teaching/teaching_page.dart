@@ -16,10 +16,16 @@ import 'teaching_store.dart';
 const _weekDayLabels = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 class TeachingPage extends StatefulWidget {
-  const TeachingPage({super.key, required this.workspace, required this.store});
+  const TeachingPage({
+    super.key,
+    required this.workspace,
+    required this.store,
+    this.onOpenMaterials,
+  });
 
   final LocalWorkspace workspace;
   final TeachingStore store;
+  final ValueChanged<String>? onOpenMaterials;
 
   @override
   State<TeachingPage> createState() => _TeachingPageState();
@@ -733,6 +739,7 @@ class _TeachingPageState extends State<TeachingPage> {
     ];
     showDialog<void>(
       context: context,
+      useRootNavigator: false,
       builder: (context) => AlertDialog(
         title: Text(lesson.title),
         content: Column(
@@ -747,6 +754,16 @@ class _TeachingPageState extends State<TeachingPage> {
           ],
         ),
         actions: [
+          if (widget.onOpenMaterials != null)
+            TextButton.icon(
+              key: const Key('teaching-course-materials'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                widget.onOpenMaterials!(lesson.courseOfferingId);
+              },
+              icon: const Icon(Icons.folder_outlined),
+              label: const Text('私人资料'),
+            ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('关闭'),

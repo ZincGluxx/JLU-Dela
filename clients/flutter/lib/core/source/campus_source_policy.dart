@@ -10,6 +10,7 @@ const Set<String> sourceAllowedHosts = {
   'mooc1.chaoxing.com',
   'mooc1-1.chaoxing.com',
   'mooc2-ans.chaoxing.com',
+  'download.chaoxing.com',
 };
 
 const Set<String> _chaoxingHosts = {
@@ -18,6 +19,7 @@ const Set<String> _chaoxingHosts = {
   'mooc1.chaoxing.com',
   'mooc1-1.chaoxing.com',
   'mooc2-ans.chaoxing.com',
+  'download.chaoxing.com',
 };
 
 bool isAllowedSourceUri(Uri uri) {

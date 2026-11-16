@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/source.dart';
+import '../auth/session_scope.dart';
 import 'campus_source_policy.dart';
 import 'in_app_web_view_source_web_view.dart';
 import 'source.dart';
@@ -46,6 +47,7 @@ class InAppWebViewSourcePageOpener implements SourcePageOpener {
     final cookies = sessions.cookiesForUri(source, uri);
     await showDialog<void>(
       context: context,
+      useRootNavigator: false,
       barrierDismissible: false,
       builder: (context) => _SourcePageDialog(
         source: source,
@@ -84,10 +86,15 @@ class _SourcePageDialogState extends State<_SourcePageDialog> {
       return;
     }
     _opening = true;
+    final session = context
+        .findAncestorWidgetOfExactType<SessionScope>()
+        ?.notifier;
+    final revision = session?.sessionRevision;
     try {
       if (widget.cookies.isNotEmpty) {
         await controller.setCookies(widget.cookies);
       }
+      if (!mounted || session?.sessionRevision != revision) return;
       await controller.load(widget.uri);
     } on Exception {
       if (!mounted) {
