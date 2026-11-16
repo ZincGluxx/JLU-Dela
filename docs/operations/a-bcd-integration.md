@@ -95,6 +95,6 @@ C 的课程映射需要同时保留两端来源标识及学期；不能只传 `t
 
 已修复的测试问题明确记录：首轮旧B账本测试暴露部分前进，新增preflight后通过；教务日期解析首轮允许不补零日期，现按真实十位ISO日期拒绝；Clippy 大错误体改为 boxed 冲突快照；实际Dart HTTP测试首次使用生成模型相等比较，因Optional容器相等语义失败，改为比较实际序列化数据后全流程通过，不放宽服务端校验。
 
-依赖锁只由工具重新解析5个当前SDK不兼容的传递版本（matcher、meta、petitparser、test_api、vector_math）；直接依赖及Flutter版本不变。CI 同步使用 `flutter pub get --enforce-lockfile`，避免再次悄悄改锁通过。生成SDK的默认可选数组限制保留并有专项回归，不修改生成模板。
+依赖锁由工具重新解析5个当前SDK不兼容的传递版本（matcher、meta、petitparser、test_api、vector_math）；直接依赖及Flutter版本不变。CI 同步使用 `flutter pub get --enforce-lockfile`，避免再次悄悄改锁通过。提交前按 CI 默认 `pub.dev` 复验时，严格安装因原锁指向镜像源退出65；再由工具统一93个 hosted 项的源地址，版本及内容校验值不变。镜像开发环境复验时需临时使用 `PUB_HOSTED_URL=https://pub.dev`，与 CI 保持一致，不关闭严格锁。生成SDK的默认可选数组限制保留并有专项回归，不修改生成模板。
 
 初次实现结束时新建 API 和 PostgreSQL 已停止；提交 PR 前仅重启相同隔离库复验，之后再次停止。合成数据和日志留在忽略目录供本地复核，不进入 PR。未启动正常客户端恢复私人会话；未改 B/C/D 工作树及既有库，未改 AGENTS。用户随后授权提交并创建 PR；不授权合并或部署。
