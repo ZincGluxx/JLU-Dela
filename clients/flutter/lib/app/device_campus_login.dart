@@ -33,11 +33,10 @@ class DeviceCampusLogin implements CampusLogin {
         .findAncestorWidgetOfExactType<SessionScope>()
         ?.notifier;
     final revision = session?.sessionRevision;
-    bool isCurrent() =>
-        context.mounted &&
-        (session == null ||
-            (session.sessionRevision == revision &&
-                session.phase != SessionPhase.signedOut));
+    bool isAccountCurrent() =>
+        session == null ||
+        (session.sessionRevision == revision &&
+            session.phase != SessionPhase.signedOut);
     const cancelled = CampusLoginResult(
       connected: false,
       message: '来源登录已取消或账号已变化',
@@ -48,7 +47,7 @@ class DeviceCampusLogin implements CampusLogin {
       source: source,
       webView: webView,
     );
-    if (!isCurrent()) return cancelled;
+    if (!context.mounted || !isAccountCurrent()) return cancelled;
     if (capture == null) {
       return const CampusLoginResult(connected: false, message: '已取消来源登录');
     }
@@ -61,9 +60,12 @@ class DeviceCampusLogin implements CampusLogin {
       );
     }
     sessions.save(group, capture.cookies);
+    final sourceRevision = sessions.revisionFor(group);
+    bool isSourceCurrent() =>
+        isAccountCurrent() && sessions.revisionFor(group) == sourceRevision;
     try {
       final response = await http.send(SourceRequest(uri: endpoints.probeUri));
-      if (!isCurrent()) return cancelled;
+      if (!isSourceCurrent()) return cancelled;
       if (!endpoints.indicatesAuthenticated(response)) {
         throw SourceException(
           SourceFailure(
@@ -73,16 +75,18 @@ class DeviceCampusLogin implements CampusLogin {
           ),
         );
       }
-      return const CampusLoginResult(connected: true);
+      return context.mounted
+          ? const CampusLoginResult(connected: true)
+          : cancelled;
     } on SourceException catch (error) {
-      if (!isCurrent()) return cancelled;
+      if (!isSourceCurrent()) return cancelled;
       sessions.clearGroup(group);
       return CampusLoginResult(
         connected: false,
         message: _probeFailureMessage(source, error.failure),
       );
     } on Exception {
-      if (!isCurrent()) return cancelled;
+      if (!isSourceCurrent()) return cancelled;
       sessions.clearGroup(group);
       return CampusLoginResult(
         connected: false,

@@ -123,6 +123,107 @@ Future<void> _pumpHost(
 }
 
 void main() {
+  for (final outcome in [
+    'login-page',
+    'auth-failure',
+    'exception',
+    'success',
+  ]) {
+    for (final replaced in [false, true]) {
+      testWidgets(
+        'same-account navigation handles probe $outcome, session replaced: $replaced',
+        (tester) async {
+          final sources = SourceSessionRegistry();
+          final session = await _session(sources);
+          final revision = session.sessionRevision;
+          final probe = Completer<SourceResponse>();
+          final login = DeviceCampusLogin(
+            sessions: sources,
+            http: StubSourceHttpClient(onSend: (_) => probe.future),
+            webView: FakeSourceWebView(
+              controller: FakeSourceWebViewController(cookies: [_cookieA]),
+            ),
+          );
+          final showOrigin = ValueNotifier(true);
+          addTearDown(showOrigin.dispose);
+          late BuildContext openingContext;
+          late Future<CampusLoginResult> pending;
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) =>
+                  SessionScope(session: session, child: child!),
+              home: ValueListenableBuilder<bool>(
+                valueListenable: showOrigin,
+                builder: (context, origin, _) => origin
+                    ? Builder(
+                        builder: (context) => ElevatedButton(
+                          onPressed: () {
+                            openingContext = context;
+                            pending = login.connect(
+                              context,
+                              SourceKind.chaoxing,
+                            );
+                          },
+                          child: const Text('connect'),
+                        ),
+                      )
+                    : const Text('another page'),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('connect'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('source-login-confirm')));
+          await tester.pumpAndSettle();
+          expect(sources.cookieHeaderFor(SourceKind.chaoxing, _sourceUri), {
+            'UID': _cookieA.value,
+          });
+          showOrigin.value = false;
+          await tester.pumpAndSettle();
+          expect(openingContext.mounted, isFalse);
+          expect(session.currentUser!.id, 'user-a');
+          expect(session.sessionRevision, revision);
+          if (replaced) sources.save(SourceAuthGroup.chaoxing, [_cookieB]);
+
+          if (outcome == 'success' || outcome == 'login-page') {
+            probe.complete(
+              SourceResponse(
+                statusCode: 200,
+                body: outcome == 'success'
+                    ? 'ok'
+                    : '<form action="https://passport2.chaoxing.com/login"><input type="password" name="pwd"></form>',
+                finalUri: _sourceUri,
+              ),
+            );
+          } else if (outcome == 'auth-failure') {
+            probe.completeError(
+              const SourceException(
+                SourceFailure(
+                  code: SourceErrorCodes.sourceAuthRequired,
+                  message: 'source login required',
+                  source: SourceKind.chaoxing,
+                ),
+              ),
+            );
+          } else {
+            probe.completeError(Exception('fixture network unavailable'));
+          }
+          expect((await pending).connected, isFalse);
+          expect(
+            sources.cookieHeaderFor(SourceKind.chaoxing, _sourceUri),
+            replaced
+                ? {'UID': _cookieB.value}
+                : outcome == 'success'
+                ? {'UID': _cookieA.value}
+                : <String, String>{},
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
   for (final change in ['signout', 'switch-account']) {
     for (final afterFrame in [false, true]) {
       testWidgets(

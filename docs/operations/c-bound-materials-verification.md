@@ -40,11 +40,11 @@
 
 | 命令或步骤 | 覆盖层级 | 本轮结果 | 未覆盖 |
 | --- | --- | --- | --- |
-| `dart format --output=none --set-exit-if-changed`（本次 19 个 Dart 文件） | 格式 | 0 变化 | 无关模块不格式化 |
+| `dart format --output=none --set-exit-if-changed`（本次 21 个 Dart 文件） | 格式 | 0 变化 | 无关模块不格式化 |
 | `flutter analyze --no-pub` | 全客户端静态分析 | No issues found | 其他工作区在途代码 |
-| `flutter test --no-pub --reporter expanded` | 全客户端 | 834 通过、4 条条件跳过 | 公共校历真实 API、备份 HTTP 未配置；课程绑定与私人资料截图两项按需跳过 |
+| `flutter test --no-pub --reporter expanded` | 全客户端 | 843 通过、4 条条件跳过 | 公共校历真实 API、备份 HTTP 未配置；课程绑定与私人资料截图两项按需跳过 |
 | [完整流程回归](../../clients/flutter/test/bound_materials_flow_test.dart) | 真实应用壳、SQLite、来源解析/缓存、假 HTTP/WebView | 21 项通过：教务课次直达、只筛选绑定平台课；390/820/1280/1920 宽；同目标多平台课不混目录；未绑定/缺失目标；三类账号变化 × 下拉框/访问/来源/在途结果 | 真实学校、实际 WebView 内容及文件字节保存 |
-| [来源生命周期回归](../../clients/flutter/test/material_source_lifecycle_test.dart) | 真实会话控制器、设备登录器/来源窗口，延迟替身 | 14 项通过：Cookie 读取、probe 成功/失败及 Cookie 注入在下一帧前后退出/切号 | 原生 Cookie 插件及真实登录 |
+| [来源生命周期回归](../../clients/flutter/test/material_source_lifecycle_test.dart) | 真实会话控制器、设备登录器/来源窗口，延迟替身 | 22 项通过：Cookie 读取、probe 成功/失败及 Cookie 注入在下一帧前后退出/切号，同账号页面销毁与来源会话替换 | 原生 Cookie 插件及真实登录 |
 | [完整性回归](../../clients/flutter/test/material_cache_completeness_test.dart)、[存储回归](../../clients/flutter/test/assignments_store_test.dart)、[地址策略](../../clients/flutter/test/source_policy_test.dart) | 实际 ChaoxingStore→ContentStore / SQLite / 策略 | 新增 3 项并随全量通过；部分响应保留旧行、无关目录失败不阻断根文件、明确主机/恶意地址拒绝 | 来源真实分页协议及目录全量判定 |
 | `flutter test --no-pub integration_test/bound_materials_test.dart -d windows` | Windows Debug 原生运行器 | 2 项通过，1264×681：完整流程及切号销毁来源窗口 | HTTP/身份/WebView 内容仍为替身，非真实来源验收，非 release/其他系统 |
 | `flutter test --no-pub test/bound_materials_capture_test.dart --dart-define=C_MATERIALS_CAPTURE_DIR=<输出目录>` | Widget 渲染、合成数据 | 1 项通过；1280×900 [教务入口](../client/c-bound-materials/teaching-entry.png)、[资料根目录](../client/c-bound-materials/materials-root.png)、[嵌套目录](../client/c-bound-materials/materials-nested.png) | 非真实学校截图，非原生 WebView |
@@ -53,6 +53,12 @@
 开发中针对性流程测试曾因等待假来源窗口下层 busy 动画而 `pumpAndSettle` 超时，改为窗口打开后定帧验证；同账号重登测试曾复用已 dispose 的测试工作台，改为按生产生命周期新建。最终重新执行全量及设备命令，不沿用历史通过数。Windows 构建仍有既有插件 CMake CMP0175 警告。
 
 依赖沿用本机先前兼容解析，锁文件未改；依赖版本及非 frozen-lock 限制见[原交付记录](c-course-binding-verification.md#验证记录)。
+
+### PR #47 评论修复
+
+[行内审查](https://github.com/goya4140/JLU-Dela/pull/47#discussion_r4583630920)指出：同账号导航销毁登录发起页后，失败 probe 会因页面未 mounted 提前返回，遗漏撤回刚保存的未验证 Cookie。已用真实设备登录器、会话控制器与 Widget 销毁复现：200 登录页、认证异常和普通网络异常三项均失败，来源会话残留。
+
+修复将账号有效性、来源会话代次与页面存活分开判断。同一次来源登录的失败仍撤回 Cookie；退出、切号或来源会话已被替换时不清除新会话。来源 registry 仅新增按认证组的内存变更代次，无新存储或凭据模型。新增 8 项同账号导航回归（3 种失败及成功 × 会话原样/已替换），保留原 14 项生命周期回归；另验证组内替换/清理推进代次且不干扰其他组。评论修复后重新执行 4 个 Dart 文件格式检查（0 变化）、全客户端分析（无问题）、全量测试（843 通过、4 跳过）及 Windows Debug 流程（2 通过，1264×681）；真实来源、依赖解析与其他平台限制不变。
 
 ## 数据与权限
 
