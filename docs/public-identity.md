@@ -28,3 +28,25 @@ B—E 的页面通过 `SessionScope.of(context)` 取得既有 `SessionController
 - 来源平台连接继续通过既有 `SourceContext` / `SourceSessionRegistry` 管理，各来源独立，不因应用登录或学生状态变化而全部变成已连接。
 
 未验证学生仍可按现有规则使用本地工作台；离线缓存不是实时服务端授权证明。测试中的已验证身份及学院仅为夹具，不进入生产路径。
+
+## 公共管理资格
+
+管理资格由可信服务端维护者通过 [management CLI](../server/src/bin/management.rs) 按应用用户 UUID 显式授予或撤销，不接受客户端自报角色，不提供自助提权接口。每次操作只选全校或一个稳定学院 ID；不从名称猜学院，不要求管理员本人具有该学院学籍。首次迁移不授予任何账号资格。
+
+```sh
+cargo run --bin management -- grant --user-id <UUID> --campus
+cargo run --bin management -- grant --user-id <UUID> --college <college-id>
+cargo run --bin management -- list --user-id <UUID>
+cargo run --bin management -- revoke --user-id <UUID> --college <college-id>
+cargo run --bin management -- revoke --user-id <UUID> --campus
+```
+
+[服务端镜像](../server/Dockerfile)也包含 `management`，维护者可在已配置的受控 Compose 栈使用 `docker compose run --rm --no-deps api management <参数>`；这不自动授予部署或真实账号操作权限。本轮仅检查镜像构建定义，未运行 Docker 容器。
+
+命令只允许接触已有账号；授予禁用账号失败，重复授予/撤销幂等。运行命令需要受控的服务端数据库权限，终端输出是本次结果，不是永久授权凭证。生产操作仍需维护者明确批准，本轮仅测试合成账号。
+
+`GET /api/v1/me/management` 通过既有应用会话返回本人的 `campus` 和 `college_ids`，响应为 `private, no-store`；客户端不传用户 ID，不扩展普通账号资料字段。生成入口为 `MeApi.getMyManagement()`。空集合表示没有管理资格，不影响原有学生和学院身份。
+
+D 的业务处理先从可信帖子/板块读取目标范围，再调用 [management::require_scope](../server/src/auth/management.rs)：全校授权覆盖全校和各学院，学院授权只匹配该学院；无资格为 `403 MANAGEMENT_REQUIRED`，不能把它当作应用退出。每次请求查数据库，不将 `/me/management`、界面按钮或访问令牌中的快照作为授权证据；撤销后同一令牌的下次检查立即拒绝。
+
+资格授予不等于内容读取或文件发布。举报处理、必填说明、结果展示和下架后帖子/评论/图片访问控制仍由 D 实现；本次不增加这些业务端点。迁移及接续状态见 [A 的 B/C/D 集成交接](operations/a-bcd-integration.md)。
