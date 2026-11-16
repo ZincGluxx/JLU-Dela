@@ -31,6 +31,7 @@ class ContentAccessDialog extends StatefulWidget {
   }) {
     return showDialog<void>(
       context: context,
+      useRootNavigator: false,
       builder: (context) => ContentAccessDialog(
         access: access,
         sourceLabel: sourceLabel,

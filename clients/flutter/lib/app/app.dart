@@ -8,8 +8,10 @@ import '../core/auth/account_gateway.dart';
 import '../core/auth/session_controller.dart';
 import '../core/auth/session_models.dart';
 import '../core/auth/session_scope.dart';
+import '../core/models/source.dart';
 import '../core/storage/local_identity_store.dart';
 import '../features/assignments/assignments_page.dart';
+import '../features/assignments/course_binding_store.dart';
 import '../features/auth/login_page.dart';
 import '../features/content/materials_page.dart';
 import '../features/content/notices_page.dart';
@@ -94,6 +96,8 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
   String? _activeUserId;
   String? _recordedUserId;
   WorkbenchData? _workbench;
+  String? _materialsCourseId;
+  String? _materialsTeachingId;
 
   @override
   void initState() {
@@ -136,6 +140,8 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
       return;
     }
     _clearWorkbench();
+    _materialsCourseId = null;
+    _materialsTeachingId = null;
     _activeUserId = userId;
     if (userId != null) {
       _workbench = widget.workbenchBuilder(userId);
@@ -182,12 +188,93 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
     return {
       AppDestination.todos: (context) => TodoPage(workspace: workspace),
       AppDestination.calendar: (context) => CalendarPage(workspace: workspace),
-      AppDestination.teaching: (context) =>
-          TeachingPage(workspace: workspace, store: data.teachingStore),
-      AppDestination.assignments: (context) =>
-          AssignmentsPage(workspace: workspace, store: data.chaoxingStore),
-      AppDestination.materials: (context) =>
-          MaterialsPage(workspace: workspace, store: data.contentStore),
+      AppDestination.teaching: (context) => Navigator(
+        key: ValueKey(
+          'teaching-${workspace.userId}-${widget.session.sessionRevision}',
+        ),
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (_) => TeachingPage(
+            workspace: workspace,
+            store: data.teachingStore,
+            onOpenMaterials: (courseId) => setState(() {
+              _materialsTeachingId = courseId;
+              _materialsCourseId = null;
+              _destination = AppDestination.materials;
+            }),
+          ),
+        ),
+      ),
+      AppDestination.assignments: (context) => AssignmentsPage(
+        workspace: workspace,
+        store: data.chaoxingStore,
+        onOpenMaterials: (courseId) => setState(() {
+          _materialsCourseId = courseId;
+          _materialsTeachingId = null;
+          _destination = AppDestination.materials;
+        }),
+      ),
+      AppDestination.materials: (context) => Navigator(
+        key: ValueKey(
+          'materials-${workspace.userId}-${widget.session.sessionRevision}-${_materialsTeachingId ?? 'all'}-${_materialsCourseId ?? ''}',
+        ),
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (_) => MaterialsPage(
+            workspace: workspace,
+            store: data.contentStore,
+            initialCourseId: _materialsCourseId,
+            loadCourseScope: _materialsTeachingId == null
+                ? null
+                : () async {
+                    final target = await workspace.courses.byId(
+                      _materialsTeachingId!,
+                    );
+                    if (target == null) return const <String>[];
+                    final bindings = await CourseBindingStore(
+                      workspace.database,
+                      workspace.userId,
+                      workspace.courses,
+                    ).list();
+                    final platforms = await workspace.courses.list(
+                      source: SourceKind.chaoxing,
+                    );
+                    return [
+                      for (final platform in platforms)
+                        if (bindings.any(
+                          (binding) =>
+                              binding.matchesTeaching(target) &&
+                              binding.matchesPlatform(platform),
+                        ))
+                          platform.id,
+                    ];
+                  },
+            loadCourseBindings: () async {
+              final bindings = await CourseBindingStore(
+                workspace.database,
+                workspace.userId,
+                workspace.courses,
+              ).list();
+              final courses = await workspace.courses.list();
+              return {
+                for (final platform in courses.where(
+                  (course) => course.sourceRef.source == SourceKind.chaoxing,
+                ))
+                  platform.id: [
+                    for (final binding in bindings.where(
+                      (binding) => binding.matchesPlatform(platform),
+                    )) ...[
+                      for (final target in courses.where(
+                        binding.matchesTeaching,
+                      ))
+                        '教务：${target.name} · ${target.sourceRef.sourceScope} · 课程 ID：${target.sourceRef.sourceId}',
+                      if (!courses.any(binding.matchesTeaching))
+                        '绑定的教务课程不在当前缓存 · ${binding.teachingCourse.sourceScope} · ${binding.teachingCourse.sourceId}',
+                    ],
+                  ].join(),
+              };
+            },
+          ),
+        ),
+      ),
       AppDestination.notices: (context) =>
           NoticesPage(workspace: workspace, store: data.contentStore),
     };
@@ -240,7 +327,13 @@ class _WorkbenchPageState extends State<_WorkbenchPage> {
           : null,
       pages: pages,
       onDestinationSelected: (destination) {
-        setState(() => _destination = destination);
+        setState(() {
+          if (destination == AppDestination.materials) {
+            _materialsTeachingId = null;
+            _materialsCourseId = null;
+          }
+          _destination = destination;
+        });
       },
     );
   }

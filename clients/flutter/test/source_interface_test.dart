@@ -9,6 +9,30 @@ import 'package:jlu_dela/core/source/source_portal.dart';
 import 'package:jlu_dela/core/source/source_session.dart';
 
 void main() {
+  test('source revisions track replacement and clearing per auth group', () {
+    final sessions = SourceSessionRegistry();
+    const group = SourceAuthGroup.chaoxing;
+    const cookie = SourceCookie(
+      name: 'UID',
+      value: 'fixture',
+      domain: '.chaoxing.com',
+    );
+    expect(sessions.revisionFor(group), 0);
+    sessions.save(group, [cookie]);
+    final first = sessions.revisionFor(group);
+    sessions.save(SourceAuthGroup.jluCampus, [cookie]);
+    expect(sessions.revisionFor(group), first);
+    sessions.save(group, [cookie]);
+    expect(sessions.revisionFor(group), greaterThan(first));
+    final replaced = sessions.revisionFor(group);
+    sessions.clearGroup(group);
+    expect(sessions.revisionFor(group), greaterThan(replaced));
+    final cleared = sessions.revisionFor(group);
+    sessions.clearAll();
+    expect(sessions.revisionFor(group), greaterThan(cleared));
+    expect(sessions.hasSession(SourceKind.chaoxing), isFalse);
+    expect(sessions.hasSession(SourceKind.jluIedu), isFalse);
+  });
   test('source requests default to a bounded timeout', () {
     final request = SourceRequest(uri: Uri.parse('https://iedu.jlu.edu.cn/'));
 

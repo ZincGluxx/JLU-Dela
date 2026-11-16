@@ -12,7 +12,7 @@
 ## 版本与迁移
 
 - 每项迁移在单个事务内执行，已应用版本写入迁移账本，最高版本记在 `PRAGMA user_version`；该项失败回滚，不删库重来。
-- 历史版本段：1 CORE；2–9 教务（已用 2–6）；10–19 学习通（已用 10）；20–29 内容缓存（已用 20–23）；邮箱已用 [30、31](../clients/flutter/lib/features/mail/mail_migrations.dart)，笔记已用 `32`。本分支新增 C 的[课程绑定迁移 33](../clients/flutter/lib/features/assignments/assignments_migrations.dart)，经[聚合入口](../clients/flutter/lib/app/local_migrations.dart)推进 SQLite 至 `33`，与服务端 schema `10` 分开管理。后续迁移核对实际全局顺序后递增，不向旧编号段补号。
+- 历史版本段：1 CORE；2–9 教务（已用 2–6）；10–19 学习通（已用 10）；20–29 内容缓存（已用 20–23）；邮箱已用 [30、31](../clients/flutter/lib/features/mail/mail_migrations.dart)，笔记已用 `32`。已合入 PR #46 的 C [课程绑定迁移 33](../clients/flutter/lib/features/assignments/assignments_migrations.dart)，经[聚合入口](../clients/flutter/lib/app/local_migrations.dart)推进 SQLite 至 `33`，与服务端 schema `10` 分开管理。后续迁移核对实际全局顺序后递增，不向旧编号段补号。
 - [E 的笔记 PR #40](https://github.com/goya4140/JLU-Dela/pull/40) 及[邮箱凭据键 PR #41](https://github.com/goya4140/JLU-Dela/pull/41) 已合并。后续笔记或摘要迁移按实际账本协调，不预建空迁移。笔记导出/导入适配保留在 E 的目录，由 E 维护字段含义；A 维护公共授权、状态及同步流程。各模块维护自己的 `*_migrations.dart`，不改写已发布迁移。
 - 数据库版本高于应用支持版本时拒绝打开并提示升级；不降级、不删库。
 

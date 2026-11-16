@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 import '../core/models/source.dart';
+import '../core/auth/session_scope.dart';
+import '../core/auth/session_models.dart';
 import '../core/source/campus_login.dart';
 import '../core/source/campus_source_policy.dart';
 import '../core/source/cookie_source_http_client.dart';
@@ -27,12 +29,25 @@ class DeviceCampusLogin implements CampusLogin {
     BuildContext context,
     SourceKind source,
   ) async {
+    final session = context
+        .findAncestorWidgetOfExactType<SessionScope>()
+        ?.notifier;
+    final revision = session?.sessionRevision;
+    bool isAccountCurrent() =>
+        session == null ||
+        (session.sessionRevision == revision &&
+            session.phase != SessionPhase.signedOut);
+    const cancelled = CampusLoginResult(
+      connected: false,
+      message: '来源登录已取消或账号已变化',
+    );
     final endpoints = CampusSourceEndpoints.forSource(source);
     final capture = await showSourceLoginDialog(
       context,
       source: source,
       webView: webView,
     );
+    if (!context.mounted || !isAccountCurrent()) return cancelled;
     if (capture == null) {
       return const CampusLoginResult(connected: false, message: '已取消来源登录');
     }
@@ -45,8 +60,12 @@ class DeviceCampusLogin implements CampusLogin {
       );
     }
     sessions.save(group, capture.cookies);
+    final sourceRevision = sessions.revisionFor(group);
+    bool isSourceCurrent() =>
+        isAccountCurrent() && sessions.revisionFor(group) == sourceRevision;
     try {
       final response = await http.send(SourceRequest(uri: endpoints.probeUri));
+      if (!isSourceCurrent()) return cancelled;
       if (!endpoints.indicatesAuthenticated(response)) {
         throw SourceException(
           SourceFailure(
@@ -56,14 +75,18 @@ class DeviceCampusLogin implements CampusLogin {
           ),
         );
       }
-      return const CampusLoginResult(connected: true);
+      return context.mounted
+          ? const CampusLoginResult(connected: true)
+          : cancelled;
     } on SourceException catch (error) {
+      if (!isSourceCurrent()) return cancelled;
       sessions.clearGroup(group);
       return CampusLoginResult(
         connected: false,
         message: _probeFailureMessage(source, error.failure),
       );
     } on Exception {
+      if (!isSourceCurrent()) return cancelled;
       sessions.clearGroup(group);
       return CampusLoginResult(
         connected: false,

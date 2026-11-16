@@ -1,5 +1,7 @@
 # C：学习通课程绑定交付
 
+> 当前状态（2026-11-16 核对）：[PR #46](https://github.com/goya4140/JLU-Dela/pull/46) 已合入主线 `dccc613`，Foundation required 及四项业务检查全部成功。下文“本地实现已验证，未合入”“待集成”和“合入前核对”是该次交付时的历史记录，不是当前阻塞；SQLite 33 已在主线。接续私人资料流程见[本地验收记录](c-bound-materials-verification.md)。
+
 ## 本次目标与基线
 
 - 角色：C；日期：2026-11-15。

@@ -521,7 +521,7 @@ ON CONFLICT(user_id, source_scope, source_course_id, source_work_id) DO UPDATE S
           ),
       ],
       page: page,
-      totalPages: 1,
+      totalPages: null,
       observedAt: _now().toUtc(),
     );
   }
@@ -595,6 +595,8 @@ ON CONFLICT(user_id, source_scope, source_course_id, source_work_id) DO UPDATE S
         if (entry.id == sourceId) {
           return _MaterialLocation(path: item.path, entry: entry);
         }
+      }
+      for (final entry in item.entries) {
         if (entry.kind == ChaoxingMaterialKind.folder && item.path.length < 4) {
           if (++visited > 40) {
             throw protocolException('资料目录过大，暂不支持逐层检索');

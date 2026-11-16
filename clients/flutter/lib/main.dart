@@ -74,10 +74,6 @@ Future<void> main() async {
     final accountGateway = HttpAccountGateway(baseUri: apiBaseUri);
     final identityStore = LocalIdentityStore(database);
     final cachedIdentity = await identityStore.lastUsed();
-    final sessions = SourceSessionRegistry();
-    final sourceHttp = CookieSourceHttpClient(sessions: sessions);
-    final campusLogin = DeviceCampusLogin(sessions: sessions, http: sourceHttp);
-    final browser = InAppWebViewSourcePageOpener(sessions: sessions);
     runApp(
       JluDelaApp(
         diagnosticsService: service,
@@ -85,17 +81,24 @@ Future<void> main() async {
         accountGateway: accountGateway,
         identityStore: identityStore,
         cachedIdentity: cachedIdentity,
-        workbenchBuilder: (userId) => buildWorkbenchData(
-          database: database,
-          userId: userId,
-          sessions: sessions,
-          http: sourceHttp,
-          campusLogin: campusLogin,
-          browser: browser,
-          academicCalendar: academicCalendar,
-          session: workbenchApi.session,
-          backupRemote: BackupGateway(workbenchApi.apiClient),
-        ),
+        workbenchBuilder: (userId) {
+          final sessions = SourceSessionRegistry();
+          final sourceHttp = CookieSourceHttpClient(sessions: sessions);
+          return buildWorkbenchData(
+            database: database,
+            userId: userId,
+            sessions: sessions,
+            http: sourceHttp,
+            campusLogin: DeviceCampusLogin(
+              sessions: sessions,
+              http: sourceHttp,
+            ),
+            browser: InAppWebViewSourcePageOpener(sessions: sessions),
+            academicCalendar: academicCalendar,
+            session: workbenchApi.session,
+            backupRemote: BackupGateway(workbenchApi.apiClient),
+          );
+        },
       ),
     );
     unawaited(academicCalendar.load());

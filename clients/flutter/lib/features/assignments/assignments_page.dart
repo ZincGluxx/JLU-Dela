@@ -25,10 +25,12 @@ class AssignmentsPage extends StatefulWidget {
     super.key,
     required this.workspace,
     required this.store,
+    this.onOpenMaterials,
   });
 
   final LocalWorkspace workspace;
   final ChaoxingStore store;
+  final ValueChanged<String>? onOpenMaterials;
 
   @override
   State<AssignmentsPage> createState() => _AssignmentsPageState();
@@ -726,6 +728,16 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                               ),
                             ),
                             Text(_bindingLabel(course)),
+                            if (widget.onOpenMaterials != null)
+                              TextButton.icon(
+                                key: Key('course-materials-${course.id}'),
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  widget.onOpenMaterials!(course.id);
+                                },
+                                icon: const Icon(Icons.folder_outlined),
+                                label: const Text('私人资料'),
+                              ),
                             TextButton.icon(
                               key: Key('course-binding-${course.id}'),
                               onPressed: () async {

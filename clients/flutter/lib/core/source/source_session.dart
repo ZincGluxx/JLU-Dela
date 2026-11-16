@@ -75,7 +75,10 @@ class SourceSessionRegistry {
     : _now = now ?? DateTime.now;
 
   final Map<SourceAuthGroup, List<SourceCookie>> _cookies = {};
+  final Map<SourceAuthGroup, int> _revisions = {};
   final DateTime Function() _now;
+
+  int revisionFor(SourceAuthGroup group) => _revisions[group] ?? 0;
 
   List<SourceCookie> cookiesForUri(SourceKind source, Uri uri) {
     final saved = _cookies[sourceAuthGroup(source)] ?? const <SourceCookie>[];
@@ -105,6 +108,7 @@ class SourceSessionRegistry {
 
   void save(SourceAuthGroup group, Iterable<SourceCookie> cookies) {
     final saved = cookies.toList();
+    _revisions[group] = revisionFor(group) + 1;
     if (saved.isEmpty) {
       _cookies.remove(group);
       return;
@@ -113,11 +117,14 @@ class SourceSessionRegistry {
   }
 
   void clearGroup(SourceAuthGroup group) {
+    _revisions[group] = revisionFor(group) + 1;
     _cookies.remove(group);
   }
 
   void clearAll() {
-    _cookies.clear();
+    for (final group in SourceAuthGroup.values) {
+      clearGroup(group);
+    }
   }
 
   bool _matches(SourceCookie cookie, Uri uri) {
